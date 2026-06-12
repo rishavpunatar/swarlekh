@@ -29,7 +29,7 @@
     loopA: null, loopB: null,
     pxPerSec: 90, scrollSec: 0, centsLo: -700, centsHi: 1900,
     playing: false,
-    opts: { clarityThresh: 0.5, minNoteMs: 90 },
+    opts: { clarityThresh: 0.5, minNoteMs: 90, ornaments: true, ornMinMs: 30 },
   };
 
   let worker = null;
@@ -326,19 +326,43 @@
       row.appendChild(tEl);
       for (const tk of ph.tokens) {
         const s = DSP.swaraInfo(tk.k);
+        if (tk.meendFromPrev && row.querySelector('.tok')) {
+          const conn = document.createElement('span');
+          conn.className = 'meend-conn';
+          conn.textContent = '⌒';
+          conn.title = 'meend (glide)';
+          conn.dataset.i = String(flatIdx);
+          row.appendChild(conn);
+        }
         const span = document.createElement('span');
-        span.className = 'tok' + (s.komal ? ' komal' : '') + (s.tivra ? ' tivra' : '');
+        span.className = 'tok' + (s.komal ? ' komal' : '') + (s.tivra ? ' tivra' : '') + (tk.andolan ? ' andolan' : '');
         const oct = Math.max(-2, Math.min(2, s.octave));
         if (oct !== 0) span.dataset.oct = String(oct);
+        const pre = tk.kan || tk.murki;
+        if (pre) {
+          const o = document.createElement('span');
+          o.className = 'orn';
+          o.textContent = '(' + pre.map(k => DSP.tokenText(k, false)).join('') + ')';
+          o.title = tk.kan ? 'kan (grace note)' : 'murki';
+          span.appendChild(o);
+        }
         if (tk.meend) {
           const mm = document.createElement('span');
           mm.className = 'meend-mark';
           mm.textContent = '~';
+          mm.title = 'glide within the note';
           span.appendChild(mm);
         }
         span.appendChild(document.createTextNode(s.letter));
+        if (tk.graceAfter) {
+          const o = document.createElement('span');
+          o.className = 'orn';
+          o.textContent = '(' + tk.graceAfter.map(k => DSP.tokenText(k, false)).join('') + ')';
+          o.title = 'grace after the note';
+          span.appendChild(o);
+        }
         span.dataset.i = String(flatIdx);
-        span.title = `${DSP.tokenText(tk.k, tk.meend)} · ${fmtTime(tk.t0, true)}`;
+        span.title = `${DSP.tokenFullText(tk)} · ${fmtTime(tk.t0, true)}`;
         row.appendChild(span);
         const dashes = Math.min(8, Math.max(0, Math.round((tk.t1 - tk.t0 - 0.35) / 0.3)));
         for (let d = 0; d < dashes; d++) {
@@ -367,15 +391,30 @@
     for (let i = 0; i < state.f0.length; i++) {
       if (state.f0[i] > 0 && state.clarity[i] >= state.opts.clarityThresh) voiced++;
     }
-    els.statsLine.textContent =
-      `Sa ≈ ${noteLabel(state.saHz)} (${state.saHz.toFixed(1)} Hz) · ${state.tokens.length} notes · voiced ${Math.round(voiced / state.f0.length * 100)}%`;
+    let kan = 0, murki = 0, meend = 0, andolan = 0;
+    for (const tk of state.tokens) {
+      if (tk.kan) kan++;
+      if (tk.murki) murki++;
+      if (tk.graceAfter) kan++;
+      if (tk.meendFromPrev || tk.meend) meend++;
+      if (tk.andolan) andolan++;
+    }
+    let txt = `Sa ≈ ${noteLabel(state.saHz)} (${state.saHz.toFixed(1)} Hz) · ${state.tokens.length} notes · voiced ${Math.round(voiced / state.f0.length * 100)}%`;
+    const orn = [];
+    if (kan) orn.push(`${kan} kan`);
+    if (murki) orn.push(`${murki} murki`);
+    if (meend) orn.push(`${meend} meend`);
+    if (andolan) orn.push(`${andolan} andolan`);
+    if (orn.length) txt += ' · ' + orn.join(' · ');
+    els.statsLine.textContent = txt;
   }
 
   function exportHeader() {
     return `SwarLekh notation — ${state.fileName}\n` +
       `Sa = ${noteLabel(state.saHz)} (${state.saHz.toFixed(1)} Hz)\n` +
       `Legend: capitals shuddh; lowercase komal (r g d n); m = shuddh Ma, M = teevra Ma;\n` +
-      `        X' = taar saptak, .X = mandra saptak; ~ = meend; – ≈ 0.3 s held\n\n`;
+      `        X' = taar saptak, .X = mandra saptak; – ≈ 0.3 s held\n` +
+      `        (R)G = kan; (GRG)m = murki; X~Y = meend; ≈X = andolan/gamak; ~X = glide in note\n\n`;
   }
 
   els.copyBtn.addEventListener('click', async () => {
@@ -405,10 +444,20 @@
       saHz: +state.saHz.toFixed(2), options: state.opts,
       phrases: state.phrases.map(ph => ({
         t0: +ph.t0.toFixed(3), t1: +ph.t1.toFixed(3),
-        tokens: ph.tokens.map(tk => ({
-          t0: +tk.t0.toFixed(3), t1: +tk.t1.toFixed(3),
-          swara: DSP.tokenText(tk.k, tk.meend), k: tk.k, cents: +tk.cents.toFixed(1),
-        })),
+        tokens: ph.tokens.map(tk => {
+          const o = {
+            t0: +tk.t0.toFixed(3), t1: +tk.t1.toFixed(3),
+            swara: DSP.tokenText(tk.k, false), display: DSP.tokenFullText(tk),
+            k: tk.k, cents: +tk.cents.toFixed(1),
+          };
+          if (tk.kan) o.kan = tk.kan.map(k => DSP.tokenText(k, false));
+          if (tk.murki) o.murki = tk.murki.map(k => DSP.tokenText(k, false));
+          if (tk.graceAfter) o.graceAfter = tk.graceAfter.map(k => DSP.tokenText(k, false));
+          if (tk.meendFromPrev) o.meendFromPrev = true;
+          if (tk.meend) o.glide = true;
+          if (tk.andolan) o.andolan = true;
+          return o;
+        }),
       })),
     };
     download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), baseName() + '.sargam.json');
@@ -437,6 +486,14 @@
   }
 
   /* ----------------------------- settings ----------------------------- */
+
+  const detailSel = $('detailSel');
+  detailSel.addEventListener('change', () => {
+    const v = detailSel.value;
+    if (v === 'smooth') state.opts.ornaments = false;
+    else { state.opts.ornaments = true; state.opts.ornMinMs = v === 'detailed' ? 30 : 55; }
+    renotateNow();
+  });
 
   els.sensSlider.addEventListener('input', () => {
     state.opts.clarityThresh = parseFloat(els.sensSlider.value);
@@ -684,16 +741,26 @@
     cctx.stroke();
     cctx.globalAlpha = 1;
 
-    // quantized swara bars
-    cctx.fillStyle = colors.accent;
-    cctx.globalAlpha = 0.55;
+    // quantized swara bars + ornament mini-bars
     for (const tk of state.tokens) {
       if (tk.t1 < scrollSec || tk.t0 > tEnd) continue;
+      cctx.fillStyle = colors.accent;
+      cctx.globalAlpha = 0.55;
       const x = tToX(tk.t0), w = Math.max(2, (tk.t1 - tk.t0) * pxPerSec - 1);
       const y = cToY(tk.k * 100);
       cctx.beginPath();
       cctx.roundRect(x, y - 4.5, w, 9, 4);
       cctx.fill();
+      if (tk.orn) {
+        for (const o of tk.orn) {
+          cctx.globalAlpha = o.type === 'meend' ? 0.28 : 0.45;
+          const ox = tToX(o.t0), ow = Math.max(2, (o.t1 - o.t0) * pxPerSec - 1);
+          const oy = cToY(o.k * 100);
+          cctx.beginPath();
+          cctx.roundRect(ox, oy - 2, ow, 4, 2);
+          cctx.fill();
+        }
+      }
     }
     cctx.globalAlpha = 1;
 

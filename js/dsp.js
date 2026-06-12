@@ -428,16 +428,135 @@
     return t;
   }
 
+  /* Merge runs shorter than minFrames into their closer-pitched neighbor. */
+  function mergeShortRuns(runs, minFrames) {
+    for (let guard = 0; guard < 400; guard++) {
+      let idx = -1, len = Infinity;
+      for (let r = 0; r < runs.length; r++) {
+        const l = runs[r].end - runs[r].start;
+        if (l < minFrames && l < len) { len = l; idx = r; }
+      }
+      if (idx < 0 || runs.length === 1) break;
+      const cur = runs[idx];
+      const left = idx > 0 ? runs[idx - 1] : null;
+      const right = idx < runs.length - 1 ? runs[idx + 1] : null;
+      let into;
+      if (left && right) into = Math.abs(left.k - cur.k) <= Math.abs(right.k - cur.k) ? left : right;
+      else into = left || right;
+      if (into === left) { left.end = cur.end; }
+      else { right.start = cur.start; }
+      runs.splice(idx, 1);
+      for (let r = runs.length - 2; r >= 0; r--) {
+        if (runs[r].k === runs[r + 1].k && runs[r].end === runs[r + 1].start) {
+          runs[r].end = runs[r + 1].end;
+          runs.splice(r + 1, 1);
+        }
+      }
+    }
+    return runs;
+  }
+
+  /* Fold repeated brief ±1-semitone excursions back into their anchor note,
+   * so andolan/gamak reads as one oscillating swara instead of fragmenting.
+   * A single excursion is left alone — that's a kan, handled later. */
+  function absorbOscillations(runs, stableFrames) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < runs.length; i++) {
+        const k0 = runs[i].k;
+        let j = i, nExc = 0;
+        while (j < runs.length) {
+          const r = runs[j];
+          if (r.k === k0) { j++; continue; }
+          if (Math.abs(r.k - k0) <= 1 && (r.end - r.start) < stableFrames) { nExc++; j++; continue; }
+          break;
+        }
+        if (nExc >= 2 && j - i >= 4) {
+          runs.splice(i, j - i, { start: runs[i].start, end: runs[j - 1].end, k: k0 });
+          changed = true;
+        }
+      }
+    }
+    return runs;
+  }
+
+  /* Is this transient group a quantized glide from k=a to k=b?
+   * Strictly monotonic toward b, every step 1-2 semitones, all strictly between. */
+  function isMeendChain(a, ks, b) {
+    const dir = Math.sign(b - a);
+    if (dir === 0) return false;
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    let prev = a;
+    for (const k of ks) {
+      if (k <= lo || k >= hi) return false;
+      const step = (k - prev) * dir;
+      if (step < 1 || step > 2) return false;
+      prev = k;
+    }
+    return (b - prev) * dir >= 1 && (b - prev) * dir <= 2;
+  }
+
+  /* Within-note character: andolan (slow oscillation) vs meend (directional glide). */
+  function analyzeToken(cents, start, end) {
+    let cMin = Infinity, cMax = -Infinity, cSum = 0;
+    for (let j = start; j < end; j++) {
+      const cv = cents[j];
+      if (cv < cMin) cMin = cv;
+      if (cv > cMax) cMax = cv;
+      cSum += cv;
+    }
+    const mean = cSum / (end - start);
+    const range = cMax - cMin;
+    let andolan = false, meend = false;
+    let cross = 0, st = 0;
+    for (let j = start; j < end; j++) {
+      const dv = cents[j] - mean;
+      if (dv > 25 && st <= 0) { cross++; st = 1; }
+      else if (dv < -25 && st >= 0) { cross++; st = -1; }
+    }
+    if (cross >= 4 && range >= 50 && range <= 200) {
+      andolan = true;
+    } else if (range > 70) {
+      const q = Math.max(1, Math.floor((end - start) / 4));
+      let a = 0, b = 0;
+      for (let j = start; j < start + q; j++) a += cents[j];
+      for (let j = end - q; j < end; j++) b += cents[j];
+      if (Math.abs(b / q - a / q) > 70 || range > 110) meend = true;
+    }
+    return { mean, andolan, meend };
+  }
+
   /**
    * Quantize an f0 track to swara tokens relative to saHz.
-   * Returns { tokens, phrases } where tokens = [{t0,t1,k,cents,meend}]
-   * and phrases group tokens separated by gaps >= 0.6 s.
+   *
+   * opts: clarityThresh (0..1), minNoteMs (stable-note threshold),
+   *       ornaments (default true), ornMinMs (shortest ornament, default 30).
+   *
+   * With ornaments on, runs shorter than minNoteMs become first-class
+   * ornaments instead of being smoothed away:
+   *   - 1 short note before a stable note      -> kan (grace)
+   *   - 2-4 short notes, non-gliding           -> murki cluster
+   *   - monotonic 1-2 semitone chain           -> meend connector (X~Y)
+   *   - >4 short notes in a row (fast taan)    -> promoted to real tokens
+   *   - trailing 1-2 short notes               -> grace after the note
+   * Stable notes additionally get andolan (slow oscillation) / meend
+   * (internal glide) flags from the raw cents contour.
+   *
+   * Returns { tokens, phrases }; tokens = [{t0,t1,k,cents,meend,andolan,
+   * meendFromPrev,kan,murki,graceAfter,orn:[{k,t0,t1,type}]}]; phrases
+   * group tokens separated by gaps >= 0.6 s.
    */
   function notate(f0, clarity, hopSec, saHz, opts) {
     opts = opts || {};
     const thresh = opts.clarityThresh != null ? opts.clarityThresh : 0.5;
     const minNoteMs = opts.minNoteMs != null ? opts.minNoteMs : 90;
-    const minFrames = Math.max(2, Math.round(minNoteMs / 1000 / hopSec));
+    const ornaments = opts.ornaments !== false;
+    const ornMinMs = opts.ornMinMs != null ? opts.ornMinMs : 30;
+    const stableFrames = Math.max(2, Math.round(minNoteMs / 1000 / hopSec));
+    const ornFrames = Math.max(2, Math.round(ornMinMs / 1000 / hopSec));
+    const minFrames = ornaments ? Math.min(ornFrames, stableFrames) : stableFrames;
+    const medHalf = ornaments ? 1 : 2;   // median-3 keeps short ornaments; median-5 smooths
     const n = f0.length;
 
     const cents = new Float32Array(n);
@@ -449,7 +568,6 @@
       }
     }
 
-    // Per-frame semitone, median-5 smoothed within voiced runs.
     const kArr = new Int16Array(n);
     for (let i = 0; i < n; i++) if (voiced[i]) kArr[i] = Math.round(cents[i] / 100);
     const kSm = new Int16Array(kArr);
@@ -457,21 +575,29 @@
     for (let i = 0; i < n; i++) {
       if (!voiced[i]) continue;
       win.length = 0;
-      for (let j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) {
+      for (let j = Math.max(0, i - medHalf); j <= Math.min(n - 1, i + medHalf); j++) {
         if (voiced[j]) win.push(kArr[j]);
       }
       win.sort((a, b) => a - b);
       kSm[i] = win[Math.floor(win.length / 2)];
     }
 
-    // Voiced segments -> runs of constant k -> merge runs below minFrames.
+    const makeToken = (r) => {
+      const a = analyzeToken(cents, r.start, r.end);
+      return {
+        t0: r.start * hopSec, t1: r.end * hopSec, k: r.k,
+        cents: a.mean, meend: a.meend, andolan: a.andolan,
+      };
+    };
+    const ornOf = (r, type) => ({ k: r.k, t0: r.start * hopSec, t1: r.end * hopSec, type });
+
     const tokens = [];
     let segStart = -1;
     for (let i = 0; i <= n; i++) {
       const v = i < n && voiced[i];
       if (v && segStart < 0) segStart = i;
       if (!v && segStart >= 0) {
-        const segEnd = i; // exclusive
+        const segEnd = i;
         let runs = [];
         let rs = segStart;
         for (let j = segStart + 1; j <= segEnd; j++) {
@@ -480,47 +606,45 @@
             rs = j;
           }
         }
-        // Iteratively merge the shortest sub-minimum run into its closer-pitched neighbor.
-        for (let guard = 0; guard < 200; guard++) {
-          let idx = -1, len = Infinity;
-          for (let r = 0; r < runs.length; r++) {
-            const l = runs[r].end - runs[r].start;
-            if (l < minFrames && l < len) { len = l; idx = r; }
-          }
-          if (idx < 0 || runs.length === 1) break;
-          const cur = runs[idx];
-          const left = idx > 0 ? runs[idx - 1] : null;
-          const right = idx < runs.length - 1 ? runs[idx + 1] : null;
-          let into;
-          if (left && right) into = Math.abs(left.k - cur.k) <= Math.abs(right.k - cur.k) ? left : right;
-          else into = left || right;
-          if (into === left) { left.end = cur.end; }
-          else { right.start = cur.start; }
-          runs.splice(idx, 1);
-          // Merge now-adjacent equal-k runs.
-          for (let r = runs.length - 2; r >= 0; r--) {
-            if (runs[r].k === runs[r + 1].k && runs[r].end === runs[r + 1].start) {
-              runs[r].end = runs[r + 1].end;
-              runs.splice(r + 1, 1);
+        mergeShortRuns(runs, minFrames);
+        if (ornaments) absorbOscillations(runs, stableFrames);
+        if (runs.length === 1 && runs[0].end - runs[0].start < stableFrames && !ornaments) runs = [];
+
+        if (!ornaments) {
+          mergeShortRuns(runs, stableFrames);
+          for (const r of runs) tokens.push(makeToken(r));
+        } else {
+          // Classify transient runs around stable ones.
+          let pending = [];
+          let lastStable = null;
+          const flush = (cur) => {
+            if (pending.length) {
+              const ks = pending.map(r => r.k);
+              const promote = () => { for (const r of pending) tokens.push(makeToken(r)); };
+              if (pending.length > 4 || (!lastStable && !cur)) {
+                promote();                                   // fast taan or bare run
+              } else if (cur && lastStable && pending.length >= 2 && isMeendChain(lastStable.k, ks, cur.k)) {
+                cur.meendFromPrev = true;                    // quantized glide
+                cur.orn = (cur.orn || []).concat(pending.map(r => ornOf(r, 'meend')));
+              } else if (cur) {
+                if (ks.length === 1) cur.kan = ks.slice();
+                else cur.murki = ks.slice();
+                cur.orn = (cur.orn || []).concat(pending.map(r => ornOf(r, ks.length === 1 ? 'kan' : 'murki')));
+              } else if (lastStable && pending.length <= 2) {
+                lastStable.graceAfter = ks.slice();
+                lastStable.orn = (lastStable.orn || []).concat(pending.map(r => ornOf(r, 'grace')));
+              } else {
+                promote();
+              }
+              pending = [];
             }
+            if (cur) { tokens.push(cur); lastStable = cur; }
+          };
+          for (const r of runs) {
+            if (r.end - r.start >= stableFrames) flush(makeToken(r));
+            else pending.push(r);
           }
-        }
-        if (runs.length === 1 && runs[0].end - runs[0].start < minFrames) runs = [];
-        for (const r of runs) {
-          let cMin = Infinity, cMax = -Infinity, cSum = 0;
-          for (let j = r.start; j < r.end; j++) {
-            const cv = cents[j];
-            if (cv < cMin) cMin = cv;
-            if (cv > cMax) cMax = cv;
-            cSum += cv;
-          }
-          tokens.push({
-            t0: r.start * hopSec,
-            t1: r.end * hopSec,
-            k: r.k,
-            cents: cSum / (r.end - r.start),
-            meend: (cMax - cMin) > 90,
-          });
+          flush(null);
         }
         segStart = -1;
       }
@@ -541,7 +665,17 @@
     return { tokens, phrases };
   }
 
-  /** Render notation as plain text, with ~0.3 s sustain dashes. */
+  /** Full token text incl. ornaments: (R)G kan, (RGR)G murki, ≈G andolan, G(R) grace. */
+  function tokenFullText(tk) {
+    let t = tokenText(tk.k, tk.meend);
+    if (tk.andolan) t = '≈' + t;
+    const pre = tk.kan || tk.murki;
+    if (pre) t = '(' + pre.map((k) => tokenText(k, false)).join('') + ')' + t;
+    if (tk.graceAfter) t += '(' + tk.graceAfter.map((k) => tokenText(k, false)).join('') + ')';
+    return t;
+  }
+
+  /** Render notation as plain text, with ~0.3 s sustain dashes and X~Y meend connectors. */
   function notationText(phrases) {
     const lines = [];
     for (const ph of phrases) {
@@ -549,10 +683,12 @@
       const ss = Math.floor(ph.t0 % 60).toString().padStart(2, '0');
       const parts = [];
       for (const tk of ph.tokens) {
-        let t = tokenText(tk.k, tk.meend);
-        const dashes = Math.min(8, Math.max(0, Math.round((tk.t1 - tk.t0 - 0.35) / 0.3)));
-        for (let d2 = 0; d2 < dashes; d2++) t += ' –';
-        parts.push(t);
+        let t = tokenFullText(tk);
+        const sustained = Math.min(12, Math.max(0, Math.round((tk.t1 - tk.t0 - 0.35) / 0.3)));
+        let body = t;
+        for (let d2 = 0; d2 < sustained; d2++) body += ' –';
+        if (tk.meendFromPrev && parts.length) parts[parts.length - 1] += '~' + body;
+        else parts.push(body);
       }
       lines.push('[' + mm + ':' + ss + ']  ' + parts.join('  '));
     }
@@ -602,8 +738,8 @@
 
   return {
     preFilter, yinTrack, detectTonic, notate, notationText,
-    swaraInfo, tokenText, synthesize, percentile,
+    swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     SWARA_LETTERS,
-    _internal: { biquadCoefs, applyBiquad, viterbiSelect, postProcess, VIT, YIN },
+    _internal: { biquadCoefs, applyBiquad, viterbiSelect, postProcess, VIT, YIN, isMeendChain },
   };
 }));

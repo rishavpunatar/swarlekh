@@ -239,6 +239,84 @@ test('notationText: renders timestamps and sustain dashes', () => {
   assert.match(txt, /P( –)+/);
 });
 
+/* ----------------------------- ornaments ----------------------------- */
+
+const HOP = 0.016;
+function trackFromRuns(runs) {
+  // runs: [k or null, frames]
+  let n = 0;
+  for (const [, fr] of runs) n += fr;
+  const f0 = new Float32Array(n), clarity = new Float32Array(n);
+  let i = 0;
+  for (const [k, fr] of runs) {
+    for (let j = 0; j < fr; j++, i++) {
+      if (k !== null) { f0[i] = st(k); clarity[i] = 0.9; }
+    }
+  }
+  return { f0, clarity };
+}
+
+test('ornaments: single short note before a stable note becomes kan', () => {
+  const { f0, clarity } = trackFromRuns([[0, 30], [2, 3], [4, 30]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 4]);
+  assert.deepStrictEqual(tokens[1].kan, [2]);
+  assert.strictEqual(DSP.tokenFullText(tokens[1]), '(R)G');
+});
+
+test('ornaments: 2-4 short notes become a murki cluster', () => {
+  const { f0, clarity } = trackFromRuns([[0, 30], [4, 3], [2, 3], [4, 30]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 4]);
+  assert.deepStrictEqual(tokens[1].murki, [4, 2]);
+  assert.strictEqual(DSP.tokenFullText(tokens[1]), '(GR)G');
+});
+
+test('ornaments: monotonic chain becomes a meend connector', () => {
+  const { f0, clarity } = trackFromRuns([[0, 30], [1, 3], [2, 3], [3, 3], [4, 30]]);
+  const { tokens, phrases } = DSP.notate(f0, clarity, HOP, SA, {});
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 4]);
+  assert.ok(tokens[1].meendFromPrev, 'second token should carry meend connector');
+  assert.ok(!tokens[1].murki && !tokens[1].kan);
+  assert.match(DSP.notationText(phrases), /S~G/);
+});
+
+test('ornaments: >4 fast short notes promote to real tokens (taan)', () => {
+  const seq = [0, 2, 4, 5, 7, 5, 4, 2];
+  const { f0, clarity } = trackFromRuns(seq.map(k => [k, 4]));
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
+  assert.deepStrictEqual(tokens.map(t => t.k), seq);
+});
+
+test('ornaments: trailing short note becomes a grace after', () => {
+  const { f0, clarity } = trackFromRuns([[4, 30], [2, 3]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
+  assert.strictEqual(tokens.length, 1);
+  assert.deepStrictEqual(tokens[0].graceAfter, [2]);
+  assert.strictEqual(DSP.tokenFullText(tokens[0]), 'G(R)');
+});
+
+test('ornaments: slow oscillation flagged as andolan', () => {
+  const n = 80;
+  const f0 = new Float32Array(n), clarity = new Float32Array(n).fill(0.9);
+  for (let i = 0; i < n; i++) {
+    const c = 400 + 55 * Math.sin(2 * Math.PI * 3 * i * HOP); // ±55c at 3 Hz around G
+    f0[i] = SA * Math.pow(2, c / 1200);
+  }
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
+  assert.strictEqual(tokens.length, 1);
+  assert.strictEqual(tokens[0].k, 4);
+  assert.ok(tokens[0].andolan, 'should be flagged andolan');
+  assert.strictEqual(DSP.tokenFullText(tokens[0]), '≈G');
+});
+
+test('ornaments: smooth mode suppresses ornament extraction', () => {
+  const { f0, clarity } = trackFromRuns([[0, 30], [2, 3], [4, 30]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, { ornaments: false });
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 4]);
+  assert.ok(!tokens[1].kan, 'no kan in smooth mode');
+});
+
 /* ----------------------------- synthesis ----------------------------- */
 
 test('synthesize: produces audio where voiced, silence in gaps', () => {

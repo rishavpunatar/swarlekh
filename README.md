@@ -11,7 +11,7 @@ Everything runs in your browser. The audio is decoded, analyzed and notated enti
 - **Upload** an MP3 (or WAV/M4A/OGG/FLAC) by drag-and-drop.
 - **Isolates the melody** — percussion is suppressed by band-limiting + spectral-flatness gating, and a Viterbi-smoothed pitch tracker follows the single predominant melodic line (the voice) rather than the accompaniment.
 - **Finds Sa** automatically from a duration-weighted pitch-class histogram (with fifth/fourth reinforcement), and offers the top 3 candidates. You can override with any note + fine-tune in cents, and check it by ear against a built-in Sa–Pa drone.
-- **Writes sargam** — quantized swaras with octave dots, komal/teevra marks, meend (glide) markers and sustain dashes, grouped into phrases.
+- **Writes sargam, ornaments included** — quantized swaras with octave dots and komal/teevra marks, plus kan (grace notes), murki clusters, meend connectors, andolan/gamak oscillation marks, and fast taans written note-for-note. Three detail levels, from full alaap fidelity down to the bare melodic skeleton.
 - **Helps you learn**: a scrolling pitch-contour view on a swara grid, click-any-note-to-seek, A–B loop, 0.5×–1× speed (pitch preserved), and a synthesized "melody only" track you can listen to instead of (or along with) the original.
 - **Exports** the notation as text or JSON, and the extracted melody as a WAV.
 
@@ -23,8 +23,14 @@ Everything runs in your browser. The audio is decoded, analyzed and notated enti
 | `m` / `M` | shuddh Ma / teevra Ma |
 | `S'` or dot above | taar saptak (upper octave) |
 | `.S` or dot below | mandra saptak (lower octave) |
-| `~` | meend / glide within the note |
+| `(R)G` | kan — a grace-note touch of Re before Ga |
+| `(GRG)m` | murki — a quick note cluster before the main swara |
+| `R~G` | meend — a glide connecting two swaras |
+| `≈G` | andolan / gamak — slow or heavy oscillation on the note |
+| `~G` | unresolved glide within the note |
 | `–` | sustain, ≈ 0.3 s per dash |
+
+Ornament capture has three levels (Detailed / Balanced / Smooth). *Detailed* keeps every kan, murki, meend and andolan, and writes fast taans out note-for-note; *Smooth* keeps only the main melodic skeleton.
 
 ## How it works
 
