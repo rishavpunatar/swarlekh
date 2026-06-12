@@ -123,9 +123,9 @@
         <div class="settings-row">
           <label class="ctl">Detail
             <select id="detailSel">
-              <option value="detailed" selected>Detailed — all ornaments</option>
-              <option value="balanced">Balanced</option>
-              <option value="smooth">Smooth — main notes only</option>
+              <option value="clean" selected>Clean — singable notes</option>
+              <option value="detailed">Detailed — with ornaments</option>
+              <option value="raw">Raw — everything</option>
             </select>
           </label>
           <label class="ctl slider-ctl">Voicing strictness
@@ -133,12 +133,12 @@
             <span id="sensVal" class="muted">0.50</span>
           </label>
           <label class="ctl slider-ctl">Min note length
-            <input type="range" id="minNoteSlider" min="50" max="220" step="10" value="90">
-            <span id="minNoteVal" class="muted">90 ms</span>
+            <input type="range" id="minNoteSlider" min="50" max="300" step="10" value="150">
+            <span id="minNoteVal" class="muted">150 ms</span>
           </label>
           <span id="statsLine" class="muted"></span>
         </div>
-        <p class="hint"><b>Detailed</b> writes every kan, murki, meend and andolan it hears — best for alaap and ornament-heavy gayaki. <b>Smooth</b> keeps just the main notes. Raise strictness if background instruments leak in; lower it if quiet phrases go missing.</p>
+        <p class="hint"><b>Clean</b> keeps only confident, singable notes — drops blips and stray pitches, snaps rare off-scale notes onto the song's scale, and groups the song into verse lines. <b>Detailed</b> adds kan, murki, meend and andolan for alaap work. <b>Raw</b> shows everything the tracker heard. Raise strictness if background instruments still leak in; lower it if quiet phrases go missing.</p>
       </section>
     </div>
   </main>

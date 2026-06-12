@@ -29,7 +29,7 @@
     loopA: null, loopB: null,
     pxPerSec: 90, scrollSec: 0, centsLo: -700, centsHi: 1900,
     playing: false,
-    opts: { clarityThresh: 0.5, minNoteMs: 90, ornaments: true, ornMinMs: 30 },
+    opts: { clarityThresh: 0.5, minNoteMs: 150, ornaments: false, ornMinMs: 30, clean: true },
   };
 
   let worker = null;
@@ -37,7 +37,7 @@
   let droneNodes = null;
   let origUrl = null, synthUrl = null;
   let rafId = 0;
-  let activeTokIdx = -1;
+  let activeLineIdx = -1;
 
   const origEl = new Audio();
   const synthEl = new Audio();
@@ -315,11 +315,22 @@
 
   function renderNotation() {
     els.notation.textContent = '';
-    activeTokIdx = -1;
+    activeLineIdx = -1;
     let flatIdx = 0;
-    for (const ph of state.phrases) {
+    state.phrases.forEach((ph, phIdx) => {
+      if (ph.section && phIdx > 0) {
+        const gap = document.createElement('div');
+        gap.className = 'section-gap';
+        gap.textContent = '· · ·';
+        els.notation.appendChild(gap);
+      }
       const row = document.createElement('div');
       row.className = 'phrase';
+      row.dataset.p = String(phIdx);
+      const nEl = document.createElement('span');
+      nEl.className = 'lnum';
+      nEl.textContent = String(phIdx + 1);
+      row.appendChild(nEl);
       const tEl = document.createElement('span');
       tEl.className = 'ptime';
       tEl.textContent = fmtTime(ph.t0);
@@ -375,7 +386,7 @@
         flatIdx++;
       }
       els.notation.appendChild(row);
-    }
+    });
   }
 
   els.notation.addEventListener('click', (e) => {
@@ -442,7 +453,8 @@
     const data = {
       app: 'SwarLekh', version: 1, file: state.fileName,
       saHz: +state.saHz.toFixed(2), options: state.opts,
-      phrases: state.phrases.map(ph => ({
+      phrases: state.phrases.map((ph, i) => ({
+        line: i + 1, section: !!ph.section,
         t0: +ph.t0.toFixed(3), t1: +ph.t1.toFixed(3),
         tokens: ph.tokens.map(tk => {
           const o = {
@@ -490,8 +502,11 @@
   const detailSel = $('detailSel');
   detailSel.addEventListener('change', () => {
     const v = detailSel.value;
-    if (v === 'smooth') state.opts.ornaments = false;
-    else { state.opts.ornaments = true; state.opts.ornMinMs = v === 'detailed' ? 30 : 55; }
+    if (v === 'clean') Object.assign(state.opts, { ornaments: false, clean: true, minNoteMs: 150 });
+    else if (v === 'detailed') Object.assign(state.opts, { ornaments: true, clean: true, ornMinMs: 30, minNoteMs: 90 });
+    else Object.assign(state.opts, { ornaments: true, clean: false, ornMinMs: 30, minNoteMs: 90 });
+    els.minNoteSlider.value = state.opts.minNoteMs;
+    els.minNoteVal.textContent = `${state.opts.minNoteMs} ms`;
     renotateNow();
   });
 
@@ -584,18 +599,30 @@
   els.loopBBtn.addEventListener('click', setLoopB);
   els.loopClearBtn.addEventListener('click', clearLoop);
 
-  /* animation loop */
+  /* Playback-driven updates. timeupdate (media clock, ~4 Hz, fires even in
+   * background/throttled tabs) owns correctness: loop, sync, highlight.
+   * requestAnimationFrame only adds smooth canvas motion when visible. */
+  function onTimeUpdate() {
+    if (!state.ready) return;
+    const t = origEl.currentTime;
+    if (state.playing && state.loopA != null && state.loopB != null && t >= state.loopB) {
+      seek(state.loopA);
+      return;
+    }
+    if (state.playing && !synthEl.paused && Math.abs(synthEl.currentTime - t) > 0.08 && t < state.synthDuration) {
+      synthEl.currentTime = t;
+    }
+    updateTimeDisp();
+    highlightActive(t);
+    if (!rafId) drawCanvas();
+  }
+  origEl.addEventListener('timeupdate', onTimeUpdate);
+
   function startRaf() { stopRaf(); rafId = requestAnimationFrame(tick); }
   function stopRaf() { if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
   function tick() {
     const t = origEl.currentTime;
-    if (state.loopA != null && state.loopB != null && t >= state.loopB) {
-      seek(state.loopA);
-    } else {
-      // keep synth in lockstep
-      if (!synthEl.paused && Math.abs(synthEl.currentTime - t) > 0.08 && t < state.synthDuration) {
-        synthEl.currentTime = t;
-      }
+    if (!(state.loopA != null && state.loopB != null && t >= state.loopB)) {
       const viewSec = viewWidthSec();
       if (t > state.scrollSec + viewSec * 0.72 || t < state.scrollSec) {
         state.scrollSec = clampScroll(t - viewSec * 0.25);
@@ -605,30 +632,29 @@
     drawCanvas();
     highlightActive(t);
     if (state.playing) rafId = requestAnimationFrame(tick);
+    else rafId = 0;
   }
 
   function highlightActive(t) {
-    // binary search: last token with t0 <= t
-    const toks = state.tokens;
-    let lo = 0, hi = toks.length - 1, idx = -1;
+    // Calm, line-level highlight: mark the verse line being sung, not each swara.
+    const phs = state.phrases;
+    let lo = 0, hi = phs.length - 1, idx = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (toks[mid].t0 <= t) { idx = mid; lo = mid + 1; } else hi = mid - 1;
+      if (phs[mid].t0 <= t) { idx = mid; lo = mid + 1; } else hi = mid - 1;
     }
-    if (idx >= 0 && t >= toks[idx].t1) idx = -1;
-    if (idx === activeTokIdx) return;
-    const prev = els.notation.querySelectorAll('.active');
-    prev.forEach(el => el.classList.remove('active'));
-    activeTokIdx = idx;
+    if (idx >= 0 && t > phs[idx].t1 + 0.4) idx = -1;
+    if (idx === activeLineIdx) return;
+    els.notation.querySelectorAll('.active-line').forEach(el => el.classList.remove('active-line'));
+    activeLineIdx = idx;
     if (idx >= 0) {
-      const sels = els.notation.querySelectorAll(`[data-i="${idx}"]`);
-      sels.forEach(el => el.classList.add('active'));
-      const first = sels[0];
-      if (first) {
+      const row = els.notation.querySelector(`.phrase[data-p="${idx}"]`);
+      if (row) {
+        row.classList.add('active-line');
         const c = els.notation;
-        const top = first.offsetTop - c.offsetTop;
-        if (top < c.scrollTop + 10 || top > c.scrollTop + c.clientHeight - 50) {
-          c.scrollTo({ top: Math.max(0, top - 80), behavior: 'smooth' });
+        const top = row.offsetTop - c.offsetTop;
+        if (top < c.scrollTop + 10 || top > c.scrollTop + c.clientHeight - 70) {
+          c.scrollTo({ top: Math.max(0, top - 90), behavior: 'smooth' });
         }
       }
     }
@@ -839,5 +865,5 @@
   });
 
   /* test/debug hook */
-  window.SwarLekh = { processFile, state, renotate: renotateNow };
+  window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive, _ali: () => activeLineIdx };
 })();

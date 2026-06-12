@@ -235,7 +235,7 @@ test('notationText: renders timestamps and sustain dashes', () => {
     tokens: [{ t0: 62.2, t1: 63.5, k: 7, meend: false }, { t0: 63.5, t1: 64, k: 0, meend: false }],
   }];
   const txt = DSP.notationText(phrases);
-  assert.match(txt, /^\[1:02\]/);
+  assert.match(txt, /1\. \[1:02\]/);
   assert.match(txt, /P( –)+/);
 });
 
@@ -243,14 +243,14 @@ test('notationText: renders timestamps and sustain dashes', () => {
 
 const HOP = 0.016;
 function trackFromRuns(runs) {
-  // runs: [k or null, frames]
+  // runs: [k or null, frames, clarity=0.9]
   let n = 0;
   for (const [, fr] of runs) n += fr;
   const f0 = new Float32Array(n), clarity = new Float32Array(n);
   let i = 0;
-  for (const [k, fr] of runs) {
+  for (const [k, fr, cl] of runs) {
     for (let j = 0; j < fr; j++, i++) {
-      if (k !== null) { f0[i] = st(k); clarity[i] = 0.9; }
+      if (k !== null) { f0[i] = st(k); clarity[i] = cl != null ? cl : 0.9; }
     }
   }
   return { f0, clarity };
@@ -315,6 +315,72 @@ test('ornaments: smooth mode suppresses ornament extraction', () => {
   const { tokens } = DSP.notate(f0, clarity, HOP, SA, { ornaments: false });
   assert.deepStrictEqual(tokens.map(t => t.k), [0, 4]);
   assert.ok(!tokens[1].kan, 'no kan in smooth mode');
+});
+
+/* ----------------------------- clean mode ----------------------------- */
+
+const CLEAN = { clean: true, ornaments: false, minNoteMs: 150 };
+
+test('clean: weak short blips between phrases are dropped', () => {
+  const { f0, clarity } = trackFromRuns([
+    [0, 32], [null, 30], [4, 12, 0.56], [null, 30], [7, 32], [null, 20], [2, 8, 0.53], [null, 30], [4, 32],
+  ]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 7, 4]);
+});
+
+test('clean: glitch jump far from both neighbors is dropped', () => {
+  const { f0, clarity } = trackFromRuns([[0, 32], [12, 9], [2, 32]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 2]);
+});
+
+test('clean: same swara re-struck across a breath merges into one note', () => {
+  const { f0, clarity } = trackFromRuns([[7, 28], [null, 12], [7, 28]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+  assert.strictEqual(tokens.length, 1);
+  assert.strictEqual(tokens[0].k, 7);
+  assert.ok(tokens[0].t1 - tokens[0].t0 > 1.0, 'merged duration spans the gap');
+});
+
+test('clean: rare off-scale short note snaps onto the scale', () => {
+  // Strong scale {S R G P D}, one brief komal-ga stray.
+  const { f0, clarity } = trackFromRuns([
+    [0, 40], [2, 40], [4, 40], [7, 40], [9, 40], [4, 40], [3, 9], [2, 40], [0, 40],
+  ]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+  assert.ok(!tokens.some(t => t.k === 3), `stray komal ga should snap: ${tokens.map(t => t.k)}`);
+});
+
+test('clean: lines split at >=1 s pauses, sections at >=4 s', () => {
+  const { f0, clarity } = trackFromRuns([
+    [0, 30], [2, 30], [4, 30],          // line 1
+    [null, 80],                          // 1.28 s pause
+    [7, 30], [9, 30],                    // line 2
+    [null, 280],                         // 4.5 s interlude
+    [12, 30], [9, 30],                   // line 3 (new section)
+  ]);
+  const { phrases } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+  assert.strictEqual(phrases.length, 3);
+  assert.ok(!phrases[1].section, 'short pause is not a section');
+  assert.ok(phrases[2].section, 'long gap starts a new section');
+  const txt = DSP.notationText(phrases);
+  assert.match(txt, /1\. \[0:00\]/);
+  assert.match(txt, /3\. \[/);
+  assert.match(txt, /\n\n 3\./, 'blank line before new section');
+});
+
+test('clean: tiny fragment line folds into its neighbor', () => {
+  const { f0, clarity } = trackFromRuns([
+    [0, 30], [2, 30],                    // line 1
+    [null, 70],                          // 1.12 s
+    [4, 14],                             // fragment (0.22 s)
+    [null, 40],                          // 0.64 s
+    [7, 30], [9, 30],                    // line 2 body
+  ]);
+  const { phrases } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+  assert.strictEqual(phrases.length, 2, `got ${phrases.length} lines`);
+  assert.deepStrictEqual(phrases[1].tokens.map(t => t.k), [4, 7, 9]);
 });
 
 /* ----------------------------- synthesis ----------------------------- */

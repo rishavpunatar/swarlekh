@@ -553,6 +553,8 @@
     const minNoteMs = opts.minNoteMs != null ? opts.minNoteMs : 90;
     const ornaments = opts.ornaments !== false;
     const ornMinMs = opts.ornMinMs != null ? opts.ornMinMs : 30;
+    const clean = opts.clean === true;
+    const lineGapSec = opts.lineGapSec != null ? opts.lineGapSec : (clean ? 1.0 : 0.6);
     const stableFrames = Math.max(2, Math.round(minNoteMs / 1000 / hopSec));
     const ornFrames = Math.max(2, Math.round(ornMinMs / 1000 / hopSec));
     const minFrames = ornaments ? Math.min(ornFrames, stableFrames) : stableFrames;
@@ -591,7 +593,7 @@
     };
     const ornOf = (r, type) => ({ k: r.k, t0: r.start * hopSec, t1: r.end * hopSec, type });
 
-    const tokens = [];
+    let tokens = [];
     let segStart = -1;
     for (let i = 0; i <= n; i++) {
       const v = i < n && voiced[i];
@@ -650,17 +652,129 @@
       }
     }
 
-    // Phrases: split at gaps >= 0.6 s.
+    /* Clean mode: keep only confident, singable notes.
+     * Drops weak/short blips and glitch jumps, snaps rare off-scale notes
+     * onto the song's scale, and merges a swara re-struck across a breath. */
+    if (clean && tokens.length) {
+      const n2 = clarity.length;
+      for (const tk of tokens) {
+        const i0 = Math.round(tk.t0 / hopSec);
+        const i1 = Math.max(i0 + 1, Math.round(tk.t1 / hopSec));
+        let s = 0, c = 0;
+        for (let j = i0; j < i1 && j < n2; j++) { s += clarity[j]; c++; }
+        tk.conf = c ? s / c : 0;
+      }
+      // 1. Weak-short blips out.
+      let out = tokens.filter((tk) => {
+        const dur = tk.t1 - tk.t0;
+        if (dur < 0.12 && tk.conf < thresh + 0.18) return false;
+        if (dur < 0.22 && tk.conf < thresh + 0.08) return false;
+        return true;
+      });
+      // 2. Glitch jumps and far-out-of-tessitura strays.
+      let wSum = 0, wk = 0;
+      for (const tk of out) { const w = tk.t1 - tk.t0; wSum += w; wk += w * tk.k; }
+      const centerK = wSum ? wk / wSum : 0;
+      out = out.filter((tk, i) => {
+        const dur = tk.t1 - tk.t0;
+        if (dur >= 0.25) return true;
+        if (Math.abs(tk.k - centerK) > 14) return false;
+        const pv = out[i - 1], nx = out[i + 1];
+        const dp = pv ? Math.abs(tk.k - pv.k) : 99;
+        const dn = nx ? Math.abs(tk.k - nx.k) : 99;
+        return !(Math.min(dp, dn) > 5 && dur < 0.2);
+      });
+      // 3. Snap rare off-scale short notes onto the song's scale.
+      const classDur = new Float64Array(12);
+      let total = 0;
+      for (const tk of out) {
+        const d = tk.t1 - tk.t0;
+        classDur[((tk.k % 12) + 12) % 12] += d;
+        total += d;
+      }
+      if (total > 0) {
+        const order = Array.from({ length: 12 }, (_, i) => i).sort((a, b) => classDur[b] - classDur[a]);
+        const scale = new Set();
+        let acc = 0;
+        for (const pc of order) {
+          if (classDur[pc] <= 0) break;
+          if (acc / total >= 0.9 && scale.size >= 5) break;
+          scale.add(pc);
+          acc += classDur[pc];
+        }
+        for (const tk of out) {
+          const pc = ((tk.k % 12) + 12) % 12;
+          if (scale.has(pc) || (tk.t1 - tk.t0) >= 0.3) continue;
+          const rare = classDur[pc] / total < 0.02 || classDur[pc] < 0.6;
+          if (!rare) continue;
+          const cands = [];
+          if (scale.has((pc + 1) % 12)) cands.push(tk.k + 1);
+          if (scale.has((pc + 11) % 12)) cands.push(tk.k - 1);
+          if (cands.length) {
+            cands.sort((a, b) => Math.abs(tk.cents - a * 100) - Math.abs(tk.cents - b * 100));
+            tk.k = cands[0];
+          }
+        }
+      }
+      // 4. Merge the same swara re-struck across a short breath/dropout.
+      const merged = [];
+      for (const tk of out) {
+        const last = merged[merged.length - 1];
+        if (last && last.k === tk.k && tk.t0 - last.t1 < 0.3) {
+          last.t1 = tk.t1;
+          last.meend = last.meend || tk.meend;
+          last.andolan = last.andolan || tk.andolan;
+          if (tk.orn) last.orn = (last.orn || []).concat(tk.orn);
+          if (tk.graceAfter) last.graceAfter = tk.graceAfter;
+        } else merged.push(tk);
+      }
+      // 5. Clear meend connectors whose left side was dropped.
+      for (let i = 0; i < merged.length; i++) {
+        if (merged[i].meendFromPrev && (i === 0 || merged[i].t0 - merged[i - 1].t1 > 0.3)) {
+          merged[i].meendFromPrev = false;
+        }
+      }
+      tokens = merged;
+    }
+
+    // Lines: split where the singer pauses >= lineGapSec.
     const phrases = [];
     let cur = null;
     for (const tk of tokens) {
-      if (!cur || tk.t0 - cur.t1 >= 0.6) {
+      if (!cur || tk.t0 - cur.t1 >= lineGapSec) {
         cur = { t0: tk.t0, t1: tk.t1, tokens: [tk] };
         phrases.push(cur);
       } else {
         cur.tokens.push(tk);
         cur.t1 = tk.t1;
       }
+    }
+    // Fold fragments (a split breath, a stray syllable) into the closer line.
+    if (clean) {
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = phrases.length - 1; i >= 0; i--) {
+          const ph = phrases[i];
+          if (ph.t1 - ph.t0 >= 0.7 || ph.tokens.length > 2) continue;
+          const prev = phrases[i - 1], next = phrases[i + 1];
+          const gp = prev ? ph.t0 - prev.t1 : Infinity;
+          const gn = next ? next.t0 - ph.t1 : Infinity;
+          if (Math.min(gp, gn) > 2.2) continue;
+          if (gp <= gn) {
+            prev.tokens.push(...ph.tokens);
+            prev.t1 = ph.t1;
+          } else {
+            next.tokens.unshift(...ph.tokens);
+            next.t0 = ph.t0;
+          }
+          phrases.splice(i, 1);
+        }
+      }
+    }
+    // Section breaks at long gaps (interludes, verse boundaries).
+    let prevEnd = 0;
+    for (const ph of phrases) {
+      ph.section = ph.t0 - prevEnd >= 4;
+      prevEnd = ph.t1;
     }
     return { tokens, phrases };
   }
@@ -675,23 +789,24 @@
     return t;
   }
 
-  /** Render notation as plain text, with ~0.3 s sustain dashes and X~Y meend connectors. */
+  /** Render notation as numbered lines of plain text, with ~0.3 s sustain
+   * dashes, X~Y meend connectors and blank lines between sections. */
   function notationText(phrases) {
     const lines = [];
-    for (const ph of phrases) {
+    phrases.forEach((ph, idx) => {
       const mm = Math.floor(ph.t0 / 60);
       const ss = Math.floor(ph.t0 % 60).toString().padStart(2, '0');
       const parts = [];
       for (const tk of ph.tokens) {
-        let t = tokenFullText(tk);
+        let body = tokenFullText(tk);
         const sustained = Math.min(12, Math.max(0, Math.round((tk.t1 - tk.t0 - 0.35) / 0.3)));
-        let body = t;
         for (let d2 = 0; d2 < sustained; d2++) body += ' –';
         if (tk.meendFromPrev && parts.length) parts[parts.length - 1] += '~' + body;
         else parts.push(body);
       }
-      lines.push('[' + mm + ':' + ss + ']  ' + parts.join('  '));
-    }
+      if (ph.section && lines.length) lines.push('');
+      lines.push(String(idx + 1).padStart(2) + '. [' + mm + ':' + ss + ']  ' + parts.join('  '));
+    });
     return lines.join('\n');
   }
 
