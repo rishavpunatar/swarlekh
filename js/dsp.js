@@ -716,11 +716,16 @@
           }
         }
       }
-      // 4. Merge the same swara re-struck across a short breath/dropout.
+      // 4. A held note re-struck on syllables/breaths reads as ONE note:
+      // collapse consecutive repeats of the same swara within a line. In the
+      // pure clean preset (no ornaments) merge across wider gaps and drop
+      // wobble marks — a hold with natural drift is just a hold.
+      const holdGap = ornaments ? 0.3 : 0.75;
       const merged = [];
       for (const tk of out) {
+        if (!ornaments) { tk.meend = false; tk.andolan = false; }
         const last = merged[merged.length - 1];
-        if (last && last.k === tk.k && tk.t0 - last.t1 < 0.3) {
+        if (last && last.k === tk.k && tk.t0 - last.t1 < holdGap) {
           last.t1 = tk.t1;
           last.meend = last.meend || tk.meend;
           last.andolan = last.andolan || tk.andolan;

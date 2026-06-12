@@ -343,6 +343,45 @@ test('clean: same swara re-struck across a breath merges into one note', () => {
   assert.ok(tokens[0].t1 - tokens[0].t0 > 1.0, 'merged duration spans the gap');
 });
 
+test('clean: note re-sung on syllables collapses into one held note', () => {
+  // P sung three times with ~0.45 s articulation gaps = one held P.
+  const { f0, clarity } = trackFromRuns([
+    [7, 25], [null, 28], [7, 25], [null, 30], [7, 25],
+  ]);
+  const { tokens, phrases } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+  assert.strictEqual(tokens.length, 1, `expected one held note, got ${tokens.map(t => t.k)}`);
+  assert.strictEqual(tokens[0].k, 7);
+  const txt = DSP.notationText(phrases);
+  assert.match(txt, /P( –){4,}/, `dashes should span the hold: ${txt}`);
+  assert.strictEqual((txt.match(/P/g) || []).length, 1, `P written once: ${txt}`);
+});
+
+test('clean: drifting held note carries no ~ or ≈ marks', () => {
+  // One note whose pitch drifts -40c -> +45c (range > 70c) — still just "S".
+  const n = 60;
+  const f0 = new Float32Array(n), clarity = new Float32Array(n).fill(0.9);
+  for (let i = 0; i < n; i++) {
+    const c = -40 + 85 * (i / (n - 1));
+    f0[i] = SA * Math.pow(2, c / 1200);
+  }
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+  assert.strictEqual(tokens.length, 1);
+  assert.ok(!tokens[0].meend && !tokens[0].andolan);
+  assert.strictEqual(DSP.tokenFullText(tokens[0]), 'S');
+});
+
+test('detailed mode keeps wobble marks and tight hold-merge', () => {
+  const n = 80;
+  const f0 = new Float32Array(n), clarity = new Float32Array(n).fill(0.9);
+  for (let i = 0; i < n; i++) {
+    const c = 400 + 55 * Math.sin(2 * Math.PI * 3 * i * HOP);
+    f0[i] = SA * Math.pow(2, c / 1200);
+  }
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, { clean: true, ornaments: true, minNoteMs: 90 });
+  assert.strictEqual(tokens.length, 1);
+  assert.ok(tokens[0].andolan, 'detailed keeps andolan');
+});
+
 test('clean: rare off-scale short note snaps onto the scale', () => {
   // Strong scale {S R G P D}, one brief komal-ga stray.
   const { f0, clarity } = trackFromRuns([
