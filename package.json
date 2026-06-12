@@ -1,0 +1,11 @@
+{
+  "name": "swarlekh",
+  "version": "1.0.0",
+  "description": "Sargam notation from Hindustani vocal recordings — fully in-browser",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/dsp.test.js",
+    "serve": "python3 -m http.server 4173"
+  },
+  "license": "MIT"
+}

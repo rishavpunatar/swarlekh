@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src blob:; worker-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>SwarLekh — sargam notation from your recordings</title>
+  <meta name="description" content="Upload a Hindustani vocal recording and get swara (sargam) notation. Runs entirely in your browser — audio never leaves your device.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="favicon.svg" alt="" width="34" height="34">
+      <div>
+        <h1>SwarLekh</h1>
+        <p class="tagline">Hindustani sargam from your recordings</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="badge" title="All analysis happens on your device. Nothing is uploaded anywhere.">🔒 100% in your browser</span>
+      <a class="gh-link" href="https://github.com/rishavpunatar/swarlekh" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="dropzone" class="card">
+      <input type="file" id="fileInput" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac" hidden>
+      <div class="dz-inner">
+        <p class="dz-main">Drop an MP3 here, or <button id="chooseBtn" class="linklike" type="button">choose a file</button></p>
+        <p class="hint">Works best on recordings where the voice is prominent. Percussion is filtered out;
+        the sung melody is tracked and written as sargam. Your audio never leaves this device.</p>
+      </div>
+    </section>
+
+    <section id="progressCard" class="card" hidden>
+      <div class="prog-row">
+        <span id="progStage">Decoding audio…</span>
+        <span id="progPct" class="muted"></span>
+      </div>
+      <div class="bar"><div id="progBar"></div></div>
+    </section>
+
+    <div id="resultArea" hidden>
+      <section id="playerCard" class="card">
+        <div class="player-row">
+          <button id="playBtn" class="big-btn" title="Play / pause (Space)">▶</button>
+          <span id="timeDisp" class="time">0:00.0 / 0:00</span>
+          <label class="ctl">Speed
+            <select id="speedSel">
+              <option value="0.5">0.5×</option>
+              <option value="0.65">0.65×</option>
+              <option value="0.8">0.8×</option>
+              <option value="1" selected>1×</option>
+            </select>
+          </label>
+          <label class="ctl">Listen to
+            <select id="sourceSel">
+              <option value="original" selected>Original</option>
+              <option value="synth">Melody synth</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <span class="ctl loop-ctl">Loop
+            <button id="loopABtn" class="mini-btn" title="Set loop start at playhead ( [ )">A</button>
+            <button id="loopBBtn" class="mini-btn" title="Set loop end at playhead ( ] )">B</button>
+            <button id="loopClearBtn" class="mini-btn" title="Clear loop (L)">✕</button>
+            <span id="loopDisp" class="muted"></span>
+          </span>
+        </div>
+      </section>
+
+      <section id="tonicCard" class="card">
+        <div class="tonic-row">
+          <span class="card-label">Sa (tonic)</span>
+          <span id="tonicChips"></span>
+          <label class="ctl">Note
+            <select id="tonicNote"></select>
+          </label>
+          <label class="ctl slider-ctl">Fine
+            <input type="range" id="tonicFine" min="-50" max="50" value="0" step="1">
+            <span id="tonicFineVal" class="muted">+0¢</span>
+          </label>
+          <span id="tonicHz" class="hz"></span>
+          <button id="droneBtn" class="mini-btn" title="Play a Sa–Pa drone to check the tonic by ear">Drone</button>
+        </div>
+        <p class="hint" id="tonicHint">Pick the candidate that sounds like the song’s home note — toggle the drone and listen against the recording.</p>
+      </section>
+
+      <section id="canvasCard" class="card">
+        <div class="canvas-toolbar">
+          <span class="card-label">Pitch contour</span>
+          <span class="spacer"></span>
+          <button id="zoomOutBtn" class="mini-btn" title="Zoom out">−</button>
+          <button id="zoomInBtn" class="mini-btn" title="Zoom in">+</button>
+        </div>
+        <canvas id="contour"></canvas>
+        <p class="hint">Click to seek · drag to pan · bars are quantized swaras, the thin line is the raw pitch.</p>
+      </section>
+
+      <section id="notationCard" class="card">
+        <div class="canvas-toolbar">
+          <span class="card-label">Sargam notation</span>
+          <span class="spacer"></span>
+          <button id="copyBtn" class="mini-btn">Copy</button>
+          <button id="dlTxtBtn" class="mini-btn">Download .txt</button>
+          <button id="dlJsonBtn" class="mini-btn">Download .json</button>
+          <button id="dlWavBtn" class="mini-btn" title="The synthesized melody line as a WAV file">Melody .wav</button>
+        </div>
+        <p class="legend">
+          <b>S r R g G m M P d D n N</b> — capitals shuddh, lowercase komal (re ga dha ni);
+          <b>m</b> = shuddh Ma, <b>M</b> = teevra Ma · dot above / <b>X'</b> = taar saptak,
+          dot below / <b>.X</b> = mandra saptak · <b>~</b> = meend (glide) · <b>–</b> ≈ 0.3&nbsp;s held
+        </p>
+        <div id="notation"></div>
+      </section>
+
+      <section id="settingsCard" class="card">
+        <div class="settings-row">
+          <label class="ctl slider-ctl">Voicing strictness
+            <input type="range" id="sensSlider" min="0.30" max="0.75" step="0.01" value="0.50">
+            <span id="sensVal" class="muted">0.50</span>
+          </label>
+          <label class="ctl slider-ctl">Min note length
+            <input type="range" id="minNoteSlider" min="50" max="220" step="10" value="90">
+            <span id="minNoteVal" class="muted">90 ms</span>
+          </label>
+          <span id="statsLine" class="muted"></span>
+        </div>
+        <p class="hint">Raise strictness if background instruments leak into the notation; lower it if quiet phrases go missing. Longer min note merges ornaments into their parent swara.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <p>Audio is processed entirely on this device — nothing is uploaded, no analytics, no third-party assets.
+    Shortcuts: <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>[</kbd><kbd>]</kbd> loop · <kbd>L</kbd> clear loop.
+    <a href="https://github.com/rishavpunatar/swarlekh" rel="noopener">Source on GitHub</a></p>
+  </footer>
+
+  <div id="toast" hidden></div>
+
+  <script src="js/fft.js"></script>
+  <script src="js/dsp.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
