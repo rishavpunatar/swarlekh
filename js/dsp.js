@@ -349,7 +349,10 @@
 
     // How often does the line jump by ~an octave? Look across short
     // articulation gaps (up to ~0.16 s) so note-to-note octave alternation
-    // counts, but not across phrase breaths.
+    // counts, but not across phrase breaths. True octave-doubling alternates
+    // constantly (many octave jumps, high rate); a wide-range alaap that simply
+    // travels S→S' does not — so require substantial, not incidental, evidence
+    // to avoid folding a legitimate two-octave alaap into one.
     const gapLim = Math.max(3, Math.round(0.16 / hopSec));
     let jumps = 0, moves = 0;
     for (let j = 1; j < idx.length; j++) {
@@ -358,7 +361,7 @@
       if (d > 250) moves++;
       if (Math.abs(d - 1200) < 170) jumps++;
     }
-    const doubled = moves >= 4 && jumps / moves >= 0.18;
+    const doubled = moves >= 8 && jumps >= 5 && jumps / moves >= 0.3;
     if (mode !== 'force' && !doubled) return { f0: out, doubled: false };
 
     // Dominant register = weighted median of the voiced pitch.
@@ -701,23 +704,127 @@
     }
     const mean = cSum / (end - start);
     const range = cMax - cMin;
-    let andolan = false, meend = false;
+    let andolan = false, meend = false, andolanLo = 0, andolanHi = 0;
+    // Count swings across the mean (each ±20¢ excursion).
     let cross = 0, st = 0;
     for (let j = start; j < end; j++) {
       const dv = cents[j] - mean;
-      if (dv > 25 && st <= 0) { cross++; st = 1; }
-      else if (dv < -25 && st >= 0) { cross++; st = -1; }
+      if (dv > 20 && st <= 0) { cross++; st = 1; }
+      else if (dv < -20 && st >= 0) { cross++; st = -1; }
     }
-    if (cross >= 4 && range >= 50 && range <= 200) {
+    // Net drift start→end distinguishes a one-way glide (meend) from an
+    // oscillation that returns (andolan).
+    const q = Math.max(1, Math.floor((end - start) / 4));
+    let a = 0, b = 0;
+    for (let j = start; j < start + q; j++) a += cents[j];
+    for (let j = end - q; j < end; j++) b += cents[j];
+    const drift = Math.abs(b / q - a / q);
+    const durSec = (end - start) * 0.016;            // hopSec is 16 ms
+    const freq = durSec > 0 ? cross / (2 * durSec) : 0;
+    // Andolan: a slow (≤~4 Hz), wide (≥~45¢) oscillation that returns to centre.
+    // This is the signature of Darbari/Todi komal-ga, Bhairav re, etc. — even
+    // one full slow swing counts (the old ≥4-crossing rule missed slow ones).
+    if (cross >= 2 && freq <= 4 && range >= 45 && range <= 320 && drift < range * 0.55) {
       andolan = true;
-    } else if (range > 70) {
-      const q = Math.max(1, Math.floor((end - start) / 4));
-      let a = 0, b = 0;
-      for (let j = start; j < start + q; j++) a += cents[j];
-      for (let j = end - q; j < end; j++) b += cents[j];
-      if (Math.abs(b / q - a / q) > 70 || range > 110) meend = true;
+      // Only expose neighbour swaras when the swing is wide enough to truly
+      // reach them (≥~1.5 semitones); a narrow shake is just ≈X.
+      if (range >= 150) { andolanLo = Math.round(cMin / 100); andolanHi = Math.round(cMax / 100); }
+      else { andolanLo = andolanHi = Math.round(mean / 100); }
+    } else if (range > 70 && (drift > 70 || range > 110)) {
+      meend = true;
     }
-    return { mean, andolan, meend };
+    return { mean, andolan, meend, andolanLo, andolanHi };
+  }
+
+  /* Mean distance (cents) of a span's voiced frames to the nearest semitone.
+   * High ⇒ the pitch is sweeping *between* swaras (a glide/andolan); low ⇒ it
+   * sits *on* them (discrete notes). The key glide/andolan vs. notes test. */
+  function meanDistToSemitone(cents, voiced, t0, t1, hopSec) {
+    const f0 = Math.round(t0 / hopSec), f1 = Math.round(t1 / hopSec);
+    let s = 0, c = 0;
+    for (let f = f0; f < f1 && f < cents.length; f++) {
+      if (voiced[f]) { s += Math.abs(cents[f] - Math.round(cents[f] / 100) * 100); c++; }
+    }
+    return c ? s / c : 0;
+  }
+
+  /* Collapse a slow, wide oscillation (andolan/gamak — the soul of Darbari,
+   * Todi, Bhairav) that otherwise shreds into a staircase of notes, into one
+   * token flagged andolan with the neighbour swaras it swings between. */
+  function collapseAndolan(tokens, cents, voiced, hopSec) {
+    if (tokens.length < 3) return tokens;
+    const out = [];
+    let i = 0;
+    while (i < tokens.length) {
+      let j = i, lo = tokens[i].k, hi = tokens[i].k;
+      while (j + 1 < tokens.length) {
+        if (tokens[j + 1].glide || tokens[j].glide) break;
+        if (tokens[j + 1].t0 - tokens[j].t1 > 0.12) break;
+        const nlo = Math.min(lo, tokens[j + 1].k), nhi = Math.max(hi, tokens[j + 1].k);
+        if (nhi - nlo > 3) break;                 // stays within a ~3-semitone band
+        lo = nlo; hi = nhi; j++;
+      }
+      if (j - i >= 2 && hi - lo >= 1) {
+        let changes = 0, prevDir = 0;
+        for (let m = i + 1; m <= j; m++) {
+          const d = Math.sign(tokens[m].k - tokens[m - 1].k);
+          if (d) { if (prevDir && d !== prevDir) changes++; prevDir = d; }
+        }
+        if (changes >= 1 && meanDistToSemitone(cents, voiced, tokens[i].t0, tokens[j].t1, hopSec) > 16) {
+          const ks = [];
+          for (let m = i; m <= j; m++) ks.push(tokens[m].k);
+          ks.sort((a, b) => a - b);
+          const anchor = ks[Math.floor(ks.length / 2)];
+          out.push({ t0: tokens[i].t0, t1: tokens[j].t1, k: anchor, cents: anchor * 100, andolan: true, andolanLo: lo, andolanHi: hi });
+          i = j + 1;
+          continue;
+        }
+      }
+      out.push(tokens[i]);
+      i++;
+    }
+    return out;
+  }
+
+  /* Collapse a continuous monotonic pitch sweep (a meend) into one token whose
+   * via[] lists every swara it touches, instead of a staircase of notes. */
+  function collapseGlides(tokens, cents, voiced, hopSec) {
+    if (tokens.length < 3) return tokens;
+    const out = [];
+    let i = 0;
+    while (i < tokens.length) {
+      let j = i, dir = 0;
+      while (j + 1 < tokens.length) {
+        const step = tokens[j + 1].k - tokens[j].k;
+        if (step === 0 || Math.abs(step) > 2) break;
+        if (tokens[j + 1].t0 - tokens[j].t1 > 0.12) break;     // must be continuous
+        if (tokens[j + 1].glide || tokens[j].glide) break;
+        const sd = Math.sign(step);
+        if (dir === 0) dir = sd; else if (sd !== dir) break;
+        j++;
+      }
+      const span = Math.abs(tokens[j].k - tokens[i].k);
+      if (j - i >= 2 && span >= 3) {
+        // Is the pitch sweeping between semitones (glide) or sitting on them
+        // (discrete notes)? Measure mean distance to the nearest semitone over
+        // the INNER span (first token's end → last token's start) so held
+        // departure/arrival notes don't dilute a genuine sweep between them.
+        const inT0 = tokens[i].t1, inT1 = tokens[j].t0;
+        const md = inT1 > inT0
+          ? meanDistToSemitone(cents, voiced, inT0, inT1, hopSec)
+          : meanDistToSemitone(cents, voiced, tokens[i].t0, tokens[j].t1, hopSec);
+        if (md > 20) {
+          const via = [];
+          for (let m = i; m <= j; m++) if (!via.length || via[via.length - 1] !== tokens[m].k) via.push(tokens[m].k);
+          out.push({ t0: tokens[i].t0, t1: tokens[j].t1, k: tokens[j].k, cents: tokens[j].cents, glide: true, via });
+          i = j + 1;
+          continue;
+        }
+      }
+      out.push(tokens[i]);
+      i++;
+    }
+    return out;
   }
 
   /**
@@ -785,10 +892,12 @@
 
     const makeToken = (r) => {
       const a = analyzeToken(cents, r.start, r.end);
-      return {
+      const tk = {
         t0: r.start * hopSec, t1: r.end * hopSec, k: r.k,
         cents: a.mean, meend: a.meend, andolan: a.andolan,
       };
+      if (a.andolan) { tk.andolanLo = a.andolanLo; tk.andolanHi = a.andolanHi; }
+      return tk;
     };
     const ornOf = (r, type) => ({ k: r.k, t0: r.start * hopSec, t1: r.end * hopSec, type });
 
@@ -826,6 +935,7 @@
                 promote();                                   // fast taan or bare run
               } else if (cur && lastStable && pending.length >= 2 && isMeendChain(lastStable.k, ks, cur.k)) {
                 cur.meendFromPrev = true;                    // quantized glide
+                cur.via = [lastStable.k].concat(ks, cur.k);  // swaras the glide touches
                 cur.orn = (cur.orn || []).concat(pending.map(r => ornOf(r, 'meend')));
               } else if (cur) {
                 if (ks.length === 1) cur.kan = ks.slice();
@@ -849,6 +959,14 @@
         }
         segStart = -1;
       }
+    }
+
+    // Capture continuous gestures the run-segmenter would otherwise shred:
+    // first slow/wide andolan (oscillation), then monotonic meend (glide).
+    // Both keep the swaras they touch so an alaap reads as the path it travels.
+    if (ornaments) {
+      tokens = collapseAndolan(tokens, cents, voiced, hopSec);
+      tokens = collapseGlides(tokens, cents, voiced, hopSec);
     }
 
     /* Clean mode: keep only confident, singable notes.
@@ -912,6 +1030,7 @@
           acc += classDur[pc];
         }
         for (const tk of out) {
+          if (tk.glide || tk.andolan) continue;   // gestures are already resolved
           const pc = ((tk.k % 12) + 12) % 12;
           if (scale.has(pc) || (tk.t1 - tk.t0) >= 0.3) continue;
           const rare = classDur[pc] / total < 0.02 || classDur[pc] < 0.6;
@@ -936,7 +1055,7 @@
         const last = merged[merged.length - 1];
         // A re-articulation (onset) between two same-pitch notes means a new
         // syllable — keep them separate so every vocalised start is a note.
-        if (last && last.k === tk.k && tk.t0 - last.t1 < holdGap && !onsetBetween(last.t1, tk.t0)) {
+        if (last && !last.glide && !tk.glide && !last.andolan && !tk.andolan && last.k === tk.k && tk.t0 - last.t1 < holdGap && !onsetBetween(last.t1, tk.t0)) {
           last.t1 = tk.t1;
           last.meend = last.meend || tk.meend;
           last.andolan = last.andolan || tk.andolan;
@@ -960,6 +1079,7 @@
     if (onsetT.length) {
       const split = [];
       for (const tk of tokens) {
+        if (tk.glide || tk.andolan) { split.push(tk); continue; }   // one gesture, never split
         const cuts = [];
         for (const t of onsetT) {
           if (t > tk.t0 + 0.07 && t < tk.t1 - 0.05) cuts.push(t);
@@ -1020,10 +1140,28 @@
     return { tokens, phrases };
   }
 
-  /** Full token text incl. ornaments: (R)G kan, (RGR)G murki, ≈G andolan, G(R) grace. */
-  function tokenFullText(tk) {
+  /** Keep a glide's endpoints plus the in-scale swaras it passes through, so a
+   *  smooth meend reads as its raga notes, not every chromatic step. */
+  function viaPath(via, scaleSet) {
+    if (!scaleSet || via.length <= 2) return via;
+    return via.filter((k, i) => i === 0 || i === via.length - 1 || scaleSet.has(((k % 12) + 12) % 12));
+  }
+
+  /** Full token text incl. ornaments: (R)G kan, (RGR)G murki, ≈G andolan,
+   *  G(R) grace, and a meend glide as S⌒R⌒G⌒m⌒P (every swara it touches).
+   *  Pass a scaleSet (pitch classes) to trim a glide to in-scale swaras. */
+  function tokenFullText(tk, scaleSet) {
+    if (tk.glide && tk.via && tk.via.length > 1) {
+      return viaPath(tk.via, scaleSet).map((k) => tokenText(k, false)).join('⌒');
+    }
     let t = tokenText(tk.k, tk.meend);
-    if (tk.andolan) t = '≈' + t;
+    if (tk.andolan) {
+      t = '≈' + t;
+      // Show the neighbour swaras a wide andolan swings between, e.g. ≈g(R–g).
+      if (tk.andolanLo != null && (tk.andolanHi > tk.k || tk.andolanLo < tk.k)) {
+        t += '(' + tokenText(tk.andolanLo, false) + '–' + tokenText(tk.andolanHi, false) + ')';
+      }
+    }
     const pre = tk.kan || tk.murki;
     if (pre) t = '(' + pre.map((k) => tokenText(k, false)).join('') + ')' + t;
     if (tk.graceAfter) t += '(' + tk.graceAfter.map((k) => tokenText(k, false)).join('') + ')';
@@ -1032,23 +1170,151 @@
 
   /** Render notation as numbered lines of plain text, with ~0.3 s sustain
    * dashes, X~Y meend connectors and blank lines between sections. */
-  function notationText(phrases) {
+  function notationText(phrases, scaleSet) {
     const lines = [];
     phrases.forEach((ph, idx) => {
       const mm = Math.floor(ph.t0 / 60);
       const ss = Math.floor(ph.t0 % 60).toString().padStart(2, '0');
       const parts = [];
       for (const tk of ph.tokens) {
-        let body = tokenFullText(tk);
+        let body = tokenFullText(tk, scaleSet);
         const sustained = Math.min(12, Math.max(0, Math.round((tk.t1 - tk.t0 - 0.35) / 0.3)));
         for (let d2 = 0; d2 < sustained; d2++) body += ' –';
-        if (tk.meendFromPrev && parts.length) parts[parts.length - 1] += '~' + body;
-        else parts.push(body);
+        if (tk.meendFromPrev && parts.length) {
+          // Show the swaras the glide passes through, not just the endpoints.
+          const v = tk.via ? viaPath(tk.via, scaleSet) : [];
+          const mid = v.length > 2 ? v.slice(1, -1).map((k) => tokenText(k, false)).join('⌒') + '⌒' : '';
+          parts[parts.length - 1] += '⌒' + mid + body;
+        } else parts.push(body);
       }
       if (ph.section && lines.length) lines.push('');
       lines.push(String(idx + 1).padStart(2) + '. [' + mm + ':' + ss + ']  ' + parts.join('  '));
     });
     return lines.join('\n');
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Raga analysis: from the transcribed notes, distil the grammar a
+   * learner writes down — the swar-set (which swaras, with emphasis and
+   * intonation), the thaat (scale family), aaroh/avaroh, vadi/samvadi,
+   * nyas (resting notes) and jati. All from existing token data; nothing
+   * here asserts a definitive raga (thaat ≠ raga, intonation is fluid).
+   * ---------------------------------------------------------------- */
+
+  // The 10 thaats as pitch-class sets relative to Sa.
+  const THAATS = [
+    { name: 'Bilawal', set: [0, 2, 4, 5, 7, 9, 11] },
+    { name: 'Kalyan', set: [0, 2, 4, 6, 7, 9, 11] },
+    { name: 'Khamaj', set: [0, 2, 4, 5, 7, 9, 10] },
+    { name: 'Kafi', set: [0, 2, 3, 5, 7, 9, 10] },
+    { name: 'Asavari', set: [0, 2, 3, 5, 7, 8, 10] },
+    { name: 'Bhairavi', set: [0, 1, 3, 5, 7, 8, 10] },
+    { name: 'Bhairav', set: [0, 1, 4, 5, 7, 8, 11] },
+    { name: 'Purvi', set: [0, 1, 4, 6, 7, 8, 11] },
+    { name: 'Marwa', set: [0, 1, 4, 6, 7, 9, 11] },
+    { name: 'Todi', set: [0, 1, 3, 6, 7, 8, 11] },
+  ];
+
+  const pcOf = (k) => ((k % 12) + 12) % 12;
+
+  function analyzeRaga(tokens, phrases) {
+    const wt = new Float64Array(12);          // duration weight per pitch class
+    const devSum = new Float64Array(12);      // cents deviation accumulation
+    const devW = new Float64Array(12);
+    let total = 0;
+    for (const t of tokens) {
+      const d = Math.max(0.001, t.t1 - t.t0);
+      const pc = pcOf(t.k);
+      wt[pc] += d; total += d;
+      if (typeof t.cents === 'number') { devSum[pc] += (t.cents - t.k * 100) * d; devW[pc] += d; }
+    }
+    if (total <= 0) return null;
+
+    // Swaras actually used (≥3% of sung time), with emphasis + intonation.
+    const swaras = [];
+    for (let pc = 0; pc < 12; pc++) {
+      const share = wt[pc] / total;
+      if (share >= 0.03 || pc === 0) {
+        const info = swaraInfo(pc);
+        swaras.push({
+          pc, letter: info.letter, komal: info.komal, tivra: info.tivra,
+          weight: share,
+          devCents: devW[pc] > 0 ? Math.round(devSum[pc] / devW[pc]) : 0,
+        });
+      }
+    }
+    const used = new Set(swaras.map((s) => s.pc));
+
+    // Thaat: the family that best covers the used swaras. Out-of-thaat notes
+    // (by weight) penalise; among clean covers, prefer the tightest fit.
+    let best = null;
+    for (const th of THAATS) {
+      const tset = new Set(th.set);
+      let outW = 0, coverW = 0, missing = 0;
+      for (let pc = 0; pc < 12; pc++) {
+        if (used.has(pc) && !tset.has(pc)) outW += wt[pc] / total;
+        if (tset.has(pc) && used.has(pc)) coverW += wt[pc] / total;
+      }
+      for (const pc of th.set) if (!used.has(pc)) missing++;
+      const score = coverW - 2.2 * outW - 0.02 * missing;
+      if (!best || score > best.score) best = { name: th.name, score, outW, missing };
+    }
+    const thaat = best ? {
+      name: best.name,
+      // Confident when nothing sits outside the family and most of it is used.
+      confidence: Math.max(0, Math.min(1, 1 - best.outW * 3 - best.missing * 0.12)),
+      mixed: best.outW > 0.04,
+    } : null;
+
+    // Aaroh / avaroh: which swaras appear in ascending vs descending motion.
+    const upSet = new Set(), downSet = new Set();
+    for (let i = 1; i < tokens.length; i++) {
+      if (tokens[i].t0 - tokens[i - 1].t1 > 1.0) continue; // not a connected move
+      const a = tokens[i - 1].k, b = tokens[i].k;
+      if (b > a) { upSet.add(pcOf(a)); upSet.add(pcOf(b)); }
+      else if (b < a) { downSet.add(pcOf(a)); downSet.add(pcOf(b)); }
+    }
+    const ascOrder = (set) => Array.from(set).sort((x, y) => x - y);
+    const aaroh = ascOrder(upSet), avaroh = ascOrder(downSet);
+
+    // Vadi / samvadi: most-dwelt swaras. Sa is the ground note, not the vadi by
+    // convention, so prefer a non-Sa swara as vadi (fall back to Sa only if
+    // nothing else carries weight).
+    const byAll = swaras.slice().sort((a, b) => b.weight - a.weight);
+    const byW = byAll.filter((s) => s.pc !== 0);
+    if (!byW.length) byW.push(...byAll);
+    const vadi = byW.length ? byW[0].pc : null;
+    let samvadi = null;
+    if (vadi != null) {
+      for (const s of byW.slice(1)) {
+        const iv = ((s.pc - vadi) % 12 + 12) % 12;
+        if (iv === 5 || iv === 7) { samvadi = s.pc; break; }
+      }
+      if (samvadi == null && byW.length > 1) samvadi = byW[1].pc;
+    }
+
+    // Nyas (resting notes): pitch classes that phrases resolve onto, plus the
+    // longest-held notes.
+    const restW = new Float64Array(12);
+    if (phrases) {
+      for (const ph of phrases) {
+        const last = ph.tokens[ph.tokens.length - 1];
+        if (last) restW[pcOf(last.k)] += (last.t1 - last.t0) + 0.3;
+      }
+    }
+    const durs = tokens.map((t) => t.t1 - t.t0).sort((a, b) => a - b);
+    const longThresh = durs.length ? durs[Math.floor(durs.length * 0.8)] : 0;
+    for (const t of tokens) if ((t.t1 - t.t0) >= longThresh) restW[pcOf(t.k)] += (t.t1 - t.t0);
+    const nyas = Array.from({ length: 12 }, (_, pc) => pc)
+      .filter((pc) => used.has(pc) && restW[pc] > 0)
+      .sort((a, b) => restW[b] - restW[a]).slice(0, 4)
+      .sort((a, b) => a - b);
+
+    const jatiName = (n) => (n <= 5 ? 'audav' : n === 6 ? 'shadav' : 'sampurna');
+    const jati = aaroh.length && avaroh.length
+      ? `${jatiName(aaroh.length)}–${jatiName(avaroh.length)}` : null;
+
+    return { swaras, thaat, aaroh, avaroh, vadi, samvadi, nyas, jati, total };
   }
 
   /* ---------------------------------------------------------------- *
@@ -1179,7 +1445,7 @@
   }
 
   return {
-    preFilter, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notationText,
+    preFilter, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notationText, analyzeRaga,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     pitchShift, timeStretch, resampleLinear,
     SWARA_LETTERS,

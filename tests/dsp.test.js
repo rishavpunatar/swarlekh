@@ -278,7 +278,8 @@ test('ornaments: monotonic chain becomes a meend connector', () => {
   assert.deepStrictEqual(tokens.map(t => t.k), [0, 4]);
   assert.ok(tokens[1].meendFromPrev, 'second token should carry meend connector');
   assert.ok(!tokens[1].murki && !tokens[1].kan);
-  assert.match(DSP.notationText(phrases), /S~G/);
+  assert.deepStrictEqual(tokens[1].via, [0, 1, 2, 3, 4], 'via lists the swaras the glide touches');
+  assert.match(DSP.notationText(phrases), /S⌒.*⌒G/, 'connector shows the via path');
 });
 
 test('ornaments: >4 fast short notes promote to real tokens (taan)', () => {
@@ -308,6 +309,21 @@ test('ornaments: slow oscillation flagged as andolan', () => {
   assert.strictEqual(tokens[0].k, 4);
   assert.ok(tokens[0].andolan, 'should be flagged andolan');
   assert.strictEqual(DSP.tokenFullText(tokens[0]), '≈G');
+});
+
+test('ornaments: slow WIDE andolan (Darbari komal-ga) is caught with its range', () => {
+  // 1.4 Hz, ±110 cents around komal-ga (k=3) — a slow, wide oscillation.
+  const n = 90;
+  const f0 = new Float32Array(n), clarity = new Float32Array(n).fill(0.9);
+  for (let i = 0; i < n; i++) {
+    const c = 300 + 110 * Math.sin(2 * Math.PI * 1.4 * i * HOP);
+    f0[i] = SA * Math.pow(2, c / 1200);
+  }
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, { clean: true, ornaments: true });
+  assert.strictEqual(tokens.length, 1, `slow wide swing must be ONE note, got ${tokens.length}`);
+  assert.ok(tokens[0].andolan, 'should be flagged andolan, not shredded into a meend salad');
+  assert.strictEqual(tokens[0].k, 3);
+  assert.match(DSP.tokenFullText(tokens[0]), /≈g\(.*–.*\)/, `should show swing range: ${DSP.tokenFullText(tokens[0])}`);
 });
 
 test('ornaments: smooth mode suppresses ornament extraction', () => {
@@ -488,6 +504,99 @@ test('detectTonic: ambiguous Pa-centric fragment still surfaces Sa in top-3 + fl
   const c = DSP.detectTonic(f0, clarity, 0.016);
   assert.ok(c.some(x => tonicErrCents(x.hz, SA) < 35), `Sa should be a candidate: ${c.map(x => x.hz.toFixed(1)).join(',')}`);
   assert.ok(c[0].uncertain, 'a close fifth-symmetry call should be flagged uncertain');
+});
+
+/* ----------------------------- meend (glide) ----------------------------- */
+
+test('meend: a slow continuous glide becomes ONE meend listing every swara', () => {
+  // Smooth S->P glide over 1.4 s (sweeps between semitones).
+  const N = Math.round(1.4 / HOP) + 40;
+  const f0 = new Float32Array(N), clarity = new Float32Array(N);
+  const gN = Math.round(1.4 / HOP);
+  for (let i = 0; i < gN; i++) {
+    const c = (i / (gN - 1)) * 700;            // 0 -> 700 cents (S -> P)
+    f0[i] = SA * Math.pow(2, c / 1200); clarity[i] = 0.9;
+  }
+  const { tokens, phrases } = DSP.notate(f0, clarity, HOP, SA, { clean: true, ornaments: true });
+  const glides = tokens.filter((t) => t.glide);
+  assert.strictEqual(glides.length, 1, `expected one glide token, got ${tokens.length} tokens`);
+  assert.ok(glides[0].via.length >= 5, `via should list the swaras crossed: ${glides[0].via}`);
+  assert.strictEqual(glides[0].via[0], 0);
+  assert.strictEqual(glides[0].via[glides[0].via.length - 1], 7);
+  assert.match(DSP.notationText(phrases), /S⌒.*⌒P/, `text should show the path: ${DSP.notationText(phrases)}`);
+});
+
+test('meend: discrete held notes (a scale, not a glide) are NOT collapsed', () => {
+  // S R G m P as DISTINCT held notes (each sits on its semitone) — not a meend.
+  const { f0, clarity } = trackFromRuns([[0, 30], [2, 30], [4, 30], [5, 30], [7, 30]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, { clean: true, ornaments: true });
+  assert.ok(!tokens.some((t) => t.glide), 'a stepwise scale of held notes must not become a glide');
+  assert.ok(tokens.length >= 4, `held notes preserved: ${tokens.map((t) => t.k)}`);
+});
+
+/* ----------------------------- raga analysis ----------------------------- */
+
+// Build tokens from [k, durSec, centsOverride?] triples.
+function toks(list) {
+  let t = 0;
+  return list.map(([k, d, c]) => {
+    const tk = { k, t0: t, t1: t + d, cents: c != null ? c : k * 100 };
+    t += d;
+    return tk;
+  });
+}
+
+test('analyzeRaga: detects Bhairav thaat from its swar-set', () => {
+  // S r G m P d N (asc) then back — Bhairav = {0,1,4,5,7,8,11}
+  const seq = [0, 1, 4, 5, 7, 8, 11, 12, 11, 8, 7, 5, 4, 1, 0];
+  const r = DSP.analyzeRaga(toks(seq.map((k) => [k, 0.5])), null);
+  assert.strictEqual(r.thaat.name, 'Bhairav');
+  assert.ok(r.thaat.confidence > 0.6, `confidence ${r.thaat.confidence}`);
+  const used = r.swaras.map((s) => s.pc).sort((a, b) => a - b);
+  assert.deepStrictEqual(used, [0, 1, 4, 5, 7, 8, 11]);
+  // komal re and komal dha flagged komal; shuddh Ga/Ni not
+  assert.ok(r.swaras.find((s) => s.pc === 1).komal);
+  assert.ok(!r.swaras.find((s) => s.pc === 4).komal);
+});
+
+test('analyzeRaga: detects each thaat from its full swar-set', () => {
+  const cases = {
+    Bilawal: [0, 2, 4, 5, 7, 9, 11], Khamaj: [0, 2, 4, 5, 7, 9, 10],
+    Kafi: [0, 2, 3, 5, 7, 9, 10], Asavari: [0, 2, 3, 5, 7, 8, 10],
+    Bhairavi: [0, 1, 3, 5, 7, 8, 10], Purvi: [0, 1, 4, 6, 7, 8, 11],
+    Marwa: [0, 1, 4, 6, 7, 9, 11], Todi: [0, 1, 3, 6, 7, 8, 11],
+  };
+  for (const [name, set] of Object.entries(cases)) {
+    const seq = set.concat([12], set.slice().reverse());
+    const r = DSP.analyzeRaga(toks(seq.map((k) => [k, 0.5])), null);
+    assert.strictEqual(r.thaat.name, name, `${name}: got ${r.thaat.name}`);
+  }
+});
+
+test('analyzeRaga: detects Yaman (Kalyan thaat, tivra Ma)', () => {
+  const seq = [0, 2, 4, 6, 7, 9, 11, 12, 11, 9, 7, 6, 4, 2, 0];
+  const r = DSP.analyzeRaga(toks(seq.map((k) => [k, 0.5])), null);
+  assert.strictEqual(r.thaat.name, 'Kalyan');
+  assert.ok(r.swaras.find((s) => s.pc === 6).tivra, 'tivra Ma present');
+});
+
+test('analyzeRaga: aaroh/avaroh + vadi + nyas + jati', () => {
+  // Bhupali (audav, Kalyan-ish without ma/ni): S R G P D, vadi G, rest on S
+  const seq = [0, 2, 4, 7, 9, 7, 4, 2, 0, 0, 0, 4, 4, 4, 4];
+  const durs = seq.map((k, i) => [k, k === 4 ? 0.8 : 0.4]); // dwell on G
+  const phrases = [{ t0: 0, t1: 9, tokens: toks(seq.map((k) => [k, 0.4])) }];
+  const r = DSP.analyzeRaga(toks(durs), phrases);
+  assert.ok(r.aaroh.includes(2) && r.aaroh.includes(7), `aaroh ${r.aaroh}`);
+  assert.strictEqual(r.vadi, 4, `vadi ${r.vadi} should be G (most dwelt)`);
+  assert.ok(r.jati && r.jati.startsWith('audav'), `jati ${r.jati}`);
+});
+
+test('analyzeRaga: per-swara intonation (komal ga sung flat)', () => {
+  // komal ga consistently 30 cents flat of ET (Darbari-ish)
+  const seq = [[0, 1], [3, 1, 270], [3, 1, 268], [2, 1], [0, 1]];
+  const r = DSP.analyzeRaga(toks(seq), null);
+  const ga = r.swaras.find((s) => s.pc === 3);
+  assert.ok(ga.devCents <= -25 && ga.devCents >= -35, `komal ga deviation ${ga.devCents}¢`);
 });
 
 /* ------------------------ octave stabilization ------------------------ */

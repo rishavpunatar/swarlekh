@@ -151,6 +151,55 @@ header {
 .now-tok[data-oct="-1"]::after, .now-tok[data-oct="-2"]::after { content: "•"; bottom: -2px; }
 .now-tok[data-oct="-2"]::after { content: "••"; }
 
+/* First-run guide */
+.intro { background: var(--accent-soft); border-color: var(--accent); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.intro-steps { display: flex; gap: 18px; flex-wrap: wrap; flex: 1; font-size: 13px; color: var(--text); }
+.intro-steps span { flex: 1; min-width: 180px; }
+.intro-steps b:first-child {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  background: var(--accent); color: #fff; border-radius: 50%; font-size: 11px; margin-right: 5px;
+}
+.legend-details summary { cursor: pointer; color: var(--muted); font-size: 12.5px; margin: 4px 0 8px; }
+.legend-details .legend { margin-top: 6px; }
+
+/* Raag analysis */
+.raga-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.raga-thaat { font-size: 14px; color: var(--accent); font-weight: 600; }
+.swar-palette { display: flex; gap: 5px; align-items: flex-end; flex-wrap: wrap; }
+.swar-cell {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  min-width: 38px; height: 64px; padding: 4px 6px 6px; gap: 3px;
+  background: var(--tok-bg); border: 1px solid var(--border); border-radius: 8px;
+  cursor: pointer; font-family: Georgia, serif; transition: border-color 0.12s, background 0.12s;
+}
+.swar-cell:hover { border-color: var(--accent); }
+.swar-cell.unused { opacity: 0.32; cursor: default; background: transparent; border-style: dashed; }
+.swar-cell.unused:hover { border-color: var(--border); }
+.swar-bar { width: 70%; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 2px; opacity: 0.8; }
+.swar-cell.komal .swar-bar { background: var(--komal); }
+.swar-letter { font-size: 19px; font-weight: 600; color: var(--text); line-height: 1; }
+.swar-cell.komal .swar-letter { color: var(--komal); text-decoration: underline; text-underline-offset: 2px; }
+.swar-cell.tivra .swar-letter { border-top: 2px solid var(--accent); padding-top: 1px; }
+.swar-dev { position: absolute; top: 2px; font-size: 9px; color: var(--muted); font-family: -apple-system, sans-serif; }
+.swar-cell.vadi { border-color: var(--accent); border-width: 2px; }
+.swar-cell.vadi::after, .swar-cell.samvadi::after {
+  position: absolute; bottom: -16px; font-size: 9px; letter-spacing: 0.5px; color: var(--muted);
+  font-family: -apple-system, sans-serif; text-transform: uppercase;
+}
+.swar-cell.vadi::after { content: "vadi"; color: var(--accent); }
+.swar-cell.samvadi::after { content: "samvadi"; }
+.swar-cell.spot { background: var(--accent); border-color: var(--accent); }
+.swar-cell.spot .swar-letter, .swar-cell.spot.komal .swar-letter { color: #fff; }
+.swar-cell.spot .swar-bar { background: #ffffffcc; }
+.raga-grammar { margin-top: 22px; font-size: 14px; color: var(--text); line-height: 1.9; }
+.raga-grammar b { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 3px; }
+.raga-grammar .sep { color: var(--border); margin: 0 10px; }
+
+/* notation: meend glide + pc highlight */
+.tok.glide { color: var(--indigo); letter-spacing: -1px; }
+#notation.filtering .tok { opacity: 0.3; }
+#notation.filtering .tok.pc-hit { opacity: 1; background: var(--accent-soft); }
+
 /* Tonic */
 .tonic-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .chip {

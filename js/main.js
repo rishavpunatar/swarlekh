@@ -10,6 +10,7 @@
     resultArea: $('resultArea'),
     playBtn: $('playBtn'), timeDisp: $('timeDisp'), speedSel: $('speedSel'), sourceSel: $('sourceSel'),
     loopABtn: $('loopABtn'), loopBBtn: $('loopBBtn'), loopClearBtn: $('loopClearBtn'), loopDisp: $('loopDisp'),
+    ragaThaat: $('ragaThaat'), swarPalette: $('swarPalette'), ragaGrammar: $('ragaGrammar'),
     tonicCard: $('tonicCard'), tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
     tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
@@ -33,13 +34,14 @@
     playing: false,
     semitones: 0, fileMono: null, fileSr: 16000,
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
+    raga: null, highlightPc: null,
     opts: { clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45, clean: true, onsets: [] },
   };
 
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=6';
+  const WORKER_URL = 'js/worker.js?v=8';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -217,6 +219,7 @@
       applySource();
       updateTimeDisp();
       state.ready = true;
+      maybeShowFirstRun();
       if (result.tonic[0].uncertain) {
         toast('Sa may be off — check it with the Drone (see the note below the tonic).');
       } else if (state.octaveDoubled) {
@@ -227,6 +230,20 @@
       toast(err.message || String(err));
     }
   }
+
+  // First-run guide — shown once (stored locally; nothing leaves the device).
+  function maybeShowFirstRun() {
+    let seen = false;
+    try { seen = localStorage.getItem('swarlekh.seen') === '1'; } catch (e) {}
+    if (seen) return;
+    const fr = $('firstRun');
+    if (fr) fr.hidden = false;
+  }
+  const frClose = $('firstRunClose');
+  if (frClose) frClose.addEventListener('click', () => {
+    $('firstRun').hidden = true;
+    try { localStorage.setItem('swarlekh.seen', '1'); } catch (e) {}
+  });
 
   /* ------------------------------- tonic ------------------------------- */
 
@@ -365,8 +382,10 @@
     const res = DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, state.opts);
     state.tokens = res.tokens;
     state.phrases = res.phrases;
+    state.raga = DSP.analyzeRaga(res.tokens, res.phrases);
     computeScale();
     computeCentsRange();
+    renderRaga();
     renderNotation();
     drawCanvas();
     updateStats();
@@ -400,6 +419,90 @@
     state.centsHi = Math.ceil(hi / 100) * 100;
   }
 
+  const swLetter = (pc) => DSP.swaraInfo(((pc % 12) + 12) % 12).letter;
+
+  // A glide's path trimmed to its in-scale swaras (keep the endpoints).
+  function viaDisplay(via) {
+    const sc = state.scale;
+    if (!sc || !via || via.length <= 2) return via || [];
+    return via.filter((k, i) => i === 0 || i === via.length - 1 || sc.has(((k % 12) + 12) % 12));
+  }
+
+  // Raag analysis card: the swar palette + the learner's worksheet (thaat,
+  // aaroh/avaroh, vadi/samvadi, nyas, jati, intonation).
+  function renderRaga() {
+    const r = state.raga;
+    if (!r) { els.swarPalette.textContent = ''; els.ragaThaat.textContent = ''; els.ragaGrammar.textContent = ''; return; }
+
+    if (r.thaat) {
+      const c = r.thaat.confidence;
+      const tag = c > 0.66 ? '' : c > 0.4 ? ' · approx' : ' · uncertain';
+      els.ragaThaat.textContent = (r.thaat.mixed ? 'mixed scale · ' : '') + 'thaat ' + r.thaat.name + tag;
+    } else els.ragaThaat.textContent = '';
+
+    els.swarPalette.textContent = '';
+    const byPc = {};
+    for (const s of r.swaras) byPc[s.pc] = s;
+    const maxW = Math.max(...r.swaras.map((s) => s.weight), 1e-4);
+    for (let pc = 0; pc < 12; pc++) {
+      const info = DSP.swaraInfo(pc);
+      const used = byPc[pc];
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'swar-cell' + (used ? '' : ' unused') + (info.komal ? ' komal' : '') +
+        (info.tivra ? ' tivra' : '') + (pc === r.vadi ? ' vadi' : '') + (pc === r.samvadi ? ' samvadi' : '');
+      cell.dataset.pc = String(pc);
+      const bar = document.createElement('span');
+      bar.className = 'swar-bar';
+      bar.style.height = used ? (5 + Math.round(used.weight / maxW * 26)) + 'px' : '0';
+      cell.appendChild(bar);
+      const letter = document.createElement('span');
+      letter.className = 'swar-letter';
+      letter.textContent = info.letter;
+      cell.appendChild(letter);
+      if (used && Math.abs(used.devCents) >= 6) {   // show real intonation, not rounding noise
+        const dev = document.createElement('span');
+        dev.className = 'swar-dev';
+        dev.textContent = (used.devCents > 0 ? '+' : '') + used.devCents;
+        cell.appendChild(dev);
+      }
+      cell.title = used
+        ? `${info.letter}${info.komal ? ' komal' : info.tivra ? ' teevra' : ''} · ${Math.round(used.weight * 100)}% of sung time` +
+          `${used.devCents ? ` · ${used.devCents > 0 ? '+' : ''}${used.devCents}¢ vs ET` : ''}` +
+          `${pc === r.vadi ? ' · vadi' : ''}${pc === r.samvadi ? ' · samvadi' : ''} — tap to highlight`
+        : `${info.letter} — not used in this recording`;
+      els.swarPalette.appendChild(cell);
+    }
+
+    const parts = [];
+    if (r.aaroh.length) parts.push('<b>Aaroh</b> ' + r.aaroh.map(swLetter).join(' '));
+    if (r.avaroh.length) parts.push('<b>Avaroh</b> ' + r.avaroh.slice().reverse().map(swLetter).join(' '));
+    if (r.vadi != null) parts.push('<b>Vadi</b> ' + swLetter(r.vadi) + (r.samvadi != null ? ' · <b>Samvadi</b> ' + swLetter(r.samvadi) : ''));
+    if (r.nyas && r.nyas.length) parts.push('<b>Nyas</b> ' + r.nyas.map(swLetter).join(' '));
+    if (r.jati) parts.push('<b>Jati</b> ' + r.jati);
+    els.ragaGrammar.innerHTML = parts.join('<span class="sep">·</span>');
+  }
+
+  // Tap a palette swara to spotlight every place it appears.
+  els.swarPalette.addEventListener('click', (e) => {
+    const cell = e.target.closest('.swar-cell');
+    if (!cell || cell.classList.contains('unused')) return;
+    const pc = parseInt(cell.dataset.pc, 10);
+    state.highlightPc = state.highlightPc === pc ? null : pc;
+    els.swarPalette.querySelectorAll('.swar-cell').forEach((c) =>
+      c.classList.toggle('spot', parseInt(c.dataset.pc, 10) === state.highlightPc));
+    applyPcHighlight();
+    drawCanvas();
+  });
+
+  function applyPcHighlight() {
+    const pc = state.highlightPc;
+    els.notation.classList.toggle('filtering', pc != null);
+    els.notation.querySelectorAll('.tok').forEach((el) => {
+      el.classList.toggle('pc-hit', pc != null && parseInt(el.dataset.pc, 10) === pc);
+    });
+  }
+
   function renderNotation() {
     els.notation.textContent = '';
     activeLineIdx = -1;
@@ -426,16 +529,32 @@
       row.appendChild(tEl);
       for (const tk of ph.tokens) {
         const s = DSP.swaraInfo(tk.k);
+        // A meend glide: render the whole via-path S⌒R⌒G⌒m⌒P as one gesture.
+        if (tk.glide && tk.via && tk.via.length > 1) {
+          const g = document.createElement('span');
+          g.className = 'tok glide';
+          g.dataset.i = String(flatIdx);
+          g.dataset.pc = String(((tk.k % 12) + 12) % 12);
+          g.textContent = viaDisplay(tk.via).map((k) => DSP.tokenText(k, false)).join('⌒');
+          g.title = `meend through ${viaDisplay(tk.via).map((k) => DSP.tokenText(k)).join(' ')} · ${fmtTime(tk.t0, true)}`;
+          row.appendChild(g);
+          flatIdx++;
+          continue;
+        }
         if (tk.meendFromPrev && row.querySelector('.tok')) {
           const conn = document.createElement('span');
           conn.className = 'meend-conn';
-          conn.textContent = '⌒';
+          // Show the swaras the glide passes through, not just an arc.
+          const v = viaDisplay(tk.via);
+          const mid = v.length > 2 ? v.slice(1, -1).map((k) => DSP.tokenText(k, false)).join('⌒') : '';
+          conn.textContent = mid ? '⌒' + mid + '⌒' : '⌒';
           conn.title = 'meend (glide)';
           conn.dataset.i = String(flatIdx);
           row.appendChild(conn);
         }
         const span = document.createElement('span');
         span.className = 'tok' + (s.komal ? ' komal' : '') + (s.tivra ? ' tivra' : '') + (tk.andolan ? ' andolan' : '');
+        span.dataset.pc = String(((tk.k % 12) + 12) % 12);
         const oct = Math.max(-2, Math.min(2, s.octave));
         if (oct !== 0) span.dataset.oct = String(oct);
         const pre = tk.kan || tk.murki;
@@ -454,6 +573,13 @@
           span.appendChild(mm);
         }
         span.appendChild(document.createTextNode(s.letter));
+        if (tk.andolan && tk.andolanLo != null && (tk.andolanHi > tk.k || tk.andolanLo < tk.k)) {
+          const o = document.createElement('span');
+          o.className = 'orn';
+          o.textContent = '(' + DSP.tokenText(tk.andolanLo, false) + '–' + DSP.tokenText(tk.andolanHi, false) + ')';
+          o.title = 'andolan swings between these swaras';
+          span.appendChild(o);
+        }
         if (tk.graceAfter) {
           const o = document.createElement('span');
           o.className = 'orn';
@@ -462,7 +588,7 @@
           span.appendChild(o);
         }
         span.dataset.i = String(flatIdx);
-        span.title = `${DSP.tokenFullText(tk)} · ${fmtTime(tk.t0, true)}`;
+        span.title = `${DSP.tokenFullText(tk, state.scale)} · ${fmtTime(tk.t0, true)}`;
         row.appendChild(span);
         const dashes = Math.min(8, Math.max(0, Math.round((tk.t1 - tk.t0 - 0.35) / 0.3)));
         for (let d = 0; d < dashes; d++) {
@@ -476,6 +602,7 @@
       }
       els.notation.appendChild(row);
     });
+    applyPcHighlight();
     nowStripLine = -1;
     els.nowStrip.innerHTML = '<span class="now-empty">press play — the sung swara shows here, big</span>';
   }
@@ -554,7 +681,7 @@
 
   els.copyBtn.addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(exportHeader() + DSP.notationText(state.phrases));
+      await navigator.clipboard.writeText(exportHeader() + DSP.notationText(state.phrases, state.scale));
       els.copyBtn.textContent = 'Copied ✓';
       setTimeout(() => { els.copyBtn.textContent = 'Copy'; }, 1500);
     } catch (e) { toast('Clipboard unavailable — use Download instead.'); }
@@ -571,7 +698,7 @@
   const baseName = () => state.fileName.replace(/\.[^.]+$/, '') || 'swarlekh';
 
   els.dlTxtBtn.addEventListener('click', () =>
-    download(new Blob([exportHeader() + DSP.notationText(state.phrases)], { type: 'text/plain' }), baseName() + '.sargam.txt'));
+    download(new Blob([exportHeader() + DSP.notationText(state.phrases, state.scale)], { type: 'text/plain' }), baseName() + '.sargam.txt'));
 
   els.dlJsonBtn.addEventListener('click', () => {
     const data = {
@@ -583,7 +710,7 @@
         tokens: ph.tokens.map(tk => {
           const o = {
             t0: +tk.t0.toFixed(3), t1: +tk.t1.toFixed(3),
-            swara: DSP.tokenText(tk.k, false), display: DSP.tokenFullText(tk),
+            swara: DSP.tokenText(tk.k, false), display: DSP.tokenFullText(tk, state.scale),
             k: tk.k, cents: +tk.cents.toFixed(1),
           };
           if (tk.kan) o.kan = tk.kan.map(k => DSP.tokenText(k, false));
@@ -990,6 +1117,18 @@
     const viewSec = viewWidthSec();
     const tEnd = scrollSec + viewSec;
 
+    // Octave-band shading: alternate ultra-faint fills so mandra / madhya /
+    // taar saptak read as distinct registers in a wide-range alaap.
+    const octLo = Math.floor(centsLo / 1200), octHi = Math.ceil(centsHi / 1200);
+    cctx.fillStyle = colors.grid;
+    for (let o = octLo; o < octHi; o++) {
+      if ((((o % 2) + 2) % 2) === 0) continue;
+      const yTop = cToY((o + 1) * 1200), yBot = cToY(o * 1200);
+      cctx.globalAlpha = 0.35;
+      cctx.fillRect(GUTTER, Math.min(yTop, yBot), W - GUTTER, Math.abs(yBot - yTop));
+      cctx.globalAlpha = 1;
+    }
+
     // Swara grid: notes in the song's scale get solid, labelled lines (the
     // "staff" you sight-read from); other semitones are faint, so the eye
     // locks onto the singable degrees.
@@ -1075,6 +1214,44 @@
       const fast = dur < 0.16;
       const x = tToX(tk.t0), w = Math.max(2, dur * pxPerSec - 1);
       const y = cToY(tk.k * 100);
+
+      // Meend: draw the glide as a ramp through the swaras it touches, with a
+      // dot on each — so you see the path, not a block.
+      if (tk.glide && tk.via && tk.via.length > 1) {
+        const vv = viaDisplay(tk.via);
+        cctx.strokeStyle = colors.contour;
+        cctx.globalAlpha = isActive ? 1 : 0.85;
+        cctx.lineWidth = isActive ? 3 : 2;
+        cctx.beginPath();
+        for (let p = 0; p < vv.length; p++) {
+          const px = tToX(tk.t0 + dur * (vv.length > 1 ? p / (vv.length - 1) : 0));
+          const py = cToY(vv[p] * 100);
+          if (p === 0) cctx.moveTo(px, py); else cctx.lineTo(px, py);
+        }
+        cctx.stroke();
+        cctx.fillStyle = colors.contour;
+        for (let p = 0; p < vv.length; p++) {
+          const px = tToX(tk.t0 + dur * (vv.length > 1 ? p / (vv.length - 1) : 0));
+          cctx.beginPath(); cctx.arc(px, cToY(vv[p] * 100), 2.6, 0, 2 * Math.PI); cctx.fill();
+        }
+        cctx.globalAlpha = 1;
+        continue;
+      }
+      // Andolan: a band spanning the swing, with the anchor swara on it.
+      if (tk.andolan && tk.andolanLo != null && tk.andolanHi > tk.andolanLo) {
+        const yTop = cToY(tk.andolanHi * 100), yBot = cToY(tk.andolanLo * 100);
+        cctx.fillStyle = colors.accent;
+        cctx.globalAlpha = isActive ? 0.38 : 0.2;
+        cctx.beginPath(); cctx.roundRect(x, yTop - 2, w, (yBot - yTop) + 4, 4); cctx.fill();
+        cctx.globalAlpha = isActive ? 1 : 0.85;
+        cctx.fillRect(x, y - 1.5, w, 3);
+        if (w >= 14) {
+          cctx.fillStyle = '#ffffff'; cctx.font = '700 11px Georgia, serif';
+          cctx.fillText(DSP.swaraInfo(tk.k).letter, x + w / 2, y + 0.5);
+        }
+        cctx.globalAlpha = 1;
+        continue;
+      }
       const half = fast ? 2.5 : (dur >= 0.30 ? 6 : 4.5);
       cctx.fillStyle = fast ? colors.contour : colors.accent;
       cctx.globalAlpha = isActive ? 1 : (fast ? 0.5 : (dur >= 0.30 ? 0.82 : 0.62));

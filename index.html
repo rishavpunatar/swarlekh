@@ -44,6 +44,16 @@
     </section>
 
     <div id="resultArea" hidden>
+      <section id="firstRun" class="card intro" hidden>
+        <div class="intro-steps">
+          <span><b>1</b> Check <b>Sa</b> is right — use the Drone to match the song’s home note.</span>
+          <span><b>2</b> <b>Raag analysis</b> shows which swaras the piece uses, and the scale family.</span>
+          <span><b>3</b> Press play — <b>Now singing</b> shows the live swara, big.</span>
+          <span><b>4</b> The <b>contour</b> + <b>sargam</b> give every note, meend &amp; ornament.</span>
+        </div>
+        <button id="firstRunClose" class="mini-btn" type="button">Got it</button>
+      </section>
+
       <section id="playerCard" class="card">
         <div class="player-row">
           <button id="playBtn" class="big-btn" title="Play / pause (Space)">▶</button>
@@ -83,6 +93,16 @@
           <span class="card-label">Now singing</span>
           <div id="nowStrip" class="now-strip"><span class="now-empty">press play — the sung swara shows here, big</span></div>
         </div>
+      </section>
+
+      <section id="ragaCard" class="card">
+        <div class="raga-head">
+          <span class="card-label">Raag analysis</span>
+          <span id="ragaThaat" class="raga-thaat"></span>
+        </div>
+        <div id="swarPalette" class="swar-palette"></div>
+        <div id="ragaGrammar" class="raga-grammar"></div>
+        <p class="hint">The swaras this recording uses, sized by how much they’re sung. Tap one to highlight every place it appears. Thaat is the scale family (not a definitive raag); intonation shows how each komal/teevra swara is actually pitched.</p>
       </section>
 
       <section id="tonicCard" class="card">
@@ -125,13 +145,16 @@
           <button id="dlJsonBtn" class="mini-btn">Download .json</button>
           <button id="dlWavBtn" class="mini-btn" title="The synthesized melody line as a WAV file">Melody .wav</button>
         </div>
-        <p class="legend">
-          <b>S r R g G m M P d D n N</b> — capitals shuddh, lowercase komal (re ga dha ni);
-          <b>m</b> = shuddh Ma, <b>M</b> = teevra Ma · dot above / <b>X'</b> = taar saptak,
-          dot below / <b>.X</b> = mandra saptak · <b>–</b> ≈ 0.3&nbsp;s held<br>
-          ornaments: <b>(R)G</b> = kan (grace) · <b>(GRG)m</b> = murki · <b>X~Y</b> = meend (glide) ·
-          <b>≈X</b> = andolan/gamak (oscillation) · <b>~X</b> = glide within the note
-        </p>
+        <details class="legend-details">
+          <summary>How to read the sargam ▾</summary>
+          <p class="legend">
+            <b>S r R g G m M P d D n N</b> — capitals shuddh, lowercase komal (re ga dha ni);
+            <b>m</b> = shuddh Ma, <b>M</b> = teevra Ma · dot above / <b>X'</b> = taar saptak,
+            dot below / <b>.X</b> = mandra saptak · <b>–</b> ≈ 0.3&nbsp;s held<br>
+            ornaments: <b>(R)G</b> = kan (grace) · <b>(GRG)m</b> = murki · <b>S⌒R⌒G</b> = meend gliding through those swaras ·
+            <b>≈g(R–g)</b> = andolan oscillating between those swaras · <b>~X</b> = glide within the note
+          </p>
+        </details>
         <div id="notation"></div>
       </section>
 
@@ -175,8 +198,8 @@
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=6"></script>
-  <script src="js/dsp.js?v=6"></script>
-  <script src="js/main.js?v=6"></script>
+  <script src="js/fft.js?v=8"></script>
+  <script src="js/dsp.js?v=8"></script>
+  <script src="js/main.js?v=8"></script>
 </body>
 </html>
