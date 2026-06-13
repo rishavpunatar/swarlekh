@@ -121,6 +121,36 @@ header {
 .pitch-ctl.busy .mini-btn, .pitch-ctl.busy select { pointer-events: none; }
 #pitchKey { font-size: 12px; }
 
+/* Now-singing strip — large live readout of the current line */
+.now-row { display: flex; align-items: center; gap: 14px; }
+.now-strip {
+  flex: 1; display: flex; align-items: center; gap: 14px;
+  height: 56px; overflow-x: auto; scroll-behavior: smooth;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.now-strip::-webkit-scrollbar { display: none; }
+.now-empty { color: var(--muted); font-size: 13px; font-family: -apple-system, sans-serif; }
+.now-tok {
+  position: relative; flex: 0 0 auto;
+  font-size: 26px; color: var(--muted); opacity: 0.6;
+  padding: 2px 6px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+}
+.now-tok.komal { color: var(--komal); text-decoration: underline; text-underline-offset: 4px; }
+.now-tok.now-active {
+  font-size: 46px; font-weight: 600; opacity: 1; color: var(--accent);
+}
+.now-tok.komal.now-active { color: var(--komal); }
+.now-tok .now-orn { font-size: 0.5em; color: var(--indigo); vertical-align: super; }
+.now-tok[data-oct]::after {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  font-size: 0.4em; color: var(--accent); letter-spacing: 1px;
+}
+.now-tok[data-oct="1"]::after, .now-tok[data-oct="2"]::after { content: "•"; top: -2px; }
+.now-tok[data-oct="2"]::after { content: "••"; }
+.now-tok[data-oct="-1"]::after, .now-tok[data-oct="-2"]::after { content: "•"; bottom: -2px; }
+.now-tok[data-oct="-2"]::after { content: "••"; }
+
 /* Tonic */
 .tonic-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .chip {

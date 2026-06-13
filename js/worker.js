@@ -30,20 +30,27 @@ self.onmessage = function (e) {
 
     prog('pitch', 0);
     const track = DSP.yinTrack(filtered, sr, {}, (f) => prog('pitch', f));
+    const f0raw = track.f0.slice();
+
+    // Collapse octave-doubled voices first, so Sa and everything downstream are
+    // computed on a single consistent register.
+    const stab = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, 'auto');
 
     prog('tonic', 0);
-    const tonic = DSP.detectTonic(track.f0, track.clarity, track.hopSec, track.rms);
+    const tonic = DSP.detectTonic(stab.f0, track.clarity, track.hopSec, track.rms);
 
     // Syllable/word onsets, on the band-limited signal so tabla is suppressed.
     const hopSamples = Math.round(track.hopSec * sr);
     const onsets = DSP.detectOnsets(filtered, sr, hopSamples);
 
     prog('synth', 0);
-    const synth = DSP.synthesize(track.f0, track.clarity, track.hopSec, sr);
+    const synth = DSP.synthesize(stab.f0, track.clarity, track.hopSec, sr);
 
     self.postMessage({
       type: 'result',
-      f0: track.f0,
+      f0: stab.f0,
+      f0raw,
+      doubled: stab.doubled,
       clarity: track.clarity,
       rms: track.rms,
       hopSec: track.hopSec,
@@ -51,7 +58,7 @@ self.onmessage = function (e) {
       onsets,
       synth,
       sr,
-    }, [track.f0.buffer, track.clarity.buffer, track.rms.buffer, synth.buffer]);
+    }, [stab.f0.buffer, f0raw.buffer, track.clarity.buffer, track.rms.buffer, synth.buffer]);
   } catch (err) {
     self.postMessage({ type: 'error', message: String(err && err.message || err) });
   }

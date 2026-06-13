@@ -490,6 +490,36 @@ test('detectTonic: ambiguous Pa-centric fragment still surfaces Sa in top-3 + fl
   assert.ok(c[0].uncertain, 'a close fifth-symmetry call should be flagged uncertain');
 });
 
+/* ------------------------ octave stabilization ------------------------ */
+
+test('stabilizeOctave: collapses an octave-doubled line to one register', () => {
+  // Melody that flips octave on alternate notes (two voices an octave apart).
+  const seq = [0, 12, 2, 14, 4, 16, 2, 14, 0, 12];
+  const { f0, clarity } = trackFromRuns(seq.map((k) => [k, 18]));
+  const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'auto');
+  assert.ok(res.doubled, 'should detect octave doubling');
+  // After folding, every voiced pitch sits within one octave.
+  const ks = [];
+  for (let i = 0; i < res.f0.length; i++) if (res.f0[i] > 0) ks.push(Math.round(1200 * Math.log2(res.f0[i] / SA) / 100));
+  const span = Math.max(...ks) - Math.min(...ks);
+  assert.ok(span <= 12, `folded span ${span} should be <= 12 semitones`);
+});
+
+test('stabilizeOctave: leaves a clean single-octave melody alone', () => {
+  const seq = [0, 2, 4, 5, 7, 5, 4, 2, 0];   // step-wise, no octave jumps
+  const { f0, clarity } = trackFromRuns(seq.map((k) => [k, 22]));
+  const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'auto');
+  assert.ok(!res.doubled, 'no doubling should be detected');
+  for (let i = 0; i < f0.length; i++) assert.strictEqual(res.f0[i], f0[i], 'track unchanged');
+});
+
+test('stabilizeOctave: off mode is a no-op', () => {
+  const { f0, clarity } = trackFromRuns([[0, 18], [12, 18], [0, 18], [12, 18]]);
+  const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'off');
+  assert.ok(!res.doubled);
+  for (let i = 0; i < f0.length; i++) assert.strictEqual(res.f0[i], f0[i]);
+});
+
 /* ----------------------------- onsets ----------------------------- */
 
 test('detectOnsets: fires once per re-articulated syllable, not on a steady vowel', () => {

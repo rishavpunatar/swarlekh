@@ -13,7 +13,7 @@
     tonicCard: $('tonicCard'), tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
     tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
-    notation: $('notation'),
+    nowStrip: $('nowStrip'), notation: $('notation'),
     copyBtn: $('copyBtn'), dlTxtBtn: $('dlTxtBtn'), dlJsonBtn: $('dlJsonBtn'), dlWavBtn: $('dlWavBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
@@ -32,13 +32,14 @@
     pxPerSec: 90, scrollSec: 0, centsLo: -700, centsHi: 1900,
     playing: false,
     semitones: 0, fileMono: null, fileSr: 16000,
+    f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
     opts: { clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45, clean: true, onsets: [] },
   };
 
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=5';
+  const WORKER_URL = 'js/worker.js?v=6';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -51,6 +52,7 @@
   let rafId = 0;
   let activeLineIdx = -1;
   let activeTokIdx = -1;
+  let nowStripLine = -1;
 
   const origEl = new Audio();
   const synthEl = new Audio();
@@ -183,13 +185,16 @@
       const result = await runWorker(new Float32Array(mono), targetSr);
       if (!result.f0.length) throw new Error('This clip is too short to analyze.');
 
-      state.f0 = result.f0;
+      state.f0auto = result.f0;            // worker's auto-stabilized track
+      state.f0raw = result.f0raw;          // raw track (octaves as heard)
+      state.octaveDoubled = !!result.doubled;
       state.clarity = result.clarity;
       state.hopSec = result.hopSec;
       state.sr = result.sr;
       state.tonicCands = result.tonic;
       state.opts.onsets = result.onsets || [];
       state.opts.rms = result.rms;
+      applyOctaveMode(false);
       state.synthDuration = result.synth.length / targetSr;
 
       setStage('Building notation…', 0.96);
@@ -214,6 +219,8 @@
       state.ready = true;
       if (result.tonic[0].uncertain) {
         toast('Sa may be off — check it with the Drone (see the note below the tonic).');
+      } else if (state.octaveDoubled) {
+        toast('Two octave-apart voices detected — merged into one. Change with “Octave” in settings.');
       }
     } catch (err) {
       els.progressCard.hidden = true;
@@ -338,6 +345,21 @@
 
   /* ----------------------------- notation ----------------------------- */
 
+  // Choose which pitch track to show, per state.octaveMode. 'auto' uses the
+  // worker's already-stabilized track; 'force' folds the raw track always;
+  // 'off' shows the octaves exactly as heard.
+  function applyOctaveMode(reflow) {
+    if (!state.f0raw) return;
+    if (state.octaveMode === 'off') {
+      state.f0 = state.f0raw;
+    } else if (state.octaveMode === 'force') {
+      state.f0 = DSP.stabilizeOctave(state.f0raw, state.clarity, state.opts.rms, state.hopSec, 'force').f0;
+    } else {
+      state.f0 = state.f0auto;
+    }
+    if (reflow) renotateNow();
+  }
+
   function renotateNow() {
     if (!state.f0) return;
     const res = DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, state.opts);
@@ -384,6 +406,7 @@
     activeTokIdx = -1;
     let flatIdx = 0;
     state.phrases.forEach((ph, phIdx) => {
+      ph._start = flatIdx;   // global index of this line's first token
       if (ph.section && phIdx > 0) {
         const gap = document.createElement('div');
         gap.className = 'section-gap';
@@ -453,14 +476,49 @@
       }
       els.notation.appendChild(row);
     });
+    nowStripLine = -1;
+    els.nowStrip.innerHTML = '<span class="now-empty">press play — the sung swara shows here, big</span>';
   }
 
-  els.notation.addEventListener('click', (e) => {
+  // Big live readout: render the current line's swaras large; highlight + centre
+  // the one being sung. Builds one swara span (octave dots, komal, ornament tag).
+  function renderNowStrip(lineIdx) {
+    els.nowStrip.textContent = '';
+    const ph = state.phrases[lineIdx];
+    if (!ph) { els.nowStrip.innerHTML = '<span class="now-empty">…</span>'; return; }
+    ph.tokens.forEach((tk, li) => {
+      const s = DSP.swaraInfo(tk.k);
+      const span = document.createElement('span');
+      span.className = 'now-tok' + (s.komal ? ' komal' : '');
+      const oct = Math.max(-2, Math.min(2, s.octave));
+      if (oct !== 0) span.dataset.oct = String(oct);
+      const pre = tk.kan || tk.murki;
+      if (pre) {
+        const o = document.createElement('span');
+        o.className = 'now-orn';
+        o.textContent = '(' + pre.map((k) => DSP.tokenText(k, false)).join('') + ')';
+        span.appendChild(o);
+      }
+      span.appendChild(document.createTextNode(s.letter));
+      if (tk.graceAfter) {
+        const o = document.createElement('span');
+        o.className = 'now-orn';
+        o.textContent = '(' + tk.graceAfter.map((k) => DSP.tokenText(k, false)).join('') + ')';
+        span.appendChild(o);
+      }
+      span.dataset.i = String(ph._start + li);
+      els.nowStrip.appendChild(span);
+    });
+  }
+
+  els.notation.addEventListener('click', seekFromTokenEl);
+  els.nowStrip.addEventListener('click', seekFromTokenEl);
+  function seekFromTokenEl(e) {
     const t = e.target.closest('[data-i]');
     if (!t) return;
     const tk = state.tokens[parseInt(t.dataset.i, 10)];
     if (tk) seek(tk.t0 + 0.005);
-  });
+  }
 
   function updateStats() {
     if (!state.f0) return;
@@ -564,6 +622,12 @@
   }
 
   /* ----------------------------- settings ----------------------------- */
+
+  const octaveSel = $('octaveSel');
+  octaveSel.addEventListener('change', () => {
+    state.octaveMode = octaveSel.value;
+    applyOctaveMode(true);
+  });
 
   const detailSel = $('detailSel');
   detailSel.addEventListener('change', () => {
@@ -860,11 +924,24 @@
         }
       }
     }
+    // Big live readout follows the current line.
+    if (lineIdx !== nowStripLine) {
+      nowStripLine = lineIdx;
+      if (lineIdx >= 0) renderNowStrip(lineIdx);
+      else els.nowStrip.innerHTML = '<span class="now-empty">…</span>';
+    }
     if (tokIdx !== activeTokIdx) {
       els.notation.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
+      els.nowStrip.querySelectorAll('.now-active').forEach(el => el.classList.remove('now-active'));
       activeTokIdx = tokIdx;
       if (tokIdx >= 0) {
         els.notation.querySelectorAll(`[data-i="${tokIdx}"]`).forEach(el => el.classList.add('active'));
+        const big = els.nowStrip.querySelector(`[data-i="${tokIdx}"]`);
+        if (big) {
+          big.classList.add('now-active');
+          const s = els.nowStrip;
+          s.scrollTo({ left: big.offsetLeft - s.clientWidth / 2 + big.offsetWidth / 2, behavior: 'smooth' });
+        }
       }
     }
   }

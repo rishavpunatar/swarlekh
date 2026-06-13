@@ -321,6 +321,63 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Octave stabilization: when a recording carries a second voice an
+   * octave away (a duet in octaves, a teacher+student) or the tracker
+   * flips between them, the melody jumps octaves and the register reads
+   * as confusing. Fold every voiced frame into the dominant one-octave
+   * band so it reads as a single line ("just take one voice").
+   *   mode 'auto'  — fold only if octave-flipping is detected
+   *   mode 'force' — always fold to one octave
+   *   mode 'off'   — leave untouched
+   * Returns { f0: newTrack, doubled }.
+   * ---------------------------------------------------------------- */
+
+  function stabilizeOctave(f0, clarity, rms, hopSec, mode) {
+    const n = f0.length;
+    const out = new Float32Array(f0);
+    if (mode === 'off') return { f0: out, doubled: false };
+
+    const idx = [], cents = [], wts = [];
+    for (let i = 0; i < n; i++) {
+      if (f0[i] > 0 && clarity[i] >= 0.5) {
+        idx.push(i);
+        cents.push(1200 * Math.log2(f0[i] / 55));
+        wts.push(clarity[i] * clarity[i] * (rms ? Math.min(1, rms[i] || 0) + 0.05 : 1));
+      }
+    }
+    if (idx.length < 20) return { f0: out, doubled: false };
+
+    // How often does the line jump by ~an octave? Look across short
+    // articulation gaps (up to ~0.16 s) so note-to-note octave alternation
+    // counts, but not across phrase breaths.
+    const gapLim = Math.max(3, Math.round(0.16 / hopSec));
+    let jumps = 0, moves = 0;
+    for (let j = 1; j < idx.length; j++) {
+      if (idx[j] - idx[j - 1] > gapLim) continue;
+      const d = Math.abs(cents[j] - cents[j - 1]);
+      if (d > 250) moves++;
+      if (Math.abs(d - 1200) < 170) jumps++;
+    }
+    const doubled = moves >= 4 && jumps / moves >= 0.18;
+    if (mode !== 'force' && !doubled) return { f0: out, doubled: false };
+
+    // Dominant register = weighted median of the voiced pitch.
+    const order = cents.map((_, j) => j).sort((a, b) => cents[a] - cents[b]);
+    const total = wts.reduce((a, b) => a + b, 0);
+    let acc = 0, center = cents[order[order.length >> 1]];
+    for (const j of order) { acc += wts[j]; if (acc >= total / 2) { center = cents[j]; break; } }
+
+    // Fold every voiced frame into [center-600, center+600).
+    for (let k = 0; k < idx.length; k++) {
+      let c = cents[k];
+      while (c < center - 600) c += 1200;
+      while (c >= center + 600) c -= 1200;
+      out[idx[k]] = 55 * Math.pow(2, c / 1200);
+    }
+    return { f0: out, doubled: true };
+  }
+
+  /* ---------------------------------------------------------------- *
    * Onset detection: spectral flux in the vocal band, with adaptive
    * peak picking. Each peak is a syllable/word articulation, so every
    * vocalised start can become its own note — even when the pitch
@@ -1122,7 +1179,7 @@
   }
 
   return {
-    preFilter, yinTrack, detectOnsets, detectTonic, notate, notationText,
+    preFilter, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notationText,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     pitchShift, timeStretch, resampleLinear,
     SWARA_LETTERS,

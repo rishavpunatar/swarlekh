@@ -78,6 +78,13 @@
         </div>
       </section>
 
+      <section id="nowCard" class="card">
+        <div class="now-row">
+          <span class="card-label">Now singing</span>
+          <div id="nowStrip" class="now-strip"><span class="now-empty">press play — the sung swara shows here, big</span></div>
+        </div>
+      </section>
+
       <section id="tonicCard" class="card">
         <div class="tonic-row">
           <span class="card-label">Sa (tonic)</span>
@@ -137,6 +144,13 @@
               <option value="raw">Simple — main notes only</option>
             </select>
           </label>
+          <label class="ctl">Octave
+            <select id="octaveSel">
+              <option value="auto" selected>Auto — merge doubled voice</option>
+              <option value="force">Single — force one octave</option>
+              <option value="off">Off — keep as heard</option>
+            </select>
+          </label>
           <label class="ctl slider-ctl">Voicing strictness
             <input type="range" id="sensSlider" min="0.30" max="0.75" step="0.01" value="0.50">
             <span id="sensVal" class="muted">0.50</span>
@@ -161,8 +175,8 @@
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=5"></script>
-  <script src="js/dsp.js?v=5"></script>
-  <script src="js/main.js?v=5"></script>
+  <script src="js/fft.js?v=6"></script>
+  <script src="js/dsp.js?v=6"></script>
+  <script src="js/main.js?v=6"></script>
 </body>
 </html>
