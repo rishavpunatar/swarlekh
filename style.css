@@ -151,6 +151,13 @@ header {
 .now-tok[data-oct="-1"]::after, .now-tok[data-oct="-2"]::after { content: "•"; bottom: -2px; }
 .now-tok[data-oct="-2"]::after { content: "••"; }
 
+/* Devanagari script: give swara glyphs a Devanagari-capable system font and
+   a touch more line height so octave dots/underlines clear the shirorekha. */
+body.deva .tok, body.deva .now-tok, body.deva .swar-letter {
+  font-family: 'Noto Sans Devanagari', 'Noto Serif Devanagari', 'Kohinoor Devanagari', 'Devanagari MT', sans-serif;
+}
+body.deva .now-strip { line-height: 1.5; }
+
 /* First-run guide */
 .intro { background: var(--accent-soft); border-color: var(--accent); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .intro-steps { display: flex; gap: 18px; flex-wrap: wrap; flex: 1; font-size: 13px; color: var(--text); }
@@ -163,6 +170,21 @@ header {
 .legend-details .legend { margin-top: 6px; }
 
 /* Raag analysis */
+.raga-guess { margin-bottom: 16px; }
+.guess-head { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.guess-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.guess {
+  display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px;
+  background: var(--card); min-width: 150px; max-width: 280px;
+}
+.guess.top { border-color: var(--accent); background: var(--accent-soft); flex: 1; }
+.g-name { font-size: 17px; font-weight: 600; color: var(--text); }
+.guess.top .g-name { color: var(--accent); }
+.g-conf { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.g-likely { color: #2e8b57; } .g-possibly { color: var(--accent); } .g-a { color: var(--muted); } .g-weak { color: var(--muted); }
+.g-why { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.g-dist { font-size: 11.5px; color: var(--text); margin-top: 4px; line-height: 1.4; }
 .raga-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
 .raga-thaat { font-size: 14px; color: var(--accent); font-weight: 600; }
 .swar-palette { display: flex; gap: 5px; align-items: flex-end; flex-wrap: wrap; }

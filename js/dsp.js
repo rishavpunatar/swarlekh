@@ -55,6 +55,83 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Lightweight HPSS (Fitzgerald median-filtering). Returns a new
+   * Float32Array with only the HARMONIC (sustained-pitch) component, so
+   * tabla/percussion transients are suppressed before pitch tracking.
+   * Original phase preserved; a mask floor guarantees the voice is never
+   * fully removed. Runs in the worker before the band-pass.
+   * ---------------------------------------------------------------- */
+  function hpssHarmonic(samples, sr, opts) {
+    opts = opts || {};
+    const N = opts.N || 1024;       // 64 ms window @ 16 kHz
+    const H = opts.H || 256;        // 16 ms hop (75% overlap)
+    const Lh = opts.Lh || 17;       // horizontal (time) median length, odd
+    const Lp = opts.Lp || 17;       // vertical (freq) median length, odd
+    const beta = (opts.beta != null) ? opts.beta : 0.10; // mask floor
+    const progress = opts.progress;
+    const x = samples;
+    const Nh = N >> 1;
+    const nFrames = x.length >= N ? Math.floor((x.length - N) / H) + 1 : 0;
+    if (nFrames <= 0) return new Float32Array(x);
+
+    const win = new Float32Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+    const nBins = Nh + 1;
+    const mag = new Float32Array(nFrames * nBins);
+    const reS = new Float32Array(nFrames * nBins);
+    const imS = new Float32Array(nFrames * nBins);
+    const re = new Float32Array(N), im = new Float32Array(N);
+
+    for (let f = 0; f < nFrames; f++) {
+      const off = f * H, base = f * nBins;
+      for (let i = 0; i < N; i++) { re[i] = x[off + i] * win[i]; im[i] = 0; }
+      fft(re, im, false);
+      for (let k = 0; k < nBins; k++) {
+        const r = re[k], iq = im[k];
+        reS[base + k] = r; imS[base + k] = iq; mag[base + k] = Math.sqrt(r * r + iq * iq);
+      }
+      if (progress && (f & 255) === 0) progress(0.45 * f / nFrames);
+    }
+
+    const halfH = Lh >> 1, halfP = Lp >> 1;
+    const bufH = new Float32Array(Lh), bufP = new Float32Array(Lp);
+    const medianOf = (buf, m) => {
+      for (let i = 1; i < m; i++) { const v = buf[i]; let j = i - 1; while (j >= 0 && buf[j] > v) { buf[j + 1] = buf[j]; j--; } buf[j + 1] = v; }
+      return buf[m >> 1];
+    };
+
+    const outLen = (nFrames - 1) * H + N;
+    const out = new Float32Array(outLen), norm = new Float32Array(outLen);
+
+    for (let f = 0; f < nFrames; f++) {
+      const base = f * nBins, t0 = Math.max(0, f - halfH), t1 = Math.min(nFrames - 1, f + halfH);
+      for (let k = 0; k < nBins; k++) {
+        let m = 0;
+        for (let t = t0; t <= t1; t++) bufH[m++] = mag[t * nBins + k];
+        const Hmag = medianOf(bufH, m);
+        const k0 = Math.max(0, k - halfP), k1 = Math.min(nBins - 1, k + halfP);
+        let mp = 0;
+        for (let kk = k0; kk <= k1; kk++) bufP[mp++] = mag[base + kk];
+        const Pmag = medianOf(bufP, mp);
+        let Mh = Hmag / (Hmag + Pmag + 1e-12);
+        if (Mh < beta) Mh = beta;
+        re[k] = reS[base + k] * Mh; im[k] = imS[base + k] * Mh;
+      }
+      for (let k = 1; k < Nh; k++) { re[N - k] = re[k]; im[N - k] = -im[k]; }
+      im[0] = 0; im[Nh] = 0;
+      fft(re, im, true);
+      const so = f * H;
+      for (let i = 0; i < N; i++) { out[so + i] += re[i] * win[i]; norm[so + i] += win[i] * win[i]; }
+      if (progress && (f & 255) === 0) progress(0.45 + 0.55 * f / nFrames);
+    }
+    for (let i = 0; i < outLen; i++) if (norm[i] > 1e-6) out[i] /= norm[i];
+    if (out.length === x.length) return out;
+    const fixed = new Float32Array(x.length);
+    fixed.set(out.subarray(0, Math.min(out.length, x.length)));
+    return fixed;
+  }
+
+  /* ---------------------------------------------------------------- *
    * Fast YIN: difference function via FFT cross-correlation, CMNDF,
    * multiple candidates per frame, then Viterbi over candidates for a
    * smooth melody line with an explicit unvoiced state.
@@ -1314,7 +1391,10 @@
     const jati = aaroh.length && avaroh.length
       ? `${jatiName(aaroh.length)}–${jatiName(avaroh.length)}` : null;
 
-    return { swaras, thaat, aaroh, avaroh, vadi, samvadi, nyas, jati, total };
+    // Ordered pitch-class sequence (octave-agnostic) for pakad/phrase matching.
+    const seq = tokens.map((t) => pcOf(t.k));
+
+    return { swaras, thaat, aaroh, avaroh, vadi, samvadi, nyas, jati, seq, total };
   }
 
   /* ---------------------------------------------------------------- *
@@ -1445,7 +1525,7 @@
   }
 
   return {
-    preFilter, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notationText, analyzeRaga,
+    preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notationText, analyzeRaga,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     pitchShift, timeStretch, resampleLinear,
     SWARA_LETTERS,

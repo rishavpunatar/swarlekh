@@ -100,6 +100,7 @@
           <span class="card-label">Raag analysis</span>
           <span id="ragaThaat" class="raga-thaat"></span>
         </div>
+        <div id="ragaGuess" class="raga-guess"></div>
         <div id="swarPalette" class="swar-palette"></div>
         <div id="ragaGrammar" class="raga-grammar"></div>
         <p class="hint">The swaras this recording uses, sized by how much they’re sung. Tap one to highlight every place it appears. Thaat is the scale family (not a definitive raag); intonation shows how each komal/teevra swara is actually pitched.</p>
@@ -174,6 +175,12 @@
               <option value="off">Off — keep as heard</option>
             </select>
           </label>
+          <label class="ctl">Script
+            <select id="scriptSel">
+              <option value="latin" selected>Latin (S R G m P)</option>
+              <option value="devanagari">Devanagari (स रे ग म प)</option>
+            </select>
+          </label>
           <label class="ctl slider-ctl">Voicing strictness
             <input type="range" id="sensSlider" min="0.30" max="0.75" step="0.01" value="0.50">
             <span id="sensVal" class="muted">0.50</span>
@@ -198,8 +205,10 @@
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=8"></script>
-  <script src="js/dsp.js?v=8"></script>
-  <script src="js/main.js?v=8"></script>
+  <script src="js/fft.js?v=9"></script>
+  <script src="js/dsp.js?v=9"></script>
+  <script src="js/ragas.js?v=9"></script>
+  <script src="js/ragaId.js?v=9"></script>
+  <script src="js/main.js?v=9"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@
     resultArea: $('resultArea'),
     playBtn: $('playBtn'), timeDisp: $('timeDisp'), speedSel: $('speedSel'), sourceSel: $('sourceSel'),
     loopABtn: $('loopABtn'), loopBBtn: $('loopBBtn'), loopClearBtn: $('loopClearBtn'), loopDisp: $('loopDisp'),
-    ragaThaat: $('ragaThaat'), swarPalette: $('swarPalette'), ragaGrammar: $('ragaGrammar'),
+    ragaThaat: $('ragaThaat'), ragaGuess: $('ragaGuess'), swarPalette: $('swarPalette'), ragaGrammar: $('ragaGrammar'),
     tonicCard: $('tonicCard'), tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
     tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
@@ -34,14 +34,14 @@
     playing: false,
     semitones: 0, fileMono: null, fileSr: 16000,
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
-    raga: null, highlightPc: null,
+    raga: null, highlightPc: null, ragaMatches: [], script: 'latin',
     opts: { clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45, clean: true, onsets: [] },
   };
 
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=8';
+  const WORKER_URL = 'js/worker.js?v=9';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -383,6 +383,8 @@
     state.tokens = res.tokens;
     state.phrases = res.phrases;
     state.raga = DSP.analyzeRaga(res.tokens, res.phrases);
+    state.ragaMatches = (state.raga && window.RagaId && window.RAGAS)
+      ? RagaId.rankRagas(state.raga, RAGAS).filter((m) => m.score > 0.05).slice(0, 4) : [];
     computeScale();
     computeCentsRange();
     renderRaga();
@@ -421,11 +423,57 @@
 
   const swLetter = (pc) => DSP.swaraInfo(((pc % 12) + 12) % 12).letter;
 
+  // Devanagari swara glyphs (base akshara; komal/teevra/octave shown by marks).
+  const DEVA = { S: 'स', R: 'रे', G: 'ग', M: 'म', P: 'प', D: 'ध', N: 'नि' };
+  // The glyph for a swara letter under the current script.
+  function glyph(letter) {
+    if (state.script !== 'devanagari') return letter;
+    return DEVA[letter.toUpperCase()] || letter;
+  }
+  // Full swara glyph with octave marks (script-aware); used for inline paths.
+  function tokenGlyph(k) {
+    const s = DSP.swaraInfo(k);
+    let t = glyph(s.letter);
+    if (s.octave > 0) t += "'".repeat(s.octave);
+    else if (s.octave < 0) t = '.'.repeat(-s.octave) + t;
+    return t;
+  }
+
   // A glide's path trimmed to its in-scale swaras (keep the endpoints).
   function viaDisplay(via) {
     const sc = state.scale;
     if (!sc || !via || via.length <= 2) return via || [];
     return via.filter((k, i) => i === 0 || i === via.length - 1 || sc.has(((k % 12) + 12) % 12));
+  }
+
+  const confWord = (c) => (c >= 0.75 ? 'likely' : c >= 0.5 ? 'possibly' : c >= 0.3 ? 'a guess' : 'weak match');
+
+  // "This sounds like…" — ranked raga suggestions (never a single verdict).
+  function renderRagaGuess() {
+    const m = state.ragaMatches || [];
+    els.ragaGuess.textContent = '';
+    if (!m.length) return;
+    const head = document.createElement('div');
+    head.className = 'guess-head';
+    head.innerHTML = m[0].ambiguous
+      ? 'Sounds like one of these <span class="muted">— same scale; tell them apart by the phrase &amp; resting note</span>'
+      : 'Sounds like…';
+    els.ragaGuess.appendChild(head);
+    const row = document.createElement('div');
+    row.className = 'guess-row';
+    m.forEach((cand, i) => {
+      const db = (window.RAGAS || []).find((r) => r.name === cand.name);
+      const chip = document.createElement('div');
+      chip.className = 'guess' + (i === 0 ? ' top' : '');
+      const conf = confWord(cand.confidence);
+      chip.innerHTML =
+        `<span class="g-name">${cand.name}</span>` +
+        `<span class="g-conf g-${conf.split(' ')[0]}">${conf}</span>` +
+        `<span class="g-why">${cand.rationale}</span>` +
+        (i === 0 && db && db.distinctive ? `<span class="g-dist">${db.distinctive}</span>` : '');
+      row.appendChild(chip);
+    });
+    els.ragaGuess.appendChild(row);
   }
 
   // Raag analysis card: the swar palette + the learner's worksheet (thaat,
@@ -439,6 +487,8 @@
       const tag = c > 0.66 ? '' : c > 0.4 ? ' · approx' : ' · uncertain';
       els.ragaThaat.textContent = (r.thaat.mixed ? 'mixed scale · ' : '') + 'thaat ' + r.thaat.name + tag;
     } else els.ragaThaat.textContent = '';
+
+    renderRagaGuess();
 
     els.swarPalette.textContent = '';
     const byPc = {};
@@ -458,7 +508,7 @@
       cell.appendChild(bar);
       const letter = document.createElement('span');
       letter.className = 'swar-letter';
-      letter.textContent = info.letter;
+      letter.textContent = glyph(info.letter);
       cell.appendChild(letter);
       if (used && Math.abs(used.devCents) >= 6) {   // show real intonation, not rounding noise
         const dev = document.createElement('span');
@@ -535,7 +585,7 @@
           g.className = 'tok glide';
           g.dataset.i = String(flatIdx);
           g.dataset.pc = String(((tk.k % 12) + 12) % 12);
-          g.textContent = viaDisplay(tk.via).map((k) => DSP.tokenText(k, false)).join('⌒');
+          g.textContent = viaDisplay(tk.via).map((k) => tokenGlyph(k)).join('⌒');
           g.title = `meend through ${viaDisplay(tk.via).map((k) => DSP.tokenText(k)).join(' ')} · ${fmtTime(tk.t0, true)}`;
           row.appendChild(g);
           flatIdx++;
@@ -546,7 +596,7 @@
           conn.className = 'meend-conn';
           // Show the swaras the glide passes through, not just an arc.
           const v = viaDisplay(tk.via);
-          const mid = v.length > 2 ? v.slice(1, -1).map((k) => DSP.tokenText(k, false)).join('⌒') : '';
+          const mid = v.length > 2 ? v.slice(1, -1).map((k) => tokenGlyph(k)).join('⌒') : '';
           conn.textContent = mid ? '⌒' + mid + '⌒' : '⌒';
           conn.title = 'meend (glide)';
           conn.dataset.i = String(flatIdx);
@@ -561,7 +611,7 @@
         if (pre) {
           const o = document.createElement('span');
           o.className = 'orn';
-          o.textContent = '(' + pre.map(k => DSP.tokenText(k, false)).join('') + ')';
+          o.textContent = '(' + pre.map(k => glyph(DSP.swaraInfo(k).letter)).join('') + ')';
           o.title = tk.kan ? 'kan (grace note)' : 'murki';
           span.appendChild(o);
         }
@@ -572,18 +622,18 @@
           mm.title = 'glide within the note';
           span.appendChild(mm);
         }
-        span.appendChild(document.createTextNode(s.letter));
+        span.appendChild(document.createTextNode(glyph(s.letter)));
         if (tk.andolan && tk.andolanLo != null && (tk.andolanHi > tk.k || tk.andolanLo < tk.k)) {
           const o = document.createElement('span');
           o.className = 'orn';
-          o.textContent = '(' + DSP.tokenText(tk.andolanLo, false) + '–' + DSP.tokenText(tk.andolanHi, false) + ')';
+          o.textContent = '(' + glyph(DSP.swaraInfo(tk.andolanLo).letter) + '–' + glyph(DSP.swaraInfo(tk.andolanHi).letter) + ')';
           o.title = 'andolan swings between these swaras';
           span.appendChild(o);
         }
         if (tk.graceAfter) {
           const o = document.createElement('span');
           o.className = 'orn';
-          o.textContent = '(' + tk.graceAfter.map(k => DSP.tokenText(k, false)).join('') + ')';
+          o.textContent = '(' + tk.graceAfter.map(k => glyph(DSP.swaraInfo(k).letter)).join('') + ')';
           o.title = 'grace after the note';
           span.appendChild(o);
         }
@@ -623,14 +673,14 @@
       if (pre) {
         const o = document.createElement('span');
         o.className = 'now-orn';
-        o.textContent = '(' + pre.map((k) => DSP.tokenText(k, false)).join('') + ')';
+        o.textContent = '(' + pre.map((k) => glyph(DSP.swaraInfo(k).letter)).join('') + ')';
         span.appendChild(o);
       }
-      span.appendChild(document.createTextNode(s.letter));
+      span.appendChild(document.createTextNode(tk.glide && tk.via ? viaDisplay(tk.via).map((k) => tokenGlyph(k)).join('⌒') : glyph(s.letter)));
       if (tk.graceAfter) {
         const o = document.createElement('span');
         o.className = 'now-orn';
-        o.textContent = '(' + tk.graceAfter.map((k) => DSP.tokenText(k, false)).join('') + ')';
+        o.textContent = '(' + tk.graceAfter.map((k) => glyph(DSP.swaraInfo(k).letter)).join('') + ')';
         span.appendChild(o);
       }
       span.dataset.i = String(ph._start + li);
@@ -754,6 +804,13 @@
   octaveSel.addEventListener('change', () => {
     state.octaveMode = octaveSel.value;
     applyOctaveMode(true);
+  });
+
+  const scriptSel = $('scriptSel');
+  scriptSel.addEventListener('change', () => {
+    state.script = scriptSel.value;
+    document.body.classList.toggle('deva', state.script === 'devanagari');
+    if (state.ready) { renderRaga(); renderNotation(); nowStripLine = -1; }
   });
 
   const detailSel = $('detailSel');

@@ -25,8 +25,11 @@ self.onmessage = function (e) {
   try {
     const prog = (stage, frac) => self.postMessage({ type: 'progress', stage, frac });
 
+    // Suppress tabla/percussion transients first (harmonic component only),
+    // then band-limit to the vocal range.
     prog('filter', 0);
-    const filtered = DSP.preFilter(samples, sr);
+    const harmonic = DSP.hpssHarmonic(samples, sr, { progress: (f) => prog('filter', f * 0.5) });
+    const filtered = DSP.preFilter(harmonic, sr);
 
     prog('pitch', 0);
     const track = DSP.yinTrack(filtered, sr, {}, (f) => prog('pitch', f));

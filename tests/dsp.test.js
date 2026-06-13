@@ -506,6 +506,54 @@ test('detectTonic: ambiguous Pa-centric fragment still surfaces Sa in top-3 + fl
   assert.ok(c[0].uncertain, 'a close fifth-symmetry call should be flagged uncertain');
 });
 
+/* ----------------------------- raga ID ----------------------------- */
+
+const RAGAS = require('../js/ragas.js');
+const RagaId = require('../js/ragaId.js');
+
+// Build a fake analyzeRaga output from a swara-letter sequence.
+function fakeAnalysis(seqLetters, vadi, samvadi) {
+  const L = { S: 0, r: 1, R: 2, g: 3, G: 4, m: 5, M: 6, P: 7, d: 8, D: 9, n: 10, N: 11 };
+  const seq = seqLetters.map((x) => L[x]);
+  const w = {}; seq.forEach((pc) => { w[pc] = (w[pc] || 0) + 1; });
+  const swaras = Object.keys(w).map((pc) => ({ pc: +pc, weight: w[pc] / seq.length, devCents: 0 }));
+  const up = new Set(), dn = new Set();
+  for (let i = 1; i < seq.length; i++) { if (seq[i] > seq[i - 1]) { up.add(seq[i - 1]); up.add(seq[i]); } else if (seq[i] < seq[i - 1]) { dn.add(seq[i - 1]); dn.add(seq[i]); } }
+  return { swaras, seq, vadi: L[vadi], samvadi: L[samvadi], aaroh: [...up], avaroh: [...dn], total: seq.length * 0.5 };
+}
+
+test('ragaId: the DB loads and is well-formed', () => {
+  assert.ok(RAGAS.length >= 30, `expected 30+ ragas, got ${RAGAS.length}`);
+  for (const r of RAGAS) {
+    assert.ok(r.name && r.thaat && Array.isArray(r.scalePcs) && r.scalePcs.length, `bad raga ${r.name}`);
+    assert.ok(Array.isArray(r.pakad), `${r.name} pakad`);
+  }
+  assert.ok(RAGAS.some((r) => r.name === 'Yaman') && RAGAS.some((r) => r.name === 'Bhairav'));
+});
+
+test('ragaId: identifies Yaman from its scale + pakad + vadi', () => {
+  // teevra Ma scale, vadi G samvadi N, with the "N R G M D N S" ascent + pakad.
+  const a = fakeAnalysis(['N', 'R', 'G', 'M', 'D', 'N', 'S', 'N', 'D', 'P', 'M', 'G', 'R', 'S', 'P', 'M', 'G', 'R', 'S'], 'G', 'N');
+  const ranked = RagaId.rankRagas(a, RAGAS);
+  assert.strictEqual(ranked[0].name, 'Yaman', `top=${ranked.slice(0, 3).map((x) => x.name)}`);
+  assert.ok(ranked[0].confidence > 0.4);
+});
+
+test('ragaId: identifies Bhairav; a foreign note demotes a wrong-scale raga', () => {
+  const a = fakeAnalysis(['S', 'r', 'G', 'm', 'P', 'd', 'N', 'S', 'N', 'd', 'P', 'm', 'G', 'r', 'S'], 'd', 'r');
+  const ranked = RagaId.rankRagas(a, RAGAS);
+  assert.strictEqual(ranked[0].name, 'Bhairav', `top=${ranked.slice(0, 3).map((x) => x.name)}`);
+  // Yaman (teevra Ma, shuddh notes) must rank far below — its scale is foreign here.
+  const yaman = ranked.find((x) => x.name === 'Yaman');
+  assert.ok(yaman.score < ranked[0].score * 0.6, 'Yaman should be strongly demoted for Bhairav input');
+});
+
+test('ragaId: confidence never reaches 1 (suggestion, not verdict)', () => {
+  const a = fakeAnalysis(['S', 'R', 'G', 'P', 'D', 'S', 'D', 'P', 'G', 'R', 'S'], 'G', 'D');
+  const ranked = RagaId.rankRagas(a, RAGAS);
+  for (const r of ranked) assert.ok(r.confidence <= 0.95, `${r.name} conf ${r.confidence}`);
+});
+
 /* ----------------------------- meend (glide) ----------------------------- */
 
 test('meend: a slow continuous glide becomes ONE meend listing every swara', () => {
@@ -627,6 +675,44 @@ test('stabilizeOctave: off mode is a no-op', () => {
   const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'off');
   assert.ok(!res.doubled);
   for (let i = 0; i < f0.length; i++) assert.strictEqual(res.f0[i], f0[i]);
+});
+
+/* ----------------------------- HPSS ----------------------------- */
+
+const rms = (a, s, e) => { let x = 0, n = 0; for (let i = s; i < e; i++) { x += a[i] * a[i]; n++; } return Math.sqrt(x / n); };
+
+test('hpssHarmonic: preserves a sustained tone, suppresses broadband percussion', () => {
+  // Sustained 300 Hz tone → harmonic component should survive.
+  const tone = new Float32Array(Math.round(1.6 * SR));
+  sine(tone, 300, 0.05, 1.55, 0.5, VOICE_H);
+  const hTone = DSP.hpssHarmonic(tone, SR);
+  const keep = rms(hTone, 4000, 20000) / rms(tone, 4000, 20000);
+  assert.ok(keep > 0.7, `sustained tone should be preserved (kept ${keep.toFixed(2)})`);
+
+  // Broadband noise (percussion-like) → should be attenuated.
+  let seed = 99;
+  const noise = new Float32Array(Math.round(1.6 * SR));
+  for (let i = 0; i < noise.length; i++) { seed = (seed * 1103515245 + 12345) & 0x7fffffff; noise[i] = (seed / 0x7fffffff - 0.5); }
+  const hNoise = DSP.hpssHarmonic(noise, SR);
+  const drop = rms(hNoise, 4000, 20000) / rms(noise, 4000, 20000);
+  assert.ok(drop < 0.7, `broadband noise should be attenuated (kept ${drop.toFixed(2)})`);
+});
+
+test('hpssHarmonic: a tone hidden under percussion stays trackable', () => {
+  // 220 Hz voice + periodic tabla-like noise bursts; HPSS then track.
+  const x = new Float32Array(2 * SR);
+  let ph = 0;
+  for (let i = 0; i < x.length; i++) { ph += 2 * Math.PI * 220 / SR; x[i] = 0.4 * (Math.sin(ph) + 0.4 * Math.sin(2 * ph)); }
+  let seed = 7;
+  for (let t = 0.2; t < 2; t += 0.4) {
+    const s0 = Math.round(t * SR);
+    for (let i = 0; i < Math.round(0.03 * SR); i++) { seed = (seed * 1103515245 + 12345) & 0x7fffffff; if (s0 + i < x.length) x[s0 + i] += 0.8 * (seed / 0x7fffffff - 0.5) * Math.exp(-i / (0.008 * SR)); }
+  }
+  const h = DSP.hpssHarmonic(x, SR);
+  const { f0 } = DSP.yinTrack(h, SR, {});
+  let ok = 0, tot = 0;
+  for (let i = 10; i < f0.length - 10; i++) if (f0[i] > 0) { tot++; if (Math.abs(1200 * Math.log2(f0[i] / 220)) < 40) ok++; }
+  assert.ok(tot > 50 && ok / tot > 0.85, `voice under percussion tracked ${(ok / tot * 100).toFixed(0)}%`);
 });
 
 /* ----------------------------- onsets ----------------------------- */
