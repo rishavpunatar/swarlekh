@@ -38,6 +38,7 @@
   let origUrl = null, synthUrl = null;
   let rafId = 0;
   let activeLineIdx = -1;
+  let activeTokIdx = -1;
 
   const origEl = new Audio();
   const synthEl = new Audio();
@@ -316,6 +317,7 @@
   function renderNotation() {
     els.notation.textContent = '';
     activeLineIdx = -1;
+    activeTokIdx = -1;
     let flatIdx = 0;
     state.phrases.forEach((ph, phIdx) => {
       if (ph.section && phIdx > 0) {
@@ -629,33 +631,51 @@
       }
     }
     updateTimeDisp();
-    drawCanvas();
     highlightActive(t);
+    drawCanvas();
     if (state.playing) rafId = requestAnimationFrame(tick);
     else rafId = 0;
   }
 
   function highlightActive(t) {
-    // Calm, line-level highlight: mark the verse line being sung, not each swara.
+    // Line tint for context + exact current-swara cursor inside it.
     const phs = state.phrases;
-    let lo = 0, hi = phs.length - 1, idx = -1;
+    let lo = 0, hi = phs.length - 1, lineIdx = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (phs[mid].t0 <= t) { idx = mid; lo = mid + 1; } else hi = mid - 1;
+      if (phs[mid].t0 <= t) { lineIdx = mid; lo = mid + 1; } else hi = mid - 1;
     }
-    if (idx >= 0 && t > phs[idx].t1 + 0.4) idx = -1;
-    if (idx === activeLineIdx) return;
-    els.notation.querySelectorAll('.active-line').forEach(el => el.classList.remove('active-line'));
-    activeLineIdx = idx;
-    if (idx >= 0) {
-      const row = els.notation.querySelector(`.phrase[data-p="${idx}"]`);
-      if (row) {
-        row.classList.add('active-line');
-        const c = els.notation;
-        const top = row.offsetTop - c.offsetTop;
-        if (top < c.scrollTop + 10 || top > c.scrollTop + c.clientHeight - 70) {
-          c.scrollTo({ top: Math.max(0, top - 90), behavior: 'smooth' });
+    if (lineIdx >= 0 && t > phs[lineIdx].t1 + 0.4) lineIdx = -1;
+
+    const toks = state.tokens;
+    lo = 0; hi = toks.length - 1;
+    let tokIdx = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (toks[mid].t0 <= t + 0.02) { tokIdx = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (tokIdx >= 0 && t >= toks[tokIdx].t1 + 0.03) tokIdx = -1;
+
+    if (lineIdx !== activeLineIdx) {
+      els.notation.querySelectorAll('.active-line').forEach(el => el.classList.remove('active-line'));
+      activeLineIdx = lineIdx;
+      if (lineIdx >= 0) {
+        const row = els.notation.querySelector(`.phrase[data-p="${lineIdx}"]`);
+        if (row) {
+          row.classList.add('active-line');
+          const c = els.notation;
+          const top = row.offsetTop - c.offsetTop;
+          if (top < c.scrollTop + 10 || top > c.scrollTop + c.clientHeight - 70) {
+            c.scrollTo({ top: Math.max(0, top - 90), behavior: 'smooth' });
+          }
         }
+      }
+    }
+    if (tokIdx !== activeTokIdx) {
+      els.notation.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
+      activeTokIdx = tokIdx;
+      if (tokIdx >= 0) {
+        els.notation.querySelectorAll(`[data-i="${tokIdx}"]`).forEach(el => el.classList.add('active'));
       }
     }
   }
@@ -767,15 +787,17 @@
     cctx.stroke();
     cctx.globalAlpha = 1;
 
-    // quantized swara bars + ornament mini-bars
-    for (const tk of state.tokens) {
+    // quantized swara bars + ornament mini-bars (current swara emphasized)
+    for (let ti = 0; ti < state.tokens.length; ti++) {
+      const tk = state.tokens[ti];
       if (tk.t1 < scrollSec || tk.t0 > tEnd) continue;
+      const isActive = ti === activeTokIdx;
       cctx.fillStyle = colors.accent;
-      cctx.globalAlpha = 0.55;
+      cctx.globalAlpha = isActive ? 0.95 : 0.55;
       const x = tToX(tk.t0), w = Math.max(2, (tk.t1 - tk.t0) * pxPerSec - 1);
       const y = cToY(tk.k * 100);
       cctx.beginPath();
-      cctx.roundRect(x, y - 4.5, w, 9, 4);
+      cctx.roundRect(x, y - (isActive ? 6 : 4.5), w, isActive ? 12 : 9, 4);
       cctx.fill();
       if (tk.orn) {
         for (const o of tk.orn) {

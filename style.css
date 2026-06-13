@@ -159,7 +159,10 @@ header {
   font-family: Georgia, "Times New Roman", serif;
 }
 .tok:hover { background: var(--tok-bg); }
+.tok.active { background: var(--tok-active); color: #fff; }
 .tok.komal { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; color: var(--komal); }
+.tok.komal.active { color: #fff; }
+.tok.active .orn { color: #ffffffcc; }
 .tok.tivra { border-top: 2px solid var(--accent); border-radius: 0 0 7px 7px; }
 .tok[data-oct="1"]::after, .tok[data-oct="2"]::after {
   content: "•"; position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
@@ -183,6 +186,7 @@ header {
   padding: 0 1px; vertical-align: middle; letter-spacing: -1px;
 }
 .sus { color: var(--muted); font-size: 17px; cursor: pointer; padding: 0 2px; }
+.sus.active { color: var(--accent); font-weight: 700; }
 
 /* Settings */
 .settings-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
