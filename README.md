@@ -41,7 +41,9 @@ mp3 → decode (Web Audio) → mono 16 kHz
       pitch candidates per frame + spectral-flatness percussion gate
     → Viterbi smoothing over candidates with an explicit unvoiced
       state (no octave jumps, drops out between phrases)
-    → tonic histogram → Sa candidates
+    → tonic detection: pitch-class histogram + perfect-fifth structure
+      + phrase-cadence prior (Sa is where phrases begin & resolve) to
+      avoid the classic Sa/Pa confusion → ranked Sa candidates
     → swara quantization with min-note merging → phrases → notation
 ```
 

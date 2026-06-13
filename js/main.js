@@ -10,7 +10,7 @@
     resultArea: $('resultArea'),
     playBtn: $('playBtn'), timeDisp: $('timeDisp'), speedSel: $('speedSel'), sourceSel: $('sourceSel'),
     loopABtn: $('loopABtn'), loopBBtn: $('loopBBtn'), loopClearBtn: $('loopClearBtn'), loopDisp: $('loopDisp'),
-    tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
+    tonicCard: $('tonicCard'), tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
     tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
     notation: $('notation'),
@@ -184,7 +184,9 @@
       applySource();
       updateTimeDisp();
       state.ready = true;
-      if (result.tonic[0].uncertain) toast('Not enough melody found to detect Sa — set it manually.');
+      if (result.tonic[0].uncertain) {
+        toast('Sa may be off — check it with the Drone (see the note below the tonic).');
+      }
     } catch (err) {
       els.progressCard.hidden = true;
       toast(err.message || String(err));
@@ -208,11 +210,26 @@
       b.className = 'chip';
       b.type = 'button';
       b.textContent = `${noteLabel(c.hz)} · ${c.hz.toFixed(1)} Hz${i === 0 ? ' ★' : ''}`;
-      b.title = 'Use this tonic';
+      b.title = i === 0 ? 'Best guess for Sa — verify by ear with the Drone' : 'Alternative Sa — try it with the Drone';
       b.addEventListener('click', () => { state.saHz = c.hz; syncTonicControls(); renotateNow(); });
       els.tonicChips.appendChild(b);
     });
     markSelectedChip();
+    updateTonicHint();
+  }
+
+  function updateTonicHint() {
+    const cands = state.tonicCands;
+    const uncertain = cands[0] && cands[0].uncertain;
+    els.tonicCard.classList.toggle('uncertain', !!uncertain);
+    els.droneBtn.classList.toggle('pulse', !!uncertain && !droneNodes);
+    if (uncertain && cands.length > 1) {
+      els.tonicHint.innerHTML = '⚠️ <b>Sa is a close call</b> — this is usually Sa vs Pa. Tap each candidate above and play the <b>Drone</b> against the song; the right Sa is the note that sounds like “home”.';
+    } else if (uncertain) {
+      els.tonicHint.innerHTML = '⚠️ Couldn’t hear enough clear melody to be sure of Sa. Set it by note below, or play the <b>Drone</b> and match it to the song’s home note.';
+    } else {
+      els.tonicHint.innerHTML = 'Pick the candidate that sounds like the song’s home note — toggle the <b>Drone</b> and listen against the recording.';
+    }
   }
   function markSelectedChip() {
     const chips = els.tonicChips.children;
@@ -253,6 +270,7 @@
     const on = !droneNodes;
     setDrone(on);
     els.droneBtn.classList.toggle('on', on);
+    els.droneBtn.classList.remove('pulse');
   });
 
   function setDrone(on) {
@@ -887,5 +905,6 @@
   });
 
   /* test/debug hook */
-  window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive, _ali: () => activeLineIdx };
+  window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive,
+    _ali: () => activeLineIdx, _renderTonic: renderTonicChips, _syncTonic: syncTonicControls };
 })();

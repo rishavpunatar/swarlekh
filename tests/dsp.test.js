@@ -438,6 +438,58 @@ test('synthesize: produces audio where voiced, silence in gaps', () => {
   for (let i = 0; i < out.length; i++) assert.ok(isFinite(out[i]));
 });
 
+/* ---- tonic robustness: Sa must not be confused with Pa/Ma (fifth symmetry) ---- */
+
+function tonicTrack(saHz, notes) {
+  let n = 0;
+  for (const [, fr] of notes) n += fr;
+  const f0 = new Float32Array(n), clarity = new Float32Array(n);
+  let i = 0, seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff - 0.5; };
+  for (const [k, fr] of notes) {
+    for (let j = 0; j < fr; j++, i++) {
+      if (k === null) { clarity[i] = 0.2; continue; }
+      const vib = 1 + 0.01 * Math.sin(2 * Math.PI * 5.5 * i * 0.016);
+      f0[i] = saHz * Math.pow(2, k / 12) * vib * (1 + 0.002 * rnd());
+      clarity[i] = 0.88 + 0.05 * rnd();
+    }
+  }
+  return { f0, clarity };
+}
+const tonicErrCents = (hz, saHz) => { let d = ((1200 * Math.log2(hz / saHz) % 1200) + 1200) % 1200; return Math.min(d, 1200 - d); };
+
+test('detectTonic: Bhupali resolving on Sa picks Sa, not Pa', () => {
+  const { f0, clarity } = tonicTrack(SA, [[0,40],[2,40],[4,40],[7,40],[9,40],[7,40],[4,40],[2,40],[0,60]]);
+  const c = DSP.detectTonic(f0, clarity, 0.016);
+  assert.ok(tonicErrCents(c[0].hz, SA) < 35 && Math.abs(1200 * Math.log2(c[0].hz / SA)) < 600,
+    `expected Sa~${SA}, got ${c[0].hz.toFixed(1)} [${c.map(x => x.hz.toFixed(1)).join(',')}]`);
+});
+
+test('detectTonic: multi-phrase Pa-prominent song still resolves to Sa', () => {
+  const ph1 = [[0,30],[2,40],[4,40],[7,80],[4,40],[2,40],[0,60]];
+  const gap = [[null,40]];
+  const ph2 = [[7,60],[9,50],[7,80],[5,40],[4,40],[2,40],[0,60]];
+  const ph3 = [[7,90],[12,50],[9,50],[7,60],[5,40],[4,30],[2,40],[0,80]];
+  const { f0, clarity } = tonicTrack(SA, [].concat(ph1, gap, ph2, gap, ph3, gap, ph1));
+  const c = DSP.detectTonic(f0, clarity, 0.016);
+  assert.ok(tonicErrCents(c[0].hz, SA) < 35 && Math.abs(1200 * Math.log2(c[0].hz / SA)) < 600,
+    `expected Sa~${SA}, got ${c[0].hz.toFixed(1)} [${c.map(x => x.hz.toFixed(1)).join(',')}]`);
+});
+
+test('detectTonic: mandra-register melody keeps Sa in the right octave', () => {
+  const { f0, clarity } = tonicTrack(SA, [[-5,60],[-3,60],[-1,60],[0,80],[2,40],[0,40],[-3,60],[-5,80]]);
+  const c = DSP.detectTonic(f0, clarity, 0.016);
+  assert.ok(Math.abs(1200 * Math.log2(c[0].hz / SA)) < 35,
+    `expected ${SA}, got ${c[0].hz.toFixed(1)}`);
+});
+
+test('detectTonic: ambiguous Pa-centric fragment still surfaces Sa in top-3 + flags uncertain', () => {
+  const { f0, clarity } = tonicTrack(SA, [[7,90],[9,40],[7,90],[5,30],[7,60],[4,30],[0,40],[7,80]]);
+  const c = DSP.detectTonic(f0, clarity, 0.016);
+  assert.ok(c.some(x => tonicErrCents(x.hz, SA) < 35), `Sa should be a candidate: ${c.map(x => x.hz.toFixed(1)).join(',')}`);
+  assert.ok(c[0].uncertain, 'a close fifth-symmetry call should be flagged uncertain');
+});
+
 test('detectTonic: places Sa in the singer octave', () => {
   // Melody centred above Sa=196 (G3): frames on S, R, G, P, D.
   const hopSec = 0.016;

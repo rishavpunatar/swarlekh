@@ -359,23 +359,60 @@
     peaks.sort((a, b) => b.h - a.h);
     peaks.length = Math.min(peaks.length, 8);
 
-    // Ending-note evidence: melodies tend to resolve on Sa.
-    const tailFrames = Math.round(2 / hopSec);
-    const tail = [];
-    for (let i = f0.length - 1; i >= 0 && tail.length < tailFrames; i--) {
-      if (f0[i] > 0) tail.push(((1200 * Math.log2(f0[i] / 55)) % 1200 + 1200) % 1200);
+    // Cadence evidence: Hindustani phrases overwhelmingly begin and (more so)
+    // resolve on Sa, which Pa/Ma almost never do — the strongest cue for
+    // breaking Sa/Pa fifth-symmetry. Build a pitch-class histogram of the
+    // first/last stable note of every voiced run (phrase).
+    const cad = new Float64Array(BINS);
+    const minRun = Math.max(3, Math.round(0.18 / hopSec));
+    const edge = Math.max(2, Math.round(0.12 / hopSec));
+    const medPc = (i0, i1) => {
+      const a = [];
+      for (let j = i0; j < i1; j++) if (f0[j] > 0) a.push(((1200 * Math.log2(f0[j] / 55)) % 1200 + 1200) % 1200);
+      if (!a.length) return null;
+      a.sort((x, y) => x - y);
+      return a[Math.floor(a.length / 2)];
+    };
+    const addCad = (pc, w) => {
+      if (pc == null) return;
+      const b = Math.round(pc / 5) % BINS;
+      for (let k = -2; k <= 2; k++) cad[(b + k + BINS) % BINS] += w * Math.exp(-(k * k) / 4);
+    };
+    let runStart = -1, nPhrases = 0;
+    const N = f0.length;
+    for (let i = 0; i <= N; i++) {
+      const v = i < N && f0[i] > 0 && clarity[i] >= 0.5;
+      if (v && runStart < 0) runStart = i;
+      if (!v && runStart >= 0) {
+        if (i - runStart >= minRun) {
+          addCad(medPc(runStart, Math.min(i, runStart + edge)), 1.0);          // phrase onset
+          addCad(medPc(Math.max(runStart, i - edge), i), 1.4);                 // phrase resolution
+          nPhrases++;
+        }
+        runStart = -1;
+      }
     }
-    tail.sort((a, b) => a - b);
-    const endPc = tail.length ? tail[Math.floor(tail.length / 2)] : null;
-
-    const circDist = (a, b) => {
-      const d = Math.abs((((a - b) % 1200) + 1200) % 1200);
-      return Math.min(d, 1200 - d);
+    // Cadence is only reliable across many phrases; trust it fully at >= 6.
+    const cadConf = Math.min(1, nPhrases / 6);
+    let cadMax = 0;
+    for (let b = 0; b < BINS; b++) if (cad[b] > cadMax) cadMax = cad[b];
+    const cadAt = (cents) => {
+      if (cadMax <= 0) return 0;
+      const b = Math.round((((cents % 1200) + 1200) % 1200) / 5) % BINS;
+      return cad[b] / cadMax;
     };
 
+    // Score each candidate Sa. Terms (all normalized to [0,1]):
+    //   + self      : the tonic is itself prominent (drone + dwelling)
+    //   + fifth     : a strong Pa sits +702c above a true Sa
+    //   + cadence   : phrases start/resolve here  (breaks Sa/Pa symmetry)
+    //   - asPa      : a strong note +498c above means *we* are likely its Pa
+    // No credit for the fourth-above (the old bug: it let Pa borrow Sa).
     for (const p of peaks) {
-      p.score = at(p.pc) + 0.65 * at(p.pc + 702) + 0.4 * at(p.pc + 498);
-      if (endPc !== null && circDist(p.pc, endPc) < 35) p.score += 0.12 * maxH;
+      const self = at(p.pc) / maxH;
+      const fifth = at(p.pc + 702) / maxH;
+      const asPa = at(p.pc + 498) / maxH;
+      p.score = 0.50 * self + 0.42 * fifth + 1.30 * cadConf * cadAt(p.pc) - 0.30 * Math.min(asPa, 1.2 * self);
     }
     peaks.sort((a, b) => b.score - a.score);
 
@@ -393,7 +430,15 @@
         }
         if (cov > bestCov) { bestCov = cov; bestHz = hz; }
       }
-      if (bestHz > 0) placed.push({ hz: bestHz, score: p.score / (maxH * 2.05), coverage: bestCov / rels.length });
+      if (bestHz > 0) placed.push({ hz: bestHz, score: p.score, coverage: bestCov / rels.length });
+    }
+    // Normalize scores to [0,1] relative to the best candidate. When the
+    // runner-up is nearly as strong, Sa is a close call between fifth-related
+    // notes — flag it so the UI nudges the user to verify against the drone.
+    if (placed.length) {
+      const top = Math.max(...placed.map(p => p.score), 1e-6);
+      for (const p of placed) p.score = Math.max(0, p.score / top);
+      if (placed.length > 1 && placed[1].score >= 0.85) placed[0].uncertain = true;
     }
     return placed.length ? placed : [{ hz: 146.83, score: 0, uncertain: true }];
   }
