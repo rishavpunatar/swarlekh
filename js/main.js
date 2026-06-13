@@ -32,13 +32,13 @@
     pxPerSec: 90, scrollSec: 0, centsLo: -700, centsHi: 1900,
     playing: false,
     semitones: 0, fileMono: null, fileSr: 16000,
-    opts: { clarityThresh: 0.5, minNoteMs: 150, ornaments: false, ornMinMs: 30, clean: true },
+    opts: { clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45, clean: true, onsets: [] },
   };
 
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=3';
+  const WORKER_URL = 'js/worker.js?v=4';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -188,6 +188,8 @@
       state.hopSec = result.hopSec;
       state.sr = result.sr;
       state.tonicCands = result.tonic;
+      state.opts.onsets = result.onsets || [];
+      state.opts.rms = result.rms;
       state.synthDuration = result.synth.length / targetSr;
 
       setStage('Building notation…', 0.96);
@@ -566,9 +568,12 @@
   const detailSel = $('detailSel');
   detailSel.addEventListener('change', () => {
     const v = detailSel.value;
-    if (v === 'clean') Object.assign(state.opts, { ornaments: false, clean: true, minNoteMs: 150 });
-    else if (v === 'detailed') Object.assign(state.opts, { ornaments: true, clean: true, ornMinMs: 30, minNoteMs: 90 });
-    else Object.assign(state.opts, { ornaments: true, clean: false, ornMinMs: 30, minNoteMs: 90 });
+    // Clean keeps ornaments ON now (so murkis/bends show which swaras they
+    // touch) but filters noise; Detailed shows every nuance; Simple is the
+    // bare melodic skeleton.
+    if (v === 'clean') Object.assign(state.opts, { ornaments: true, clean: true, ornMinMs: 45, minNoteMs: 130 });
+    else if (v === 'detailed') Object.assign(state.opts, { ornaments: true, clean: false, ornMinMs: 30, minNoteMs: 90 });
+    else Object.assign(state.opts, { ornaments: false, clean: true, ornMinMs: 45, minNoteMs: 170 });
     els.minNoteSlider.value = state.opts.minNoteMs;
     els.minNoteVal.textContent = `${state.opts.minNoteMs} ms`;
     renotateNow();
@@ -992,14 +997,21 @@
         cctx.fillText(DSP.swaraInfo(tk.k).letter, x + w / 2, y + 0.5);
       }
       if (tk.orn) {
-        cctx.fillStyle = colors.contour;
         for (const o of tk.orn) {
-          cctx.globalAlpha = o.type === 'meend' ? 0.3 : 0.5;
           const ox = tToX(o.t0), ow = Math.max(2, (o.t1 - o.t0) * pxPerSec - 1);
           const oy = cToY(o.k * 100);
+          cctx.fillStyle = colors.contour;
+          cctx.globalAlpha = o.type === 'meend' ? 0.32 : 0.55;
           cctx.beginPath();
-          cctx.roundRect(ox, oy - 2, ow, 4, 2);
+          cctx.roundRect(ox, oy - 2.5, ow, 5, 2);
           cctx.fill();
+          // Name the swara each ornament touch lands on, when there's room.
+          if (ow >= 9) {
+            cctx.globalAlpha = 0.95;
+            cctx.fillStyle = colors.contour;
+            cctx.font = '600 9px Georgia, serif';
+            cctx.fillText(DSP.swaraInfo(o.k).letter, ox + ow / 2, oy - 8);
+          }
         }
       }
     }

@@ -132,9 +132,9 @@
         <div class="settings-row">
           <label class="ctl">Detail
             <select id="detailSel">
-              <option value="clean" selected>Clean — singable notes</option>
-              <option value="detailed">Detailed — with ornaments</option>
-              <option value="raw">Raw — everything</option>
+              <option value="clean" selected>Clean — singable, with ornaments</option>
+              <option value="detailed">Detailed — every nuance</option>
+              <option value="raw">Simple — main notes only</option>
             </select>
           </label>
           <label class="ctl slider-ctl">Voicing strictness
@@ -142,12 +142,12 @@
             <span id="sensVal" class="muted">0.50</span>
           </label>
           <label class="ctl slider-ctl">Min note length
-            <input type="range" id="minNoteSlider" min="50" max="300" step="10" value="150">
-            <span id="minNoteVal" class="muted">150 ms</span>
+            <input type="range" id="minNoteSlider" min="50" max="300" step="10" value="130">
+            <span id="minNoteVal" class="muted">130 ms</span>
           </label>
           <span id="statsLine" class="muted"></span>
         </div>
-        <p class="hint"><b>Clean</b> keeps only confident, singable notes — drops blips and stray pitches, snaps rare off-scale notes onto the song's scale, and groups the song into verse lines. <b>Detailed</b> adds kan, murki, meend and andolan for alaap work. <b>Raw</b> shows everything the tracker heard. Raise strictness if background instruments still leak in; lower it if quiet phrases go missing.</p>
+        <p class="hint">Every sung syllable starts a fresh note (so repeated words on one pitch don't blur into one). <b>Clean</b> keeps the singable notes and the ornaments that touch them — murkis as <b>(GRG)m</b>, bends as <b>P~S'</b> — while dropping blips and stray pitches. <b>Detailed</b> shows every nuance; <b>Simple</b> is just the main notes. Raise strictness if background instruments leak in; lower it if quiet phrases go missing.</p>
       </section>
     </div>
   </main>
@@ -161,8 +161,8 @@
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=3"></script>
-  <script src="js/dsp.js?v=3"></script>
-  <script src="js/main.js?v=3"></script>
+  <script src="js/fft.js?v=4"></script>
+  <script src="js/dsp.js?v=4"></script>
+  <script src="js/main.js?v=4"></script>
 </body>
 </html>

@@ -321,22 +321,94 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Onset detection: spectral flux in the vocal band, with adaptive
+   * peak picking. Each peak is a syllable/word articulation, so every
+   * vocalised start can become its own note — even when the pitch
+   * doesn't change. Frames use the same `hop` as the pitch track so the
+   * indices line up. Run on the band-limited signal to suppress tabla.
+   * ---------------------------------------------------------------- */
+
+  function detectOnsets(x, sr, hop, opts) {
+    opts = opts || {};
+    const N = 1024;                                   // analysis window (power of two)
+    const nFrames = x.length >= N ? Math.floor((x.length - N) / hop) + 1 : 0;
+    if (nFrames < 3) return [];
+    const H = N / 2;
+    const kLo = Math.max(1, Math.round(150 * N / sr));   // vocal band ~150–1500 Hz
+    const kHi = Math.min(H, Math.round(1500 * N / sr));
+    const re = new Float32Array(N), im = new Float32Array(N);
+    const win = new Float32Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+    const prev = new Float32Array(H + 1);
+    const flux = new Float32Array(nFrames);
+
+    for (let f = 0; f < nFrames; f++) {
+      const off = f * hop;
+      for (let i = 0; i < N; i++) { re[i] = x[off + i] * win[i]; im[i] = 0; }
+      fft(re, im, false);
+      let sf = 0;
+      for (let k = kLo; k <= kHi; k++) {
+        const mag = Math.log1p(Math.sqrt(re[k] * re[k] + im[k] * im[k]));
+        const d = mag - prev[k];
+        if (d > 0) sf += d;
+        prev[k] = mag;
+      }
+      // (bins outside the band still need their history updated)
+      for (let k = 0; k < kLo; k++) prev[k] = Math.log1p(Math.sqrt(re[k] * re[k] + im[k] * im[k]));
+      flux[f] = sf;
+    }
+
+    let mx = 0;
+    for (let f = 0; f < nFrames; f++) if (flux[f] > mx) mx = flux[f];
+    if (mx <= 1e-9) return [];
+    for (let f = 0; f < nFrames; f++) flux[f] /= mx;
+
+    const fps = sr / hop;
+    const winF = Math.max(3, Math.round(0.12 * fps));     // local-mean window ~120 ms
+    const minIOI = Math.max(2, Math.round(0.09 * fps));   // notes ≥ ~90 ms apart
+    const delta = opts.delta != null ? opts.delta : 0.07; // sensitivity over local mean
+    const onsets = [];
+    let last = -minIOI;
+    for (let f = 1; f < nFrames - 1; f++) {
+      let s = 0, c = 0;
+      for (let j = Math.max(0, f - winF); j <= Math.min(nFrames - 1, f + winF); j++) { s += flux[j]; c++; }
+      const thr = s / c + delta;
+      if (flux[f] > thr && flux[f] >= flux[f - 1] && flux[f] > flux[f + 1] && f - last >= minIOI) {
+        onsets.push(f);
+        last = f;
+      }
+    }
+    return onsets;
+  }
+
+  /* ---------------------------------------------------------------- *
    * Tonic (Sa) detection: duration-weighted pitch-class histogram with
    * fifth/fourth reinforcement, then octave placement so the singer's
    * range sits mostly between mandra Pa and taar Ga.
    * ---------------------------------------------------------------- */
 
-  function detectTonic(f0, clarity, hopSec) {
+  function detectTonic(f0, clarity, hopSec, rms) {
     const BINS = 240; // 5-cent bins
     const hist = new Float64Array(BINS);
-    const rels = [];                 // { c: cents from 55 Hz, w: clarity^2 }
+    // Loudness reference: the singer is louder than a tanpura. Weighting by
+    // loudness keeps a quiet drone (even a clean, high-clarity one an octave
+    // below Sa) from hijacking the pitch class or octave placement.
+    let rmsRef = 0;
+    if (rms) {
+      const lv = [];
+      for (let i = 0; i < f0.length; i++) if (f0[i] > 0 && clarity[i] >= 0.5) lv.push(rms[i]);
+      rmsRef = percentile(lv, 0.9) || 0;
+    }
+    const rels = [];                 // { c: cents from 55 Hz, w: clarity^2 * loudness^2 }
     for (let i = 0; i < f0.length; i++) {
       if (f0[i] > 0 && clarity[i] >= 0.5) {
         const rel = 1200 * Math.log2(f0[i] / 55);
-        rels.push({ c: rel, w: clarity[i] * clarity[i] });
+        const loud = rmsRef > 0 ? Math.min(1, rms[i] / rmsRef) : 1;
+        const w = clarity[i] * clarity[i] * loud * loud;
+        rels.push({ c: rel, w });
         const pc = ((rel % 1200) + 1200) % 1200;
         const bin = Math.round(pc / 5) % BINS;
-        hist[bin] += clarity[i] * clarity[i];
+        hist[bin] += w;
       }
     }
     if (rels.length < 50) {
@@ -619,6 +691,12 @@
     const ornMinMs = opts.ornMinMs != null ? opts.ornMinMs : 30;
     const clean = opts.clean === true;
     const lineGapSec = opts.lineGapSec != null ? opts.lineGapSec : (clean ? 1.0 : 0.6);
+    // Onset times (seconds) of syllable/word articulations — note boundaries.
+    const onsetT = (opts.onsets || []).map((f) => f * hopSec).sort((a, b) => a - b);
+    const onsetBetween = (a, b) => {
+      for (const t of onsetT) { if (t > a + 0.04 && t < b - 0.001) return true; if (t >= b) break; }
+      return false;
+    };
     const stableFrames = Math.max(2, Math.round(minNoteMs / 1000 / hopSec));
     const ornFrames = Math.max(2, Math.round(ornMinMs / 1000 / hopSec));
     const minFrames = ornaments ? Math.min(ornFrames, stableFrames) : stableFrames;
@@ -721,12 +799,22 @@
      * onto the song's scale, and merges a swara re-struck across a breath. */
     if (clean && tokens.length) {
       const n2 = clarity.length;
+      const rms = opts.rms;
       for (const tk of tokens) {
         const i0 = Math.round(tk.t0 / hopSec);
         const i1 = Math.max(i0 + 1, Math.round(tk.t1 / hopSec));
-        let s = 0, c = 0;
-        for (let j = i0; j < i1 && j < n2; j++) { s += clarity[j]; c++; }
+        let s = 0, c = 0, rs = 0;
+        for (let j = i0; j < i1 && j < n2; j++) { s += clarity[j]; if (rms) rs += rms[j]; c++; }
         tk.conf = c ? s / c : 0;
+        tk.loud = c ? rs / c : 0;
+      }
+      // 0. Loudness gate: a quiet sustained tone under the singing is usually
+      // tanpura/instrument bleed, not the voice — drop it (keeps Sa, the
+      // voice's own notes, since they're as loud as the rest of the singing).
+      if (rms) {
+        const lv = tokens.map((t) => t.loud).filter((x) => x > 0).sort((a, b) => a - b);
+        const medLoud = lv.length ? lv[lv.length >> 1] : 0;
+        if (medLoud > 0) tokens = tokens.filter((tk) => tk.loud >= 0.3 * medLoud);
       }
       // 1. Weak-short blips out.
       let out = tokens.filter((tk) => {
@@ -789,7 +877,9 @@
       for (const tk of out) {
         if (!ornaments) { tk.meend = false; tk.andolan = false; }
         const last = merged[merged.length - 1];
-        if (last && last.k === tk.k && tk.t0 - last.t1 < holdGap) {
+        // A re-articulation (onset) between two same-pitch notes means a new
+        // syllable — keep them separate so every vocalised start is a note.
+        if (last && last.k === tk.k && tk.t0 - last.t1 < holdGap && !onsetBetween(last.t1, tk.t0)) {
           last.t1 = tk.t1;
           last.meend = last.meend || tk.meend;
           last.andolan = last.andolan || tk.andolan;
@@ -804,6 +894,31 @@
         }
       }
       tokens = merged;
+    }
+
+    // Split a note wherever a syllable is re-articulated inside it (an onset
+    // with no pitch change), so each vocalised start gets its own note. The
+    // pieces share the pitch; later pieces are flagged re-articulations and
+    // shed the leading ornament so they read as clean note starts.
+    if (onsetT.length) {
+      const split = [];
+      for (const tk of tokens) {
+        const cuts = [];
+        for (const t of onsetT) {
+          if (t > tk.t0 + 0.07 && t < tk.t1 - 0.05) cuts.push(t);
+        }
+        if (!cuts.length) { split.push(tk); continue; }
+        let prev = tk.t0;
+        const bounds = cuts.concat(tk.t1);
+        for (let i = 0; i < bounds.length; i++) {
+          const seg = Object.assign({}, tk, { t0: prev, t1: bounds[i] });
+          if (i > 0) { delete seg.kan; delete seg.murki; seg.meendFromPrev = false; seg.reart = true; }
+          if (i < bounds.length - 1) delete seg.graceAfter;
+          split.push(seg);
+          prev = bounds[i];
+        }
+      }
+      tokens = split;
     }
 
     // Lines: split where the singer pauses >= lineGapSec.
@@ -1007,7 +1122,7 @@
   }
 
   return {
-    preFilter, yinTrack, detectTonic, notate, notationText,
+    preFilter, yinTrack, detectOnsets, detectTonic, notate, notationText,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     pitchShift, timeStretch, resampleLinear,
     SWARA_LETTERS,

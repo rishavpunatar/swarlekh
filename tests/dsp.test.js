@@ -490,6 +490,48 @@ test('detectTonic: ambiguous Pa-centric fragment still surfaces Sa in top-3 + fl
   assert.ok(c[0].uncertain, 'a close fifth-symmetry call should be flagged uncertain');
 });
 
+/* ----------------------------- onsets ----------------------------- */
+
+test('detectOnsets: fires once per re-articulated syllable, not on a steady vowel', () => {
+  // Four 300 Hz "syllables" with sharp attacks and short gaps.
+  const x = new Float32Array(Math.round(2.2 * SR));
+  let ph = 0;
+  const seg = (t0, t1) => {
+    const s0 = Math.round(t0 * SR), s1 = Math.round(t1 * SR);
+    for (let i = s0; i < s1; i++) {
+      ph += 2 * Math.PI * 300 / SR;
+      const env = Math.min(1, (i - s0) / (0.004 * SR)) * Math.min(1, (s1 - i) / (0.02 * SR)); // sharp attack
+      x[i] += 0.5 * env * (Math.sin(ph) + 0.4 * Math.sin(2 * ph));
+    }
+  };
+  [[0.1, 0.5], [0.6, 1.0], [1.1, 1.5], [1.6, 2.0]].forEach(([a, b]) => seg(a, b));
+  const onsets = DSP.detectOnsets(x, SR, 256);
+  assert.ok(onsets.length >= 4 && onsets.length <= 6, `expected ~4 onsets, got ${onsets.length}`);
+
+  // Steady vowel: one smooth note, no interior onsets.
+  const steady = new Float32Array(Math.round(1.6 * SR));
+  let p2 = 0;
+  for (let i = 0; i < steady.length; i++) {
+    p2 += 2 * Math.PI * 300 / SR;
+    const env = Math.min(1, i / (0.02 * SR)) * Math.min(1, (steady.length - i) / (0.02 * SR));
+    steady[i] = 0.5 * env * (Math.sin(p2) + 0.4 * Math.sin(2 * p2));
+  }
+  const so = DSP.detectOnsets(steady, SR, 256);
+  const interior = so.filter((f) => f * 256 / SR > 0.2);
+  assert.strictEqual(interior.length, 0, `steady vowel should have no interior onsets, got ${interior.length}`);
+});
+
+test('notate: a held pitch splits into a note per syllable onset', () => {
+  const { f0, clarity } = trackFromRuns([[0, 200]]);   // one held S, ~3.2 s
+  const noSplit = DSP.notate(f0, clarity, HOP, SA, { clean: true, ornaments: false });
+  assert.strictEqual(noSplit.tokens.length, 1, 'no onsets -> single held note');
+
+  const withSplit = DSP.notate(f0, clarity, HOP, SA, { clean: true, ornaments: false, onsets: [50, 120] });
+  assert.strictEqual(withSplit.tokens.length, 3, `onsets -> one note per syllable, got ${withSplit.tokens.length}`);
+  assert.ok(withSplit.tokens.every((t) => t.k === 0), 'all pieces keep the pitch');
+  assert.ok(Math.abs(withSplit.tokens[1].t0 - 50 * HOP) < 0.05, 'split lands at the onset');
+});
+
 /* -------------------------- high-note octaves -------------------------- */
 
 test('yinTrack: taar-saptak notes are not octave-halved', () => {

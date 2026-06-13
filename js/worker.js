@@ -32,7 +32,11 @@ self.onmessage = function (e) {
     const track = DSP.yinTrack(filtered, sr, {}, (f) => prog('pitch', f));
 
     prog('tonic', 0);
-    const tonic = DSP.detectTonic(track.f0, track.clarity, track.hopSec);
+    const tonic = DSP.detectTonic(track.f0, track.clarity, track.hopSec, track.rms);
+
+    // Syllable/word onsets, on the band-limited signal so tabla is suppressed.
+    const hopSamples = Math.round(track.hopSec * sr);
+    const onsets = DSP.detectOnsets(filtered, sr, hopSamples);
 
     prog('synth', 0);
     const synth = DSP.synthesize(track.f0, track.clarity, track.hopSec, sr);
@@ -41,11 +45,13 @@ self.onmessage = function (e) {
       type: 'result',
       f0: track.f0,
       clarity: track.clarity,
+      rms: track.rms,
       hopSec: track.hopSec,
       tonic,
+      onsets,
       synth,
       sr,
-    }, [track.f0.buffer, track.clarity.buffer, synth.buffer]);
+    }, [track.f0.buffer, track.clarity.buffer, track.rms.buffer, synth.buffer]);
   } catch (err) {
     self.postMessage({ type: 'error', message: String(err && err.message || err) });
   }
