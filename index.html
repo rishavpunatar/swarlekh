@@ -103,7 +103,10 @@
           <button id="zoomInBtn" class="mini-btn" title="Zoom in">+</button>
         </div>
         <canvas id="contour"></canvas>
-        <p class="hint">Click to seek · drag to pan · bars are quantized swaras, the thin line is the raw pitch.</p>
+        <p class="hint">Click to seek · drag to pan · scroll/pinch&nbsp;± to zoom.
+        <b style="color:var(--accent)">Saffron blocks</b> = held notes to sing (labelled with the swara);
+        <b style="color:var(--indigo)">thin indigo marks</b> = fast movement &amp; ornaments;
+        the faint line is the exact pitch. Solid grid lines are the song’s scale.</p>
       </section>
 
       <section id="notationCard" class="card">
@@ -158,8 +161,8 @@
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js"></script>
-  <script src="js/dsp.js"></script>
-  <script src="js/main.js"></script>
+  <script src="js/fft.js?v=3"></script>
+  <script src="js/dsp.js?v=3"></script>
+  <script src="js/main.js?v=3"></script>
 </body>
 </html>

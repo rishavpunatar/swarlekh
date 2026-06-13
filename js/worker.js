@@ -1,7 +1,10 @@
 /* SwarLekh — analysis worker. Receives 16 kHz mono samples, returns the
  * pitch track, tonic candidates and a synthesized melody preview. */
 'use strict';
-importScripts('fft.js', 'dsp.js');
+// Inherit the ?v= cache-busting query from the worker URL so fft.js/dsp.js
+// are refreshed in lockstep with this file (no stale-DSP-in-worker drift).
+var V = self.location.search || '';
+importScripts('fft.js' + V, 'dsp.js' + V);
 
 self.onmessage = function (e) {
   const { samples, sr } = e.data;

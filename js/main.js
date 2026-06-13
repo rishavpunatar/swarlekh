@@ -35,9 +35,10 @@
     opts: { clarityThresh: 0.5, minNoteMs: 150, ornaments: false, ornMinMs: 30, clean: true },
   };
 
-  // Bumped when worker.js / dsp.js change, so returning users never run a
-  // browser-cached worker that mismatches this script's message protocol.
-  const WORKER_URL = 'js/worker.js?v=2';
+  // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
+  // tags in index.html to match). Versioning the worker URL cascades to its
+  // importScripts, so returning users never run a stale cached worker/DSP.
+  const WORKER_URL = 'js/worker.js?v=3';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -340,10 +341,26 @@
     const res = DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, state.opts);
     state.tokens = res.tokens;
     state.phrases = res.phrases;
+    computeScale();
     computeCentsRange();
     renderNotation();
     drawCanvas();
     updateStats();
+  }
+
+  // The song's scale: pitch classes carrying real melodic weight (duration),
+  // used to highlight singable lines on the contour. Sa is always included.
+  function computeScale() {
+    const w = new Float64Array(12);
+    let total = 0;
+    for (const t of state.tokens) {
+      const d = t.t1 - t.t0;
+      w[((t.k % 12) + 12) % 12] += d;
+      total += d;
+    }
+    const scale = new Set([0]);
+    if (total > 0) for (let pc = 0; pc < 12; pc++) if (w[pc] / total >= 0.03) scale.add(pc);
+    state.scale = scale;
   }
   const renotateDebounced = debounce(renotateNow, 140);
   function renotate() { renotateNow(); }
@@ -876,24 +893,32 @@
     const viewSec = viewWidthSec();
     const tEnd = scrollSec + viewSec;
 
-    // swara grid lines + labels
-    cctx.font = '11px -apple-system, sans-serif';
+    // Swara grid: notes in the song's scale get solid, labelled lines (the
+    // "staff" you sight-read from); other semitones are faint, so the eye
+    // locks onto the singable degrees.
+    const scale = state.scale || new Set([0, 2, 4, 5, 7, 9, 11]);
     cctx.textBaseline = 'middle';
     for (let k = Math.ceil(centsLo / 100); k <= Math.floor(centsHi / 100); k++) {
       const y = cToY(k * 100);
       const deg = ((k % 12) + 12) % 12;
+      const inScale = scale.has(deg);
       cctx.beginPath();
       if (deg === 0) { cctx.strokeStyle = colors.saLine; cctx.lineWidth = 1.6; cctx.setLineDash([]); }
-      else if (deg === 7) { cctx.strokeStyle = colors.paLine; cctx.lineWidth = 1; cctx.setLineDash([5, 4]); }
-      else { cctx.strokeStyle = colors.grid; cctx.lineWidth = 1; cctx.setLineDash([]); }
+      else if (deg === 7) { cctx.strokeStyle = colors.paLine; cctx.lineWidth = 1.1; cctx.setLineDash([5, 4]); }
+      else if (inScale) { cctx.strokeStyle = colors.gridStrong; cctx.lineWidth = 1; cctx.setLineDash([]); }
+      else { cctx.strokeStyle = colors.grid; cctx.lineWidth = 1; cctx.setLineDash([2, 5]); }
       cctx.moveTo(GUTTER, y);
       cctx.lineTo(W, y);
       cctx.stroke();
       cctx.setLineDash([]);
       const info = DSP.swaraInfo(k);
-      cctx.fillStyle = info.komal ? colors.komal : (deg === 0 ? colors.accent : colors.muted);
+      const prominent = inScale || deg === 0;
+      cctx.font = (prominent ? '600 ' : '') + (prominent ? '12px' : '10px') + ' -apple-system, sans-serif';
+      cctx.globalAlpha = prominent ? 1 : 0.5;
+      cctx.fillStyle = deg === 0 ? colors.accent : (info.komal ? colors.komal : (prominent ? colors.text : colors.muted));
       cctx.textAlign = 'right';
       cctx.fillText(DSP.tokenText(k, false), GUTTER - 8, y);
+      cctx.globalAlpha = 1;
     }
 
     // time ruler
@@ -939,21 +964,37 @@
     cctx.stroke();
     cctx.globalAlpha = 1;
 
-    // quantized swara bars + ornament mini-bars (current swara emphasized)
+    // Quantized swaras. Held notes -> thick saffron blocks labelled with the
+    // swara (the notes to sing & dwell on); quick notes -> thin indigo marks
+    // (fast movement / ornament). So the eye separates "sing this" from "this
+    // is a run". Ornament touches are drawn as small indigo ticks too.
+    cctx.textBaseline = 'middle';
+    cctx.textAlign = 'center';
     for (let ti = 0; ti < state.tokens.length; ti++) {
       const tk = state.tokens[ti];
       if (tk.t1 < scrollSec || tk.t0 > tEnd) continue;
       const isActive = ti === activeTokIdx;
-      cctx.fillStyle = colors.accent;
-      cctx.globalAlpha = isActive ? 0.95 : 0.55;
-      const x = tToX(tk.t0), w = Math.max(2, (tk.t1 - tk.t0) * pxPerSec - 1);
+      const dur = tk.t1 - tk.t0;
+      const fast = dur < 0.16;
+      const x = tToX(tk.t0), w = Math.max(2, dur * pxPerSec - 1);
       const y = cToY(tk.k * 100);
+      const half = fast ? 2.5 : (dur >= 0.30 ? 6 : 4.5);
+      cctx.fillStyle = fast ? colors.contour : colors.accent;
+      cctx.globalAlpha = isActive ? 1 : (fast ? 0.5 : (dur >= 0.30 ? 0.82 : 0.62));
       cctx.beginPath();
-      cctx.roundRect(x, y - (isActive ? 6 : 4.5), w, isActive ? 12 : 9, 4);
+      cctx.roundRect(x, y - (isActive ? half + 1.5 : half), w, (isActive ? half + 1.5 : half) * 2, fast ? 2 : 4);
       cctx.fill();
+      // Label the swara on notes wide enough to carry it.
+      if (!fast && w >= 13) {
+        cctx.globalAlpha = 1;
+        cctx.fillStyle = '#ffffff';
+        cctx.font = '700 11px Georgia, serif';
+        cctx.fillText(DSP.swaraInfo(tk.k).letter, x + w / 2, y + 0.5);
+      }
       if (tk.orn) {
+        cctx.fillStyle = colors.contour;
         for (const o of tk.orn) {
-          cctx.globalAlpha = o.type === 'meend' ? 0.28 : 0.45;
+          cctx.globalAlpha = o.type === 'meend' ? 0.3 : 0.5;
           const ox = tToX(o.t0), ow = Math.max(2, (o.t1 - o.t0) * pxPerSec - 1);
           const oy = cToY(o.k * 100);
           cctx.beginPath();

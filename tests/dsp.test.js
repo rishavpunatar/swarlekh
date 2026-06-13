@@ -490,6 +490,53 @@ test('detectTonic: ambiguous Pa-centric fragment still surfaces Sa in top-3 + fl
   assert.ok(c[0].uncertain, 'a close fifth-symmetry call should be flagged uncertain');
 });
 
+/* -------------------------- high-note octaves -------------------------- */
+
+test('yinTrack: taar-saptak notes are not octave-halved', () => {
+  for (const f of [587, 880, 990, 1050]) {
+    const x = new Float32Array(Math.round(1.2 * SR));
+    let ph = [0, 0, 0, 0, 0];
+    for (let i = 0; i < x.length; i++) {
+      const fr = f * (1 + 0.008 * Math.sin(2 * Math.PI * 5.5 * i / SR));
+      let v = 0;
+      for (let h = 0; h < 5; h++) { ph[h] += 2 * Math.PI * fr * (h + 1) / SR; v += VOICE_H[h] * Math.sin(ph[h]); }
+      const e = Math.min(1, i / 300, (x.length - i) / 300);
+      x[i] = 0.4 * v * e;
+    }
+    const { f0 } = DSP.yinTrack(x, SR, {});
+    const vv = [];
+    for (let i = 10; i < f0.length - 10; i++) if (f0[i] > 0) vv.push(f0[i]);
+    vv.sort((a, b) => a - b);
+    const med = vv[vv.length >> 1] || 0;
+    assert.ok(Math.abs(1200 * Math.log2(med / f)) < 35, `${f} Hz tracked as ${med.toFixed(1)} Hz (octave error)`);
+  }
+});
+
+test('yinTrack: octave leaps Sa->Sa\'->Pa\' tracked without halving', () => {
+  const parts = [293.66, 587.33, 880, 293.66];
+  const x = new Float32Array(Math.round(parts.length * 0.6 * SR));
+  let off = 0;
+  for (const f of parts) {
+    let ph = [0, 0, 0, 0, 0];
+    const n = Math.round(0.55 * SR);
+    for (let i = 0; i < n; i++) {
+      let v = 0;
+      for (let h = 0; h < 5; h++) { ph[h] += 2 * Math.PI * f * (h + 1) / SR; v += VOICE_H[h] * Math.sin(ph[h]); }
+      const e = Math.min(1, i / 300, (n - i) / 300);
+      x[off + i] = 0.4 * v * e;
+    }
+    off += Math.round(0.6 * SR);
+  }
+  const { f0, hopSec } = DSP.yinTrack(x, SR, {});
+  parts.forEach((f, s) => {
+    const vv = [];
+    for (let i = Math.round((s * 0.6 + 0.12) / hopSec); i < Math.round((s * 0.6 + 0.48) / hopSec); i++) if (f0[i] > 0) vv.push(f0[i]);
+    vv.sort((a, b) => a - b);
+    const med = vv[vv.length >> 1] || 0;
+    assert.ok(Math.abs(1200 * Math.log2(med / f)) < 45, `segment ${s} (${f} Hz) tracked as ${med.toFixed(1)} Hz`);
+  });
+});
+
 /* ----------------------------- pitch shift ----------------------------- */
 
 function measureHz(x, sr) {

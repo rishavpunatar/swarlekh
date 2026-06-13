@@ -63,7 +63,7 @@
   const YIN = {
     W: 512,          // comparison window (32 ms @ 16 kHz)
     fmin: 80,
-    fmax: 800,
+    fmax: 1200,      // up to ~D6 — covers taar saptak of higher voices
     hop: 256,        // 16 ms @ 16 kHz
     fftSize: 2048,
     candThresh: 0.75,
@@ -150,7 +150,6 @@
 
       // Collect candidate minima of the CMNDF.
       const cands = [];
-      let tFirst = 0;
       for (let t = tauMin + 1; t < tauMax; t++) {
         if (c[t] < c[t - 1] && c[t] <= c[t + 1] && c[t] < YIN.candThresh) {
           const y0 = c[t - 1], y1 = c[t], y2 = c[t + 1];
@@ -159,19 +158,31 @@
           if (delta > 1) delta = 1; else if (delta < -1) delta = -1;
           const tau = t + delta;
           const cval = Math.max(0, y1 - 0.25 * (y0 - y2) * delta);
-          if (!tFirst && cval < YIN.firstThresh) tFirst = tau;
           cands.push({ tau, cval, pen: 0 });
           // Skip ahead past this dip's immediate neighborhood.
           while (t + 1 < tauMax && c[t + 1] <= c[t]) t++;
         }
       }
-      cands.sort((a, b) => a.cval - b.cval);
-      cands.length = Math.min(cands.length, 3);
-      if (tFirst) {
-        for (const cd of cands) {
-          if (cd.tau > 1.8 * tFirst) cd.pen += 0.18;      // subharmonic (octave-low)
+      // Subharmonic (octave-down) penalty: a dip at ~k× a stronger,
+      // shorter-period dip is almost always its subharmonic — the cause of
+      // "high notes drop an octave". Penalize the longer one so the true
+      // (shorter, higher) period wins. Never penalizes the shorter dip, so
+      // genuine low notes are unaffected.
+      for (let a = 0; a < cands.length; a++) {
+        for (let b = 0; b < cands.length; b++) {
+          if (a === b || cands[b].tau >= cands[a].tau) continue;
+          const ratio = cands[a].tau / cands[b].tau;
+          for (let k = 2; k <= 4; k++) {
+            if (Math.abs(ratio - k) < 0.08) {
+              cands[a].pen += cands[b].cval < 0.35 ? 0.8 : (cands[b].cval < 0.6 ? 0.45 : 0.15);
+              break;
+            }
+          }
         }
       }
+      // Keep the 3 best by effective cost (Viterbi reads 3 slots).
+      cands.sort((a, b) => (a.cval + 0.5 * a.pen) - (b.cval + 0.5 * b.pen));
+      cands.length = Math.min(cands.length, 3);
       frameCands[fI] = cands;
       clarity[fI] = cands.length ? Math.max(0, 1 - cands[0].cval) : 0;
 
@@ -318,11 +329,11 @@
   function detectTonic(f0, clarity, hopSec) {
     const BINS = 240; // 5-cent bins
     const hist = new Float64Array(BINS);
-    const rels = [];
+    const rels = [];                 // { c: cents from 55 Hz, w: clarity^2 }
     for (let i = 0; i < f0.length; i++) {
       if (f0[i] > 0 && clarity[i] >= 0.5) {
         const rel = 1200 * Math.log2(f0[i] / 55);
-        rels.push(rel);
+        rels.push({ c: rel, w: clarity[i] * clarity[i] });
         const pc = ((rel % 1200) + 1200) % 1200;
         const bin = Math.round(pc / 5) % BINS;
         hist[bin] += clarity[i] * clarity[i];
@@ -416,21 +427,29 @@
     }
     peaks.sort((a, b) => b.score - a.score);
 
-    // Octave placement: maximize voiced coverage in [-650, +1900) cents.
+    // Octave placement: put Sa in the singer's register, not on a tanpura
+    // drone an octave below. Maximize clarity-weighted coverage of the voice
+    // sitting from a little below Sa up through the madhya saptak. The window
+    // excludes a drone an octave down (rc ≈ -1200) and discourages pushing the
+    // singer's range too high (Sa placed too low).
+    let totalW = 0;
+    for (const r of rels) totalW += r.w;
     const placed = [];
     for (const p of peaks.slice(0, 3)) {
       let bestHz = 0, bestCov = -1;
       for (let oct = 0; oct <= 4; oct++) {
         const hz = 55 * Math.pow(2, (p.pc / 1200)) * Math.pow(2, oct);
         if (hz < 80 || hz > 400) continue;
+        const saCents = 1200 * Math.log2(hz / 55);
         let cov = 0;
         for (const r of rels) {
-          const rc = r - 1200 * Math.log2(hz / 55);
-          if (rc >= -650 && rc < 1900) cov++;
+          const rc = r.c - saCents;
+          if (rc >= -500 && rc < 1500) cov += r.w;            // in singer's register
+          else if (rc >= 1500 && rc < 2100) cov += r.w * 0.25; // a bit of taar, weak credit
         }
         if (cov > bestCov) { bestCov = cov; bestHz = hz; }
       }
-      if (bestHz > 0) placed.push({ hz: bestHz, score: p.score, coverage: bestCov / rels.length });
+      if (bestHz > 0) placed.push({ hz: bestHz, score: p.score, coverage: totalW ? bestCov / totalW : 0 });
     }
     // Normalize scores to [0,1] relative to the best candidate. When the
     // runner-up is nearly as strong, Sa is a close call between fifth-related
