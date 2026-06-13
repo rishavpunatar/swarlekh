@@ -490,6 +490,50 @@ test('detectTonic: ambiguous Pa-centric fragment still surfaces Sa in top-3 + fl
   assert.ok(c[0].uncertain, 'a close fifth-symmetry call should be flagged uncertain');
 });
 
+/* ----------------------------- pitch shift ----------------------------- */
+
+function measureHz(x, sr) {
+  const { f0 } = DSP.yinTrack(x, sr, {});
+  const v = [];
+  for (let i = 10; i < f0.length - 10; i++) if (f0[i] > 0) v.push(f0[i]);
+  v.sort((a, b) => a - b);
+  return v.length ? v[Math.floor(v.length / 2)] : 0;
+}
+
+test('pitchShift: +12 semitones doubles frequency, keeps duration', () => {
+  const x = new Float32Array(2 * SR);
+  sine(x, 220, 0.05, 1.95, 0.5, VOICE_H);
+  const up = DSP.pitchShift(x, SR, 12);
+  assert.ok(Math.abs(up.length - x.length) / x.length < 0.05, `duration kept: ${up.length} vs ${x.length}`);
+  const hz = measureHz(up, SR);
+  assert.ok(Math.abs(1200 * Math.log2(hz / 440)) < 25, `expected ~440 Hz, got ${hz.toFixed(1)}`);
+});
+
+test('pitchShift: -12 semitones halves frequency', () => {
+  const x = new Float32Array(2 * SR);
+  sine(x, 330, 0.05, 1.95, 0.5, VOICE_H);
+  const down = DSP.pitchShift(x, SR, -12);
+  const hz = measureHz(down, SR);
+  assert.ok(Math.abs(1200 * Math.log2(hz / 165)) < 25, `expected ~165 Hz, got ${hz.toFixed(1)}`);
+});
+
+test('pitchShift: +2 semitones lands within 20 cents', () => {
+  const x = new Float32Array(2 * SR);
+  sine(x, 200, 0.05, 1.95, 0.5, VOICE_H);
+  const up = DSP.pitchShift(x, SR, 2);
+  const hz = measureHz(up, SR);
+  const target = 200 * Math.pow(2, 2 / 12);
+  assert.ok(Math.abs(1200 * Math.log2(hz / target)) < 20, `expected ~${target.toFixed(1)} Hz, got ${hz.toFixed(1)}`);
+});
+
+test('pitchShift: 0 semitones returns an unchanged copy', () => {
+  const x = new Float32Array(1000);
+  for (let i = 0; i < x.length; i++) x[i] = Math.sin(i * 0.1);
+  const out = DSP.pitchShift(x, SR, 0);
+  assert.notStrictEqual(out, x);
+  for (let i = 0; i < x.length; i += 50) assert.strictEqual(out[i], x[i]);
+});
+
 test('detectTonic: places Sa in the singer octave', () => {
   // Melody centred above Sa=196 (G3): frames on S, R, G, P, D.
   const hopSec = 0.016;

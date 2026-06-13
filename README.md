@@ -10,9 +10,10 @@ Everything runs in your browser. The audio is decoded, analyzed and notated enti
 
 - **Upload** an MP3 (or WAV/M4A/OGG/FLAC) by drag-and-drop.
 - **Isolates the melody** — percussion is suppressed by band-limiting + spectral-flatness gating, and a Viterbi-smoothed pitch tracker follows the single predominant melodic line (the voice) rather than the accompaniment.
-- **Finds Sa** automatically from a duration-weighted pitch-class histogram (with fifth/fourth reinforcement), and offers the top 3 candidates. You can override with any note + fine-tune in cents, and check it by ear against a built-in Sa–Pa drone.
+- **Finds Sa** automatically using the perfect-fifth structure plus a phrase-cadence prior (Sa is where phrases begin and resolve), which avoids the classic Sa/Pa confusion; offers the top 3 candidates and flags low-confidence calls so you can verify. You can override with any note + fine-tune in cents, and check it by ear against a built-in Sa–Pa drone.
 - **Writes sargam, ornaments included** — quantized swaras with octave dots and komal/teevra marks, plus kan (grace notes), murki clusters, meend connectors, andolan/gamak oscillation marks, and fast taans written note-for-note. Three detail levels, from full alaap fidelity down to the bare melodic skeleton.
-- **Helps you learn**: a scrolling pitch-contour view on a swara grid, click-any-note-to-seek, A–B loop, 0.5×–1× speed (pitch preserved), and a synthesized "melody only" track you can listen to instead of (or along with) the original.
+- **Helps you learn**: a scrolling pitch-contour view on a swara grid with the current verse line and swara highlighted as it plays, click-any-note-to-seek, A–B loop, 0.5×–1× speed (pitch preserved), and a synthesized "melody only" track you can listen to instead of (or along with) the original.
+- **Transposes to your Sa**: a ±12-semitone pitch shift (phase vocoder) lets you practise the same song in your own comfortable key without changing the tempo — and since sargam is relative to Sa, the notation stays identical.
 - **Exports** the notation as text or JSON, and the extracted melody as a WAV.
 
 ## Notation legend

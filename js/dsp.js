@@ -901,9 +901,96 @@
     return out;
   }
 
+  /* ---------------------------------------------------------------- *
+   * Pitch shifting (phase vocoder): transpose audio by N semitones
+   * while keeping the duration, so a learner can practise the same
+   * song in their own Sa. shift = time-stretch by r, then resample by
+   * r. Tempo is untouched (independent of the playbackRate control).
+   * Mono in, mono out.
+   * ---------------------------------------------------------------- */
+
+  const princarg = (p) => p - 2 * Math.PI * Math.round(p / (2 * Math.PI));
+
+  /** Phase-vocoder time-stretch by factor s (s>1 = longer/slower). */
+  function timeStretch(x, s, progress) {
+    if (Math.abs(s - 1) < 1e-4) return new Float32Array(x);
+    const N = 2048, Ha = 512, H = N / 2;
+    const Hs = Math.max(1, Math.round(Ha * s));
+    const nFrames = x.length >= N ? Math.floor((x.length - N) / Ha) + 1 : 0;
+    if (nFrames <= 0) return new Float32Array(x);
+    const outLen = (nFrames - 1) * Hs + N;
+    const out = new Float32Array(outLen);
+    const norm = new Float32Array(outLen);
+    const win = new Float32Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+    const re = new Float32Array(N), im = new Float32Array(N);
+    const mag = new Float32Array(H + 1), phi = new Float32Array(H + 1);
+    const prevPhi = new Float32Array(H + 1), sumPhi = new Float32Array(H + 1);
+    const omega = new Float32Array(H + 1);
+    for (let k = 0; k <= H; k++) omega[k] = 2 * Math.PI * Ha * k / N;
+    const ratio = Hs / Ha;
+
+    for (let m = 0; m < nFrames; m++) {
+      const off = m * Ha;
+      for (let i = 0; i < N; i++) { re[i] = x[off + i] * win[i]; im[i] = 0; }
+      fft(re, im, false);
+      for (let k = 0; k <= H; k++) {
+        const r = re[k], iq = im[k];
+        mag[k] = Math.sqrt(r * r + iq * iq);
+        phi[k] = Math.atan2(iq, r);
+      }
+      if (m === 0) {
+        for (let k = 0; k <= H; k++) { sumPhi[k] = phi[k]; prevPhi[k] = phi[k]; }
+      } else {
+        for (let k = 0; k <= H; k++) {
+          const dphi = princarg(phi[k] - prevPhi[k] - omega[k]);
+          sumPhi[k] += (omega[k] + dphi) * ratio;
+          prevPhi[k] = phi[k];
+        }
+      }
+      for (let k = 0; k <= H; k++) {
+        re[k] = mag[k] * Math.cos(sumPhi[k]);
+        im[k] = mag[k] * Math.sin(sumPhi[k]);
+      }
+      for (let k = 1; k < H; k++) { re[N - k] = re[k]; im[N - k] = -im[k]; }
+      im[0] = 0; im[H] = 0;
+      fft(re, im, true);
+      const so = m * Hs;
+      for (let i = 0; i < N; i++) {
+        out[so + i] += re[i] * win[i];
+        norm[so + i] += win[i] * win[i];
+      }
+      if (progress && (m & 511) === 0) progress(m / nFrames);
+    }
+    for (let i = 0; i < outLen; i++) if (norm[i] > 1e-6) out[i] /= norm[i];
+    return out;
+  }
+
+  /** Linear resample so the output plays `ratio`x faster (ratio>1 = shorter/higher). */
+  function resampleLinear(x, ratio) {
+    if (Math.abs(ratio - 1) < 1e-6) return new Float32Array(x);
+    const outLen = Math.max(1, Math.round(x.length / ratio));
+    const out = new Float32Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const pos = i * ratio, i0 = Math.floor(pos), fr = pos - i0;
+      const a = x[i0] || 0, b = x[i0 + 1] || 0;
+      out[i] = a + (b - a) * fr;
+    }
+    return out;
+  }
+
+  /** Transpose by `semitones`, preserving duration. */
+  function pitchShift(x, sr, semitones, progress) {
+    if (!semitones) return new Float32Array(x);
+    const r = Math.pow(2, semitones / 12);
+    const stretched = timeStretch(x, r, progress); // longer by r, same pitch
+    return resampleLinear(stretched, r);           // faster by r -> duration restored, pitch x r
+  }
+
   return {
     preFilter, yinTrack, detectTonic, notate, notationText,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
+    pitchShift, timeStretch, resampleLinear,
     SWARA_LETTERS,
     _internal: { biquadCoefs, applyBiquad, viterbiSelect, postProcess, VIT, YIN, isMeendChain },
   };

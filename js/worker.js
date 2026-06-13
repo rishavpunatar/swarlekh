@@ -5,6 +5,20 @@ importScripts('fft.js', 'dsp.js');
 
 self.onmessage = function (e) {
   const { samples, sr } = e.data;
+
+  // Transpose job: phase-vocoder pitch shift, duration preserved.
+  if (e.data.cmd === 'pitch') {
+    const id = e.data.id;
+    try {
+      const out = DSP.pitchShift(samples, sr, e.data.semitones,
+        (f) => self.postMessage({ type: 'progress', id, frac: f }));
+      self.postMessage({ type: 'pitchResult', id, samples: out, sr, semitones: e.data.semitones }, [out.buffer]);
+    } catch (err) {
+      self.postMessage({ type: 'error', id, message: String(err && err.message || err) });
+    }
+    return;
+  }
+
   try {
     const prog = (stage, frac) => self.postMessage({ type: 'progress', stage, frac });
 

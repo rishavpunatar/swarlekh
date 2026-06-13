@@ -15,6 +15,8 @@
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
     notation: $('notation'),
     copyBtn: $('copyBtn'), dlTxtBtn: $('dlTxtBtn'), dlJsonBtn: $('dlJsonBtn'), dlWavBtn: $('dlWavBtn'),
+    pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
+    pitchVal: $('pitchVal'), pitchKey: $('pitchKey'),
     sensSlider: $('sensSlider'), sensVal: $('sensVal'),
     minNoteSlider: $('minNoteSlider'), minNoteVal: $('minNoteVal'),
     statsLine: $('statsLine'), toast: $('toast'),
@@ -29,8 +31,17 @@
     loopA: null, loopB: null,
     pxPerSec: 90, scrollSec: 0, centsLo: -700, centsHi: 1900,
     playing: false,
+    semitones: 0, fileMono: null, fileSr: 16000,
     opts: { clarityThresh: 0.5, minNoteMs: 150, ornaments: false, ornMinMs: 30, clean: true },
   };
+
+  // Bumped when worker.js / dsp.js change, so returning users never run a
+  // browser-cached worker that mismatches this script's message protocol.
+  const WORKER_URL = 'js/worker.js?v=2';
+  const PITCH_LIMIT = 12;
+  const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
+  let pitchWorker = null;
+  let pitchSeq = 0;               // guards against stale renders
 
   let worker = null;
   let actx = null;            // shared AudioContext (decode + drone)
@@ -106,7 +117,7 @@
   function runWorker(samples, sr) {
     return new Promise((resolve, reject) => {
       if (worker) worker.terminate();
-      worker = new Worker('js/worker.js');
+      worker = new Worker(WORKER_URL);
       worker.onmessage = (e) => {
         const m = e.data;
         if (m.type === 'progress') {
@@ -127,6 +138,8 @@
       pause();
       state.loopA = state.loopB = null;
       updateLoopUI();
+      clearPitchCache();
+      state.semitones = 0;
       els.dropzone.classList.add('compact');
       els.progressCard.hidden = false;
       els.resultArea.hidden = true;
@@ -143,6 +156,15 @@
       }
       state.duration = buf.duration;
       if (buf.duration < 1) throw new Error('This clip is too short to analyze.');
+
+      // Full-rate mono kept for transposition (pitch shifting).
+      const fmono = new Float32Array(buf.length);
+      for (let c = 0; c < buf.numberOfChannels; c++) {
+        const d = buf.getChannelData(c);
+        for (let i = 0; i < buf.length; i++) fmono[i] += d[i] / buf.numberOfChannels;
+      }
+      state.fileMono = fmono;
+      state.fileSr = buf.sampleRate;
 
       if (origUrl) URL.revokeObjectURL(origUrl);
       origUrl = URL.createObjectURL(file);
@@ -177,6 +199,9 @@
       syncTonicControls();
       state.scrollSec = 0;
       renotate();
+
+      pitchCache.set(0, { origUrl, synthUrl });
+      updatePitchUI();
 
       els.progressCard.hidden = true;
       els.resultArea.hidden = false;
@@ -251,6 +276,7 @@
     els.tonicHz.textContent = `${state.saHz.toFixed(1)} Hz`;
     markSelectedChip();
     updateDroneFreq();
+    updatePitchUI();
   }
 
   function tonicFromControls() {
@@ -261,6 +287,7 @@
     els.tonicHz.textContent = `${state.saHz.toFixed(1)} Hz`;
     markSelectedChip();
     updateDroneFreq();
+    updatePitchUI();
     renotateDebounced();
   }
   els.tonicNote.addEventListener('change', tonicFromControls);
@@ -556,6 +583,113 @@
     synthEl.muted = mode === 'original';
   }
   els.sourceSel.addEventListener('change', applySource);
+
+  /* ------------------------------ pitch ------------------------------ */
+
+  function clearPitchCache() {
+    for (const [, v] of pitchCache) {
+      if (v.origUrl && v.origUrl !== origUrl) URL.revokeObjectURL(v.origUrl);
+      if (v.synthUrl && v.synthUrl !== synthUrl) URL.revokeObjectURL(v.synthUrl);
+    }
+    pitchCache.clear();
+  }
+
+  function updatePitchUI() {
+    const s = state.semitones;
+    els.pitchVal.textContent = s > 0 ? `+${s}` : String(s);
+    if (state.saHz) {
+      const shifted = state.saHz * Math.pow(2, s / 12);
+      els.pitchKey.textContent = `Sa→${noteLabel(shifted).replace(/ .*$/, '')}`;
+    } else els.pitchKey.textContent = '';
+    els.pitchDownBtn.disabled = s <= -PITCH_LIMIT;
+    els.pitchUpBtn.disabled = s >= PITCH_LIMIT;
+  }
+
+  // One reusable worker; requests are matched by id so rapid shifts don't race.
+  const pitchPending = new Map();
+  let pitchReqId = 0;
+  function ensurePitchWorker() {
+    if (pitchWorker) return pitchWorker;
+    pitchWorker = new Worker(WORKER_URL);
+    pitchWorker.onmessage = (e) => {
+      const m = e.data;
+      const p = pitchPending.get(m.id);
+      if (!p) return;
+      if (m.type === 'progress') { if (p.onProgress) p.onProgress(m.frac); }
+      else if (m.type === 'pitchResult') { pitchPending.delete(m.id); p.resolve(m.samples); }
+      else if (m.type === 'error') { pitchPending.delete(m.id); p.reject(new Error(m.message)); }
+    };
+    pitchWorker.onerror = (e) => {
+      for (const [, p] of pitchPending) p.reject(new Error(e.message || 'Pitch shift failed'));
+      pitchPending.clear();
+      pitchWorker = null; // recreate next time
+    };
+    return pitchWorker;
+  }
+  function runPitchWorker(samples, sr, semitones, onProgress) {
+    return new Promise((resolve, reject) => {
+      const w = ensurePitchWorker();
+      const id = ++pitchReqId;
+      pitchPending.set(id, { resolve, reject, onProgress });
+      w.postMessage({ cmd: 'pitch', id, samples, sr, semitones }, [samples.buffer]);
+    });
+  }
+
+  // Swap the audio sources while keeping the playhead and play/pause state.
+  function swapAudioSources(oUrl, sUrl) {
+    const t = Math.min(origEl.currentTime, state.duration - 0.05);
+    const wasPlaying = state.playing;
+    pause();
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      origEl.removeEventListener('loadeddata', restore);
+      try { origEl.currentTime = t; if (t < state.synthDuration) synthEl.currentTime = t; } catch (e) {}
+      updateTimeDisp();
+      if (!state.playing) drawCanvas();
+      if (wasPlaying) play();
+    };
+    origEl.addEventListener('loadeddata', restore);
+    origEl.src = oUrl;
+    synthEl.src = sUrl;
+    origEl.load();
+    synthEl.load();
+  }
+
+  async function applyPitch(semitones) {
+    semitones = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, semitones));
+    if (!state.ready || semitones === state.semitones) return;
+    state.semitones = semitones;
+    updatePitchUI();
+
+    const cached = pitchCache.get(semitones);
+    if (cached) { origUrl = cached.origUrl; synthUrl = cached.synthUrl; swapAudioSources(origUrl, synthUrl); return; }
+
+    const seq = ++pitchSeq;
+    els.pitchCtl.classList.add('busy');
+    try {
+      const r = Math.pow(2, semitones / 12);
+      const shifted = await runPitchWorker(state.fileMono.slice(), state.fileSr, semitones,
+        (f) => { if (seq === pitchSeq) els.pitchKey.textContent = `shifting… ${Math.round(f * 100)}%`; });
+      // Re-synthesize the melody guide at the matching pitch (cheap, exact).
+      const f0s = new Float32Array(state.f0.length);
+      for (let i = 0; i < f0s.length; i++) f0s[i] = state.f0[i] > 0 ? state.f0[i] * r : 0;
+      const syn = DSP.synthesize(f0s, state.clarity, state.hopSec, state.sr);
+      if (seq !== pitchSeq) return; // a newer request superseded this one
+      const oUrl = URL.createObjectURL(encodeWav(shifted, state.fileSr));
+      const sUrl = URL.createObjectURL(encodeWav(syn, state.sr));
+      pitchCache.set(semitones, { origUrl: oUrl, synthUrl: sUrl });
+      origUrl = oUrl; synthUrl = sUrl;
+      swapAudioSources(oUrl, sUrl);
+    } catch (err) {
+      toast('Pitch shift failed: ' + (err.message || err));
+    } finally {
+      if (seq === pitchSeq) { els.pitchCtl.classList.remove('busy'); updatePitchUI(); }
+    }
+  }
+  els.pitchDownBtn.addEventListener('click', () => applyPitch(state.semitones - 1));
+  els.pitchUpBtn.addEventListener('click', () => applyPitch(state.semitones + 1));
 
   async function play() {
     if (!state.ready) return;
@@ -906,5 +1040,6 @@
 
   /* test/debug hook */
   window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive,
-    _ali: () => activeLineIdx, _renderTonic: renderTonicChips, _syncTonic: syncTonicControls };
+    _ali: () => activeLineIdx, _renderTonic: renderTonicChips, _syncTonic: syncTonicControls,
+    _applyPitch: applyPitch, _audio: { orig: origEl, synth: synthEl } };
 })();

@@ -56,6 +56,12 @@
               <option value="1" selected>1×</option>
             </select>
           </label>
+          <span class="ctl pitch-ctl">Pitch
+            <button id="pitchDownBtn" class="mini-btn" title="Down a semitone — practise in a lower Sa">−</button>
+            <span id="pitchVal" class="pitch-val" title="Semitones of transposition">0</span>
+            <button id="pitchUpBtn" class="mini-btn" title="Up a semitone — practise in a higher Sa">+</button>
+            <span id="pitchKey" class="muted"></span>
+          </span>
           <label class="ctl">Listen to
             <select id="sourceSel">
               <option value="original" selected>Original</option>
@@ -145,6 +151,7 @@
 
   <footer>
     <p>Audio is processed entirely on this device — nothing is uploaded, no analytics, no third-party assets.
+    <b>Pitch</b> transposes the recording to your own Sa (notation is unchanged — sargam is the same in any key); <b>Speed</b> slows it down without changing pitch.
     Shortcuts: <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>[</kbd><kbd>]</kbd> loop · <kbd>L</kbd> clear loop.
     <a href="https://github.com/rishavpunatar/swarlekh" rel="noopener">Source on GitHub</a></p>
   </footer>
