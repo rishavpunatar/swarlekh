@@ -116,9 +116,9 @@ header {
 .mini-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .loop-ctl { gap: 5px; }
 .pitch-ctl { gap: 5px; }
-.pitch-val { min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+#pitchSel { max-width: 130px; }
 .pitch-ctl.busy { opacity: 0.55; }
-.pitch-ctl.busy .mini-btn { pointer-events: none; }
+.pitch-ctl.busy .mini-btn, .pitch-ctl.busy select { pointer-events: none; }
 #pitchKey { font-size: 12px; }
 
 /* Tonic */

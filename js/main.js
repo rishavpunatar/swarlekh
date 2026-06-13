@@ -16,7 +16,7 @@
     notation: $('notation'),
     copyBtn: $('copyBtn'), dlTxtBtn: $('dlTxtBtn'), dlJsonBtn: $('dlJsonBtn'), dlWavBtn: $('dlWavBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
-    pitchVal: $('pitchVal'), pitchKey: $('pitchKey'),
+    pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
     sensSlider: $('sensSlider'), sensVal: $('sensVal'),
     minNoteSlider: $('minNoteSlider'), minNoteVal: $('minNoteVal'),
     statsLine: $('statsLine'), toast: $('toast'),
@@ -38,7 +38,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=4';
+  const WORKER_URL = 'js/worker.js?v=5';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -204,7 +204,7 @@
       renotate();
 
       pitchCache.set(0, { origUrl, synthUrl });
-      updatePitchUI();
+      populatePitchOptions();
 
       els.progressCard.hidden = true;
       els.resultArea.hidden = false;
@@ -279,7 +279,7 @@
     els.tonicHz.textContent = `${state.saHz.toFixed(1)} Hz`;
     markSelectedChip();
     updateDroneFreq();
-    updatePitchUI();
+    populatePitchOptions();
   }
 
   function tonicFromControls() {
@@ -290,7 +290,7 @@
     els.tonicHz.textContent = `${state.saHz.toFixed(1)} Hz`;
     markSelectedChip();
     updateDroneFreq();
-    updatePitchUI();
+    populatePitchOptions();
     renotateDebounced();
   }
   els.tonicNote.addEventListener('change', tonicFromControls);
@@ -616,13 +616,27 @@
     pitchCache.clear();
   }
 
+  const noteName = (hz) => noteLabel(hz).split(' ')[0];
+
+  // Rebuild the key dropdown — each reachable transposition labelled by the
+  // Sa note it lands on. Call when Sa changes (labels) or a file loads.
+  function populatePitchOptions() {
+    const sel = els.pitchSel;
+    sel.textContent = '';
+    for (let s = -PITCH_LIMIT; s <= PITCH_LIMIT; s++) {
+      const opt = document.createElement('option');
+      opt.value = String(s);
+      const tag = s === 0 ? 'original' : (s > 0 ? `+${s}` : `${s}`);
+      opt.textContent = state.saHz ? `Sa=${noteName(state.saHz * Math.pow(2, s / 12))} (${tag})` : tag;
+      sel.appendChild(opt);
+    }
+    updatePitchUI();
+  }
+
   function updatePitchUI() {
     const s = state.semitones;
-    els.pitchVal.textContent = s > 0 ? `+${s}` : String(s);
-    if (state.saHz) {
-      const shifted = state.saHz * Math.pow(2, s / 12);
-      els.pitchKey.textContent = `Sa→${noteLabel(shifted).replace(/ .*$/, '')}`;
-    } else els.pitchKey.textContent = '';
+    els.pitchSel.value = String(s);
+    els.pitchKey.textContent = '';
     els.pitchDownBtn.disabled = s <= -PITCH_LIMIT;
     els.pitchUpBtn.disabled = s >= PITCH_LIMIT;
   }
@@ -712,6 +726,7 @@
   }
   els.pitchDownBtn.addEventListener('click', () => applyPitch(state.semitones - 1));
   els.pitchUpBtn.addEventListener('click', () => applyPitch(state.semitones + 1));
+  els.pitchSel.addEventListener('change', () => applyPitch(parseInt(els.pitchSel.value, 10)));
 
   async function play() {
     if (!state.ready) return;
