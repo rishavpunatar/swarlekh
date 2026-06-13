@@ -14,7 +14,7 @@
     tonicCard: $('tonicCard'), tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
     tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
-    nowStrip: $('nowStrip'), notation: $('notation'),
+    notation: $('notation'),
     copyBtn: $('copyBtn'), dlTxtBtn: $('dlTxtBtn'), dlJsonBtn: $('dlJsonBtn'), dlWavBtn: $('dlWavBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
@@ -41,7 +41,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=9';
+  const WORKER_URL = 'js/worker.js?v=10';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -54,7 +54,6 @@
   let rafId = 0;
   let activeLineIdx = -1;
   let activeTokIdx = -1;
-  let nowStripLine = -1;
 
   const origEl = new Audio();
   const synthEl = new Audio();
@@ -653,43 +652,9 @@
       els.notation.appendChild(row);
     });
     applyPcHighlight();
-    nowStripLine = -1;
-    els.nowStrip.innerHTML = '<span class="now-empty">press play — the sung swara shows here, big</span>';
-  }
-
-  // Big live readout: render the current line's swaras large; highlight + centre
-  // the one being sung. Builds one swara span (octave dots, komal, ornament tag).
-  function renderNowStrip(lineIdx) {
-    els.nowStrip.textContent = '';
-    const ph = state.phrases[lineIdx];
-    if (!ph) { els.nowStrip.innerHTML = '<span class="now-empty">…</span>'; return; }
-    ph.tokens.forEach((tk, li) => {
-      const s = DSP.swaraInfo(tk.k);
-      const span = document.createElement('span');
-      span.className = 'now-tok' + (s.komal ? ' komal' : '');
-      const oct = Math.max(-2, Math.min(2, s.octave));
-      if (oct !== 0) span.dataset.oct = String(oct);
-      const pre = tk.kan || tk.murki;
-      if (pre) {
-        const o = document.createElement('span');
-        o.className = 'now-orn';
-        o.textContent = '(' + pre.map((k) => glyph(DSP.swaraInfo(k).letter)).join('') + ')';
-        span.appendChild(o);
-      }
-      span.appendChild(document.createTextNode(tk.glide && tk.via ? viaDisplay(tk.via).map((k) => tokenGlyph(k)).join('⌒') : glyph(s.letter)));
-      if (tk.graceAfter) {
-        const o = document.createElement('span');
-        o.className = 'now-orn';
-        o.textContent = '(' + tk.graceAfter.map((k) => glyph(DSP.swaraInfo(k).letter)).join('') + ')';
-        span.appendChild(o);
-      }
-      span.dataset.i = String(ph._start + li);
-      els.nowStrip.appendChild(span);
-    });
   }
 
   els.notation.addEventListener('click', seekFromTokenEl);
-  els.nowStrip.addEventListener('click', seekFromTokenEl);
   function seekFromTokenEl(e) {
     const t = e.target.closest('[data-i]');
     if (!t) return;
@@ -810,7 +775,7 @@
   scriptSel.addEventListener('change', () => {
     state.script = scriptSel.value;
     document.body.classList.toggle('deva', state.script === 'devanagari');
-    if (state.ready) { renderRaga(); renderNotation(); nowStripLine = -1; }
+    if (state.ready) { renderRaga(); renderNotation(); }
   });
 
   const detailSel = $('detailSel');
@@ -1108,24 +1073,11 @@
         }
       }
     }
-    // Big live readout follows the current line.
-    if (lineIdx !== nowStripLine) {
-      nowStripLine = lineIdx;
-      if (lineIdx >= 0) renderNowStrip(lineIdx);
-      else els.nowStrip.innerHTML = '<span class="now-empty">…</span>';
-    }
     if (tokIdx !== activeTokIdx) {
       els.notation.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
-      els.nowStrip.querySelectorAll('.now-active').forEach(el => el.classList.remove('now-active'));
       activeTokIdx = tokIdx;
       if (tokIdx >= 0) {
         els.notation.querySelectorAll(`[data-i="${tokIdx}"]`).forEach(el => el.classList.add('active'));
-        const big = els.nowStrip.querySelector(`[data-i="${tokIdx}"]`);
-        if (big) {
-          big.classList.add('now-active');
-          const s = els.nowStrip;
-          s.scrollTo({ left: big.offsetLeft - s.clientWidth / 2 + big.offsetWidth / 2, behavior: 'smooth' });
-        }
       }
     }
   }
@@ -1237,13 +1189,13 @@
       cctx.fillRect(tToX(state.loopA), RULER, (state.loopB - state.loopA) * pxPerSec, H - RULER);
     }
 
-    // raw contour
+    // raw contour — kept faint so the clean notes/slides read as the main line
     const { f0, clarity, hopSec, opts } = state;
     const i0 = Math.max(0, Math.floor(scrollSec / hopSec));
     const i1 = Math.min(f0.length - 1, Math.ceil(tEnd / hopSec));
     cctx.strokeStyle = colors.contour;
-    cctx.lineWidth = 1.4;
-    cctx.globalAlpha = 0.85;
+    cctx.lineWidth = 1;
+    cctx.globalAlpha = 0.32;
     cctx.beginPath();
     let pen = false;
     for (let i = i0; i <= i1; i++) {
@@ -1304,14 +1256,14 @@
         cctx.fillRect(x, y - 1.5, w, 3);
         if (w >= 14) {
           cctx.fillStyle = '#ffffff'; cctx.font = '700 11px Georgia, serif';
-          cctx.fillText(DSP.swaraInfo(tk.k).letter, x + w / 2, y + 0.5);
+          cctx.fillText(glyph(DSP.swaraInfo(tk.k).letter), x + w / 2, y + 0.5);
         }
         cctx.globalAlpha = 1;
         continue;
       }
       const half = fast ? 2.5 : (dur >= 0.30 ? 6 : 4.5);
       cctx.fillStyle = fast ? colors.contour : colors.accent;
-      cctx.globalAlpha = isActive ? 1 : (fast ? 0.5 : (dur >= 0.30 ? 0.82 : 0.62));
+      cctx.globalAlpha = isActive ? 1 : (fast ? 0.62 : (dur >= 0.30 ? 0.95 : 0.78));
       cctx.beginPath();
       cctx.roundRect(x, y - (isActive ? half + 1.5 : half), w, (isActive ? half + 1.5 : half) * 2, fast ? 2 : 4);
       cctx.fill();
@@ -1320,7 +1272,7 @@
         cctx.globalAlpha = 1;
         cctx.fillStyle = '#ffffff';
         cctx.font = '700 11px Georgia, serif';
-        cctx.fillText(DSP.swaraInfo(tk.k).letter, x + w / 2, y + 0.5);
+        cctx.fillText(glyph(DSP.swaraInfo(tk.k).letter), x + w / 2, y + 0.5);
       }
       if (tk.orn) {
         for (const o of tk.orn) {

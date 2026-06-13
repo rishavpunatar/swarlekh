@@ -501,15 +501,21 @@
     for (let f = 0; f < nFrames; f++) flux[f] /= mx;
 
     const fps = sr / hop;
-    const winF = Math.max(3, Math.round(0.12 * fps));     // local-mean window ~120 ms
-    const minIOI = Math.max(2, Math.round(0.09 * fps));   // notes ≥ ~90 ms apart
-    const delta = opts.delta != null ? opts.delta : 0.07; // sensitivity over local mean
+    const winF = Math.max(3, Math.round(0.14 * fps));     // local-mean window ~140 ms
+    const minIOI = Math.max(2, Math.round(0.12 * fps));   // notes ≥ ~120 ms apart
+    const delta = opts.delta != null ? opts.delta : 0.13; // additive sensitivity floor
+    const ratio = opts.ratio != null ? opts.ratio : 2.0;  // must clearly exceed local mean
+    // A real syllable/word onset is a clear, prominent flux peak; vibrato,
+    // tracking jitter and percussion residue make small bumps. Require the peak
+    // to both rise well above the local mean AND be a strict local maximum, so
+    // held notes don't get split into spurious repeats.
     const onsets = [];
     let last = -minIOI;
     for (let f = 1; f < nFrames - 1; f++) {
       let s = 0, c = 0;
       for (let j = Math.max(0, f - winF); j <= Math.min(nFrames - 1, f + winF); j++) { s += flux[j]; c++; }
-      const thr = s / c + delta;
+      const mean = s / c;
+      const thr = Math.max(mean * ratio, mean + delta);
       if (flux[f] > thr && flux[f] >= flux[f - 1] && flux[f] > flux[f + 1] && f - last >= minIOI) {
         onsets.push(f);
         last = f;
@@ -612,8 +618,10 @@
         runStart = -1;
       }
     }
-    // Cadence is only reliable across many phrases; trust it fully at >= 6.
-    const cadConf = Math.min(1, nPhrases / 6);
+    // Cadence is most reliable across many phrases, but even one phrase's
+    // start/resolution notes are real evidence — keep a floor so Sa still
+    // resolves on short clips (full trust at >= 6 phrases).
+    const cadConf = Math.max(0.3, Math.min(1, nPhrases / 6));
     let cadMax = 0;
     for (let b = 0; b < BINS; b++) if (cad[b] > cadMax) cadMax = cad[b];
     const cadAt = (cents) => {
@@ -1157,9 +1165,12 @@
       const split = [];
       for (const tk of tokens) {
         if (tk.glide || tk.andolan) { split.push(tk); continue; }   // one gesture, never split
+        // Only split where each resulting piece is a real, singable length
+        // (≥0.18 s) — avoids shaving a held note into spurious repeats.
         const cuts = [];
+        let prevCut = tk.t0;
         for (const t of onsetT) {
-          if (t > tk.t0 + 0.07 && t < tk.t1 - 0.05) cuts.push(t);
+          if (t > prevCut + 0.18 && t < tk.t1 - 0.18) { cuts.push(t); prevCut = t; }
         }
         if (!cuts.length) { split.push(tk); continue; }
         let prev = tk.t0;
