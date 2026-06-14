@@ -42,7 +42,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=24';
+  const WORKER_URL = 'js/worker.js?v=25';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -139,6 +139,7 @@
         neural: !!opts.neural,
         providedF0: opts.providedF0 || null,
         providedClarity: opts.providedClarity || null,
+        providedRms: opts.providedRms || null,
         providedHopSec: opts.providedHopSec || 0,
       }, [samples.buffer]);
     });
@@ -233,7 +234,7 @@
         } finally {
           clearInterval(ticker);
         }
-        workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedHopSec: data.hopSec };
+        workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedRms: data.rms, providedHopSec: data.hopSec };
       }
       const result = await runWorker(new Float32Array(mono), targetSr, workerOpts);
       if (!result.f0.length) throw new Error('This clip is too short to analyze.');
@@ -1120,7 +1121,12 @@
       const mid = (lo + hi) >> 1;
       if (toks[mid].t0 <= t + 0.02) { tokIdx = mid; lo = mid + 1; } else hi = mid - 1;
     }
-    if (tokIdx >= 0 && t >= toks[tokIdx].t1 + 0.03) tokIdx = -1;
+    // Keep the just-started note lit until the NEXT note begins, so the
+    // highlight never blanks between notes (the binary search above already
+    // advances to the next note the instant it starts). Only clear at a real
+    // rest — well past this note's end with nothing following yet.
+    if (tokIdx >= 0 && t > toks[tokIdx].t1 + 0.35 &&
+        (tokIdx + 1 >= toks.length || toks[tokIdx + 1].t0 > t)) tokIdx = -1;
 
     if (lineIdx !== activeLineIdx) {
       els.notation.querySelectorAll('.active-line').forEach(el => el.classList.remove('active-line'));

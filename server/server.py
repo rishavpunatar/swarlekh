@@ -103,11 +103,27 @@ def analyze():
                                 return_periodicity=True, batch_size=512, device=DEVICE)
     f0 = torchcrepe.filter.median(f0, 3)               # cheap jitter/glitch smoothing
     f0 = f0[0].cpu().numpy(); pd = pd[0].cpu().numpy()
-    # silence the obviously-unvoiced frames so the client gates cleanly
-    f0 = np.where(pd > 0.01, f0, 0.0)
-    print('[swarlekh] %.1fs sep + %.1fs total · %d frames' % (t_sep, time.time() - t0, len(f0)))
-    return jsonify(f0=[round(float(v), 2) for v in f0],
-                   periodicity=[round(float(v), 3) for v in pd],
+
+    # VOCAL-ENERGY GATE: separation isn't perfect — instrumental-only stretches
+    # leave a faint residual in the "vocals" stem that would otherwise be
+    # transcribed as spurious (guitar/harmonium) notes. Measure the separated
+    # voice's per-frame loudness and silence frames where it's well below the
+    # singing level, so only actual sung notes survive.
+    v = voc16[0].cpu().numpy()
+    n_frames = len(f0)
+    rms = np.zeros(n_frames, dtype='float32')
+    for i in range(n_frames):
+        s = i * HOP
+        rms[i] = float(np.sqrt(np.mean(v[s:s + 1024] ** 2))) if s + 1024 <= len(v) else 0.0
+    loud = np.percentile(rms[rms > 0], 90) if np.any(rms > 0) else 0.0
+    thresh = max(0.08 * loud, 1e-4)                    # ~residual is far quieter than singing
+    keep = (pd > 0.01) & (rms > thresh)
+    f0 = np.where(keep, f0, 0.0)
+    print('[swarlekh] %.1fs sep + %.1fs total · %d frames · %d voiced after vocal gate'
+          % (t_sep, time.time() - t0, n_frames, int(keep.sum())), flush=True)
+    return jsonify(f0=[round(float(x), 2) for x in f0],
+                   periodicity=[round(float(x), 3) for x in pd],
+                   rms=[round(float(x), 5) for x in rms],
                    hopSec=HOP / SR, sr=SR)
 
 

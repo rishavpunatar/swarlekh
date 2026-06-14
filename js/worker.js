@@ -56,11 +56,18 @@ self.onmessage = async function (e) {
       // per-frame rms here for the loudness gate.
       prog('pitch', 0.5);
       const pf = e.data.providedF0, pc = e.data.providedClarity, ph = e.data.providedHopSec || 0.016;
-      const hs = Math.round(ph * sr), rmsArr = new Float32Array(pf.length);
-      for (let k = 0; k < pf.length; k++) {
-        let en = 0; const st = k * hs;
-        for (let j = 0; j < 1024 && st + j < samples.length; j++) en += samples[st + j] * samples[st + j];
-        rmsArr[k] = Math.sqrt(en / 1024);
+      let rmsArr;
+      if (e.data.providedRms && e.data.providedRms.length === pf.length) {
+        // Separated-voice loudness — so the clean-mode gate keys off the VOICE,
+        // not the mix; instrumental stretches stay silent instead of leaking notes.
+        rmsArr = Float32Array.from(e.data.providedRms);
+      } else {
+        const hs = Math.round(ph * sr); rmsArr = new Float32Array(pf.length);
+        for (let k = 0; k < pf.length; k++) {
+          let en = 0; const st = k * hs;
+          for (let j = 0; j < 1024 && st + j < samples.length; j++) en += samples[st + j] * samples[st + j];
+          rmsArr[k] = Math.sqrt(en / 1024);
+        }
       }
       track = { f0: Float32Array.from(pf), clarity: Float32Array.from(pc), rms: rmsArr, hopSec: ph };
     } else if (e.data.neural) {
