@@ -65,7 +65,18 @@ self.onmessage = async function (e) {
     const stab = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, e.data.neural ? 'gentle' : 'auto');
 
     prog('tonic', 0);
-    const tonic = DSP.detectTonic(stab.f0, track.clarity, track.hopSec, track.rms);
+    // Sa is a property of the music, not the tracker. CREPE's flatter salience
+    // confuses the (YIN-tuned) tonic scorer into borderline Sa-vs-third picks,
+    // so in neural mode detect Sa from a quick YIN pass and apply it to CREPE's
+    // notes — they share the same register (both call Sa ≈208 Hz), verified.
+    let tonic;
+    if (e.data.neural) {
+      const yt = DSP.yinTrack(filtered, sr, {});
+      const ys = DSP.stabilizeOctave(yt.f0, yt.clarity, yt.rms, yt.hopSec, 'auto');
+      tonic = DSP.detectTonic(ys.f0, yt.clarity, yt.hopSec, yt.rms);
+    } else {
+      tonic = DSP.detectTonic(stab.f0, track.clarity, track.hopSec, track.rms);
+    }
 
     // Syllable/word onsets, on the band-limited signal so tabla is suppressed.
     const hopSamples = Math.round(track.hopSec * sr);
