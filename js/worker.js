@@ -1,12 +1,30 @@
 /* SwarLekh — analysis worker. Receives 16 kHz mono samples, returns the
- * pitch track, tonic candidates and a synthesized melody preview. */
+ * pitch track, tonic candidates and a synthesized melody preview.
+ *
+ * Two pitch engines:
+ *   • default — DSP.yinTrack (fast, dependency-free DSP).
+ *   • neural  — CREPE-tiny via TensorFlow.js (WASM backend), loaded lazily ONLY
+ *     when requested, all self-hosted (no third-party fetch, no audio egress).
+ * Everything downstream (stabilizeOctave → detectTonic → notate) is identical,
+ * so the engine only changes how the f0 track is produced. */
 'use strict';
-// Inherit the ?v= cache-busting query from the worker URL so fft.js/dsp.js
-// are refreshed in lockstep with this file (no stale-DSP-in-worker drift).
+// Inherit the ?v= cache-busting query so fft.js/dsp.js/crepe.js refresh in
+// lockstep with this file (no stale-DSP-in-worker drift).
 var V = self.location.search || '';
-importScripts('fft.js' + V, 'dsp.js' + V);
+importScripts('fft.js' + V, 'dsp.js' + V, 'crepe.js' + V);
 
-self.onmessage = function (e) {
+var tfReady = false;
+function ensureNeural(prog) {
+  if (tfReady) return Promise.resolve();
+  prog('loading', 0);
+  // Self-hosted runtime + WASM SIMD backend (relative paths keep the project
+  // sub-path deployment, e.g. /swarlekh/, working).
+  importScripts('vendor/tf.min.js' + V, 'vendor/tf-backend-wasm.js' + V);
+  tf.wasm.setWasmPaths('vendor/');
+  return tf.setBackend('wasm').then(function () { return tf.ready(); }).then(function () { tfReady = true; });
+}
+
+self.onmessage = async function (e) {
   const { samples, sr } = e.data;
 
   // Transpose job: phase-vocoder pitch shift, duration preserved.
@@ -25,20 +43,26 @@ self.onmessage = function (e) {
   try {
     const prog = (stage, frac) => self.postMessage({ type: 'progress', stage, frac });
 
-    // Band-limit to the vocal range. (HPSS percussion-suppression is available
-    // as DSP.hpssHarmonic but is off by default — on real vocal+harmonium
-    // recordings it introduced high-frequency artifacts that worsened octave
-    // tracking; the band-pass + Viterbi handle accompaniment well enough.)
+    // Band-limit for the onset detector (suppresses tabla). YIN also tracks on
+    // this; CREPE tracks on the raw signal (it is trained on full-mix audio).
     prog('filter', 0);
     const filtered = DSP.preFilter(samples, sr);
 
-    prog('pitch', 0);
-    const track = DSP.yinTrack(filtered, sr, {}, (f) => prog('pitch', f));
+    let track;
+    if (e.data.neural) {
+      await ensureNeural(prog);
+      prog('pitch', 0);
+      track = await CREPE.track('../models/crepe/model.json', samples, sr, (f) => prog('pitch', f));
+    } else {
+      prog('pitch', 0);
+      track = DSP.yinTrack(filtered, sr, {}, (f) => prog('pitch', f));
+    }
     const f0raw = track.f0.slice();
 
-    // Collapse octave-doubled voices first, so Sa and everything downstream are
-    // computed on a single consistent register.
-    const stab = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, 'auto');
+    // Collapse octave-tracking errors so Sa and everything downstream sit in one
+    // consistent register. CREPE is already octave-accurate, so it only needs the
+    // gentle isolated-glitch pass; the full 'auto' align is for YIN's noisy track.
+    const stab = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, e.data.neural ? 'gentle' : 'auto');
 
     prog('tonic', 0);
     const tonic = DSP.detectTonic(stab.f0, track.clarity, track.hopSec, track.rms);

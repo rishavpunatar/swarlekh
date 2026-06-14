@@ -703,6 +703,32 @@ test('stabilizeOctave auto: leaves a clean single-octave melody alone', () => {
   for (let i = 0; i < f0.length; i++) assert.strictEqual(res.f0[i], f0[i], 'track unchanged');
 });
 
+test('stabilizeOctave gentle: snaps an isolated glitch but never shifts the register', () => {
+  // For the octave-accurate neural (CREPE) track. A clean phrase sitting LOW in
+  // the range, plus one isolated octave-down glitch. Gentle must (a) snap the
+  // glitch back, and (b) leave every other frame exactly where it is — 'auto'
+  // would pull the whole low phrase up into the singer's register, which shifts
+  // CREPE's already-correct octaves and flips the detected Sa.
+  const seq = [[-5, 25], [-3, 25], [-1, 25], [-3, 25], [-5, 25]];   // low, clean, stepwise
+  const { f0, clarity } = trackFromRuns(seq);
+  const before = f0.slice();
+  f0[60] = before[60] / 2;                       // one frame an octave low
+  const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'gentle');
+  assert.ok(Math.abs(1200 * Math.log2(res.f0[60] / before[60])) < 60, 'glitch frame snapped back to its neighbours');
+  let moved = 0;
+  for (let i = 0; i < before.length; i++) {
+    if (i === 60 || before[i] <= 0 || res.f0[i] <= 0) continue;
+    if (Math.abs(1200 * Math.log2(res.f0[i] / before[i])) > 30) moved++;
+  }
+  assert.strictEqual(moved, 0, `gentle must keep CREPE's register, but moved ${moved} frames`);
+  // sanity: 'auto' on the same low track DOES lift it (so gentle ≠ auto)
+  const { f0: f0b, clarity: clb } = trackFromRuns(seq);
+  const auto = DSP.stabilizeOctave(f0b, clb, null, HOP, 'auto');
+  let lifted = 0;
+  for (let i = 0; i < f0b.length; i++) if (f0b[i] > 0 && auto.f0[i] > 0 && auto.f0[i] > f0b[i] * 1.5) lifted++;
+  assert.ok(lifted > 50, `auto should lift the low track, lifted ${lifted}`);
+});
+
 test('stabilizeOctave: off mode is a no-op', () => {
   const { f0, clarity } = trackFromRuns([[0, 18], [12, 18], [0, 18], [12, 18]]);
   const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'off');

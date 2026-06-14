@@ -403,9 +403,10 @@
    * flips between them, the melody jumps octaves and the register reads
    * as confusing. Fold every voiced frame into the dominant one-octave
    * band so it reads as a single line ("just take one voice").
-   *   mode 'auto'  — fold only if octave-flipping is detected
-   *   mode 'force' — always fold to one octave
-   *   mode 'off'   — leave untouched
+   *   mode 'auto'   — full register-aligning pass (for the noisy YIN track)
+   *   mode 'gentle' — isolated-glitch snap only (for the octave-accurate CREPE track)
+   *   mode 'force'  — always fold to one octave
+   *   mode 'off'    — leave untouched
    * Returns { f0: newTrack, doubled }.
    * ---------------------------------------------------------------- */
 
@@ -442,10 +443,15 @@
       return { f0: out, doubled: true };
     }
 
-    // AUTO: correct octave-tracking ERRORS while KEEPING genuine range and leaps.
+    // AUTO corrects octave-tracking ERRORS while keeping genuine range/leaps.
+    // 'gentle' (for the already octave-accurate neural/CREPE track) runs ONLY
+    // the isolated-glitch snap below — the register pull + global shift were
+    // built for YIN's noisy output and OVER-correct CREPE: they shift its
+    // register up and flip the detected Sa. So steps 1–2 run only for 'auto'.
     const work = cents.slice();
     let totalFolded = 0;
 
+    if (mode === 'auto') {
     // 1. SEGMENT continuity. Octave errors make a phrase jump ~an octave away
     // from its neighbours (e.g. YIN dropping to the sub-octave for one phrase).
     // Split the voiced track into phrases, then choose each phrase's octave so
@@ -538,6 +544,7 @@
       while (medAll + shift > HI) shift -= 1200;
       if (shift) for (let j = 0; j < work.length; j++) work[j] += shift;
     }
+    }  // end mode === 'auto' — 'gentle' falls straight through to the glitch snap
 
     // 3. FRAME-level glitch fix for isolated/brief octave jumps that remain.
     const half = Math.max(4, Math.round(0.25 / hopSec));

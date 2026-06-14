@@ -35,13 +35,14 @@
     semitones: 0, fileMono: null, fileSr: 16000,
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
     raga: null, highlightPc: null, ragaMatches: [], script: 'latin',
+    engine: 'yin', file: null,
     opts: { clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45, clean: true, onsets: [] },
   };
 
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=17';
+  const WORKER_URL = 'js/worker.js?v=19';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -116,23 +117,23 @@
     els.progBar.style.width = `${Math.round(frac * 100)}%`;
   }
 
-  const STAGE_LABEL = { filter: 'Filtering…', pitch: 'Tracking pitch…', tonic: 'Finding Sa…', synth: 'Rendering melody…' };
+  const STAGE_LABEL = { loading: 'Loading neural model…', filter: 'Filtering…', pitch: 'Tracking pitch…', tonic: 'Finding Sa…', synth: 'Rendering melody…' };
 
-  function runWorker(samples, sr) {
+  function runWorker(samples, sr, neural) {
     return new Promise((resolve, reject) => {
       if (worker) worker.terminate();
       worker = new Worker(WORKER_URL);
       worker.onmessage = (e) => {
         const m = e.data;
         if (m.type === 'progress') {
-          const base = { filter: 0.16, pitch: 0.18, tonic: 0.82, synth: 0.9 }[m.stage] || 0.2;
+          const base = { loading: 0.12, filter: 0.16, pitch: 0.18, tonic: 0.82, synth: 0.9 }[m.stage] || 0.2;
           const frac = m.stage === 'pitch' ? 0.18 + (m.frac || 0) * 0.62 : base;
           setStage(STAGE_LABEL[m.stage] || m.stage, frac);
         } else if (m.type === 'result') resolve(m);
         else if (m.type === 'error') reject(new Error(m.message));
       };
       worker.onerror = (e) => reject(new Error(e.message || 'Analysis failed'));
-      worker.postMessage({ samples, sr }, [samples.buffer]);
+      worker.postMessage({ samples, sr, neural: !!neural }, [samples.buffer]);
     });
   }
 
@@ -148,6 +149,7 @@
       els.progressCard.hidden = false;
       els.resultArea.hidden = true;
       state.fileName = file.name;
+      state.file = file;            // kept so toggling the pitch engine can re-analyze
       setStage('Decoding audio…', 0.04);
 
       const ab = await file.arrayBuffer();
@@ -183,7 +185,7 @@
       src.start();
       const mono = (await oac.startRendering()).getChannelData(0);
 
-      const result = await runWorker(new Float32Array(mono), targetSr);
+      const result = await runWorker(new Float32Array(mono), targetSr, state.engine === 'neural');
       if (!result.f0.length) throw new Error('This clip is too short to analyze.');
 
       state.f0auto = result.f0;            // worker's auto-stabilized track
@@ -769,6 +771,17 @@
   octaveSel.addEventListener('change', () => {
     state.octaveMode = octaveSel.value;
     applyOctaveMode(true);
+  });
+
+  // Pitch engine: Fast (YIN DSP) vs Accurate (neural CREPE). Switching re-runs
+  // the analysis on the same file (the neural model downloads once, ~3 MB).
+  const engineSel = $('engineSel');
+  if (engineSel) engineSel.addEventListener('change', () => {
+    state.engine = engineSel.value;
+    if (state.ready && state.file) {
+      if (state.engine === 'neural') toast('Loading neural model (≈3 MB, once) and re-analyzing — give it a moment.');
+      processFile(state.file);
+    }
   });
 
   const scriptSel = $('scriptSel');

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src blob:; worker-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+        content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; media-src blob:; worker-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
   <title>SwarLekh — sargam notation from your recordings</title>
   <meta name="description" content="Upload a Hindustani vocal recording and get swara (sargam) notation. Runs entirely in your browser — audio never leaves your device.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -154,6 +154,12 @@
 
       <section id="settingsCard" class="card">
         <div class="settings-row">
+          <label class="ctl">Pitch engine
+            <select id="engineSel" title="Accurate uses a small neural model (CREPE) that runs in your browser — better octaves on busy live recordings, but slower and downloads ≈3 MB once.">
+              <option value="yin" selected>Fast (built-in)</option>
+              <option value="neural">Accurate (neural) — slower</option>
+            </select>
+          </label>
           <label class="ctl">Detail
             <select id="detailSel">
               <option value="clean" selected>Clean — singable, with ornaments</option>
@@ -198,10 +204,10 @@
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=17"></script>
-  <script src="js/dsp.js?v=17"></script>
-  <script src="js/ragas.js?v=17"></script>
-  <script src="js/ragaId.js?v=17"></script>
-  <script src="js/main.js?v=17"></script>
+  <script src="js/fft.js?v=19"></script>
+  <script src="js/dsp.js?v=19"></script>
+  <script src="js/ragas.js?v=19"></script>
+  <script src="js/ragaId.js?v=19"></script>
+  <script src="js/main.js?v=19"></script>
 </body>
 </html>
