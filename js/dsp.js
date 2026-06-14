@@ -1678,11 +1678,70 @@
   }
 
   /** Transpose by `semitones`, preserving duration. */
+  /* Re-impose the ORIGINAL spectral envelope (the formants — what makes a voice
+   * sound like itself) onto the pitch-shifted signal, so only the pitch moves
+   * and the timbre stays natural (no "chipmunk"/"monster"). Per STFT frame:
+   * estimate the original's smooth envelope via cepstral liftering, then scale
+   * the shifted spectrum by env(f)/env(f/r) — which undoes the envelope
+   * (formant) scaling that the resample-based shift introduced. */
+  function formantCorrect(orig, shifted, sr, r, progress) {
+    const N = 1024, H = 256, Nh = N >> 1, nBins = Nh + 1;
+    const len = Math.min(orig.length, shifted.length);
+    const nFrames = len >= N ? Math.floor((len - N) / H) + 1 : 0;
+    if (nFrames <= 0) return shifted;
+    const win = new Float32Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+    const Q = Math.max(24, Math.min(80, Math.round(0.001 * sr)));   // cepstral lifter ≈ formant detail
+    const reO = new Float32Array(N), imO = new Float32Array(N);
+    const reS = new Float32Array(N), imS = new Float32Array(N);
+    const env = new Float32Array(nBins);
+    const out = new Float32Array(shifted.length), norm = new Float32Array(shifted.length);
+    for (let f = 0; f < nFrames; f++) {
+      const off = f * H;
+      // --- original frame → cepstral spectral envelope ---
+      for (let i = 0; i < N; i++) { reO[i] = (orig[off + i] || 0) * win[i]; imO[i] = 0; }
+      fft(reO, imO, false);
+      for (let k = 0; k <= Nh; k++) reO[k] = Math.log(Math.hypot(reO[k], imO[k]) + 1e-6);
+      for (let k = 1; k < Nh; k++) reO[N - k] = reO[k];
+      for (let i = 0; i < N; i++) imO[i] = 0;
+      fft(reO, imO, true);                                // real cepstrum in reO
+      for (let q = Q + 1; q < N - Q; q++) reO[q] = 0;     // lifter: keep low quefrency (envelope)
+      for (let i = 0; i < N; i++) imO[i] = 0;
+      fft(reO, imO, false);                               // smoothed log-spectrum
+      for (let k = 0; k <= Nh; k++) env[k] = Math.exp(reO[k]);
+      // --- shifted frame → scale by env(f)/env(f/r), resynthesize ---
+      for (let i = 0; i < N; i++) { reS[i] = (shifted[off + i] || 0) * win[i]; imS[i] = 0; }
+      fft(reS, imS, false);
+      for (let k = 0; k <= Nh; k++) {
+        const idx = k / r;
+        let e2;
+        if (idx <= 0) e2 = env[0];
+        else if (idx >= Nh) e2 = env[Nh];
+        else { const i0 = idx | 0, fr = idx - i0; e2 = env[i0] * (1 - fr) + env[i0 + 1] * fr; }
+        let g = e2 > 1e-9 ? env[k] / e2 : 1;
+        if (g < 0.3) g = 0.3; else if (g > 3.3) g = 3.3;
+        reS[k] *= g; imS[k] *= g;
+      }
+      for (let k = 1; k < Nh; k++) { reS[N - k] = reS[k]; imS[N - k] = -imS[k]; }
+      imS[0] = 0; imS[Nh] = 0;
+      fft(reS, imS, true);
+      for (let i = 0; i < N; i++) { out[off + i] += reS[i] * win[i]; norm[off + i] += win[i] * win[i]; }
+      if (progress && (f & 255) === 0) progress(f / nFrames);
+    }
+    for (let i = 0; i < out.length; i++) {
+      let v = norm[i] > 1e-6 ? out[i] / norm[i] : shifted[i];
+      out[i] = v > 1 ? 1 : v < -1 ? -1 : v;   // clamp (guards the timeStretch edge spike)
+    }
+    return out;
+  }
+
   function pitchShift(x, sr, semitones, progress) {
     if (!semitones) return new Float32Array(x);
     const r = Math.pow(2, semitones / 12);
-    const stretched = timeStretch(x, r, progress); // longer by r, same pitch
-    return resampleLinear(stretched, r);           // faster by r -> duration restored, pitch x r
+    const stretched = timeStretch(x, r, progress ? (f) => progress(0.6 * f) : null); // longer by r, same pitch
+    const shifted = resampleLinear(stretched, r);    // faster by r -> duration restored, pitch x r
+    // keep the singer's natural timbre instead of chipmunk/monster
+    return formantCorrect(x, shifted, sr, r, progress ? (f) => progress(0.6 + 0.4 * f) : null);
   }
 
   return {
