@@ -66,10 +66,15 @@ def analyze():
     voc = separate_vocals(x)                           # [2, n] @44.1k
     voc16 = torchaudio.functional.resample(voc.mean(0, keepdim=True), DEMUCS_SR, SR)  # [1, n] @16k
     t_sep = time.time() - t0
+    print('[swarlekh] separation done in %.1fs — tracking pitch on the clean voice…' % t_sep, flush=True)
 
+    # weighted_argmax, NOT viterbi: Viterbi is O(frames x 360^2) and crawls on a
+    # full song (CPU). The separated voice is clean enough that per-frame CREPE
+    # is already octave-correct, and the client smooths what's left.
     f0, pd = torchcrepe.predict(voc16, SR, hop_length=HOP, fmin=50, fmax=1100,
-                                model='full', decoder=torchcrepe.decode.viterbi,
-                                return_periodicity=True, batch_size=512, device=DEVICE)
+                                model='full', decoder=torchcrepe.decode.weighted_argmax,
+                                return_periodicity=True, batch_size=256, device=DEVICE)
+    f0 = torchcrepe.filter.median(f0, 3)               # cheap jitter/glitch smoothing
     f0 = f0[0].cpu().numpy(); pd = pd[0].cpu().numpy()
     # silence the obviously-unvoiced frames so the client gates cleanly
     f0 = np.where(pd > 0.01, f0, 0.0)
