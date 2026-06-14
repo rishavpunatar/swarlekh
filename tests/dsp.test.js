@@ -668,6 +668,26 @@ test('stabilizeOctave auto: fixes an isolated octave glitch but keeps a real lea
   assert.ok(Math.abs(sPrime - 1200) < 60, `taar Sa must be kept at +1200, got ${sPrime.toFixed(0)}c`);
 });
 
+test('stabilizeOctave auto: lifts a sustained intra-phrase octave-down error', () => {
+  // The real-world failure: inside one continuous phrase the tracker latches the
+  // sub-octave for a sustained stretch (e.g. R' mis-tracked as R for ~1s) then
+  // steps back up — no silence to mark the boundary. The true line +12,+14,+16
+  // is stepwise; the middle is dragged an octave low to +2. Auto must lift the
+  // middle back into the neighbours' register (a local-median glitch fix can't —
+  // the error is longer than its window).
+  const seq = [[12, 40], [2, 55], [16, 40], [12, 40]];   // S' [R-low] G' S'
+  const { f0, clarity } = trackFromRuns(seq);
+  const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'auto');
+  const mid = [];
+  for (let i = 45; i < 90; i++) if (res.f0[i] > 0) mid.push(1200 * Math.log2(res.f0[i] / SA) / 100);
+  const medMid = mid.slice().sort((a, b) => a - b)[mid.length >> 1];
+  assert.ok(medMid > 8, `sub-octave middle must be lifted into register, got ${medMid.toFixed(1)} semis`);
+  // neighbours kept in the taar register (not dragged down to meet the error)
+  let g = 0;
+  for (let i = 95; i < 130; i++) if (res.f0[i] > 0) g = 1200 * Math.log2(res.f0[i] / SA) / 100;
+  assert.ok(g > 12, `taar neighbour must stay high, got ${g.toFixed(1)} semis`);
+});
+
 test('stabilizeOctave auto: leaves a clean single-octave melody alone', () => {
   const seq = [0, 2, 4, 5, 7, 5, 4, 2, 0];   // step-wise, no octave jumps
   const { f0, clarity } = trackFromRuns(seq.map((k) => [k, 22]));

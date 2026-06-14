@@ -442,17 +442,101 @@
       return { f0: out, doubled: true };
     }
 
-    // AUTO: correct octave-tracking ERRORS while KEEPING genuine range and
-    // octave leaps. For each frame, compare to a local running median (~±0.2 s);
-    // only frames sitting ~an exact octave (or two) off that local median are
-    // octave glitches — fold just those. A note sung genuinely high/low (its
-    // neighbours go with it) moves the local median too, so it is left alone.
-    const half = Math.max(4, Math.round(0.25 / hopSec));
+    // AUTO: correct octave-tracking ERRORS while KEEPING genuine range and leaps.
     const work = cents.slice();
-    const winBuf = [];
     let totalFolded = 0;
-    // Iterate: each pass fixes the clearest glitches, which sharpens the local
-    // median so the next pass can fix short *clusters* of octave errors too.
+
+    // 1. SEGMENT continuity. Octave errors make a phrase jump ~an octave away
+    // from its neighbours (e.g. YIN dropping to the sub-octave for one phrase).
+    // Split the voiced track into phrases, then choose each phrase's octave so
+    // the melody flows continuously across the gaps — a Viterbi that minimises
+    // the pitch jump between the end of one phrase and the start of the next.
+    // This works even when MOST frames are octave-wrong (no reliance on a
+    // global median, which the errors corrupt). Genuine mandra/taar excursions
+    // stay, because aligning them to neighbours keeps the small real interval.
+    // A new phrase begins at a silence gap OR a sudden large pitch step. The
+    // step split is essential: an octave error often sits INSIDE one continuous
+    // phrase (the voice sustains the sub-octave then steps back up with no
+    // breath between), so splitting only on silence would never separate the
+    // wrong part from the right part. ~750¢ is above a clean perfect-fifth leap
+    // (700¢) so genuine fifths don't fragment, but an octave-class jump does.
+    const gapLim = Math.max(3, Math.round(0.16 / hopSec));
+    const STEP = 750;
+    const med3 = (arr) => arr.slice().sort((a, b) => a - b)[arr.length >> 1];
+    const segs = [];
+    let segS = 0;
+    for (let k = 1; k <= idx.length; k++) {
+      const gap = k === idx.length || idx[k] - idx[k - 1] > gapLim;
+      const step = k < idx.length && idx[k] - idx[k - 1] <= gapLim &&
+                   Math.abs(cents[k] - cents[k - 1]) > STEP;
+      if (gap || step) {
+        const e = Math.min(3, k - segS);
+        segs.push({
+          a: segS, b: k,
+          start: med3(cents.slice(segS, segS + e)),
+          end: med3(cents.slice(k - e, k)),
+          med: med3(cents.slice(segS, k)),
+        });
+        segS = k;
+      }
+    }
+    if (segs.length >= 2) {
+      // Register reference: octave-tracking errors are almost always octave-DOWN
+      // (YIN latching the sub-harmonic), so they only ever drag the pitch
+      // distribution lower. The UPPER part of the distribution is therefore the
+      // clean register — use a high percentile (p70) as the target the line
+      // should sit in. Each segment is pulled gently toward this register; that
+      // breaks the symmetry of "fold the wrong part up" vs "fold the right parts
+      // down" in favour of the vocally-plausible octave, while continuity (the
+      // dominant term) still protects genuine mandra/taar excursions that flow
+      // smoothly from their neighbours.
+      const REF = sorted[Math.floor(0.70 * (sorted.length - 1))];
+      const PULL = 0.5;
+      const OFFS = [-24, -12, 0, 12, 24];
+      const reg = (i, o) => Math.abs(segs[i].med + OFFS[o] * 100 - REF) * PULL;
+      const cost = OFFS.map((_, o) => reg(0, o));
+      const back = [];
+      for (let i = 1; i < segs.length; i++) {
+        const nc = OFFS.map(() => Infinity), bk = OFFS.map(() => 0);
+        for (let o = 0; o < OFFS.length; o++) {
+          const startEff = segs[i].start + OFFS[o] * 100;
+          const rc = reg(i, o);
+          for (let p = 0; p < OFFS.length; p++) {
+            const endEff = segs[i - 1].end + OFFS[p] * 100;
+            const v = cost[p] + Math.abs(endEff - startEff) + rc;
+            if (v < nc[o]) { nc[o] = v; bk[o] = p; }
+          }
+        }
+        for (let o = 0; o < OFFS.length; o++) cost[o] = nc[o];
+        back.push(bk);
+      }
+      let st = 0;
+      for (let o = 1; o < OFFS.length; o++) if (cost[o] < cost[st]) st = o;
+      const chosen = new Array(segs.length);
+      chosen[segs.length - 1] = st;
+      for (let i = segs.length - 2; i >= 0; i--) { st = back[i][st]; chosen[i] = st; }
+      for (let i = 0; i < segs.length; i++) {
+        const sh = OFFS[chosen[i]] * 100;
+        if (sh) { for (let j = segs[i].a; j < segs[i].b; j++) work[j] += sh; totalFolded += segs[i].b - segs[i].a; }
+      }
+    }
+
+    // 2. GLOBAL register: shift the whole (now-continuous) line by octaves so
+    // the median voiced pitch lands in a singer's range (~150–360 Hz), fixing a
+    // line that's internally consistent but globally an octave off.
+    {
+      const wc = work.slice().sort((a, b) => a - b);
+      let medAll = wc[wc.length >> 1];
+      const LO = 1200 * Math.log2(150 / 55), HI = 1200 * Math.log2(360 / 55);
+      let shift = 0;
+      while (medAll + shift < LO) shift += 1200;
+      while (medAll + shift > HI) shift -= 1200;
+      if (shift) for (let j = 0; j < work.length; j++) work[j] += shift;
+    }
+
+    // 3. FRAME-level glitch fix for isolated/brief octave jumps that remain.
+    const half = Math.max(4, Math.round(0.25 / hopSec));
+    const winBuf = [];
     for (let pass = 0; pass < 3; pass++) {
       const src = work.slice();
       let foldedThis = 0;
