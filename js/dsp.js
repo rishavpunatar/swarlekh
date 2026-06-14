@@ -423,45 +423,47 @@
       }
     }
     if (idx.length < 20) return { f0: out, doubled: false };
-
-    // How often does the line jump by ~an octave? Look across short
-    // articulation gaps (up to ~0.16 s) so note-to-note octave alternation
-    // counts, but not across phrase breaths. True octave-doubling alternates
-    // constantly (many octave jumps, high rate); a wide-range alaap that simply
-    // travels S→S' does not — so require substantial, not incidental, evidence
-    // to avoid folding a legitimate two-octave alaap into one.
-    const gapLim = Math.max(3, Math.round(0.16 / hopSec));
-    let jumps = 0, moves = 0;
-    for (let j = 1; j < idx.length; j++) {
-      if (idx[j] - idx[j - 1] > gapLim) continue;
-      const d = Math.abs(cents[j] - cents[j - 1]);
-      if (d > 250) moves++;
-      if (Math.abs(d - 1200) < 170) jumps++;
-    }
-    // Spread of the voiced pitch: a single voice spans ~2 octaves at most, so a
-    // much wider spread is octave-tracking error, not real range.
     const sorted = cents.slice().sort((a, b) => a - b);
-    const spread = sorted[Math.floor(sorted.length * 0.97)] - sorted[Math.floor(sorted.length * 0.03)];
-    const doubled = (moves >= 8 && jumps >= 5 && jumps / moves >= 0.3) || spread > 2000;
-    if (mode !== 'force' && !doubled) return { f0: out, doubled: false };
 
-    // Dominant register = the loudness/clarity-weighted median of the voiced
-    // pitch. Fold every frame into the single octave [center-600, center+600),
-    // collapsing a second voice an octave away and octave-tracking errors into
-    // one clean register. (A fixed center is deliberate: an adaptive one drifts
-    // and re-scatters the octaves.)
-    const total = wts.reduce((a, b) => a + b, 0);
-    let acc = 0, center = sorted[sorted.length >> 1];
-    for (const j of cents.map((_, i) => i).sort((a, b) => cents[a] - cents[b])) {
-      acc += wts[j]; if (acc >= total / 2) { center = cents[j]; break; }
+    // FORCE: collapse everything into one octave around the dominant register
+    // (best when a second voice an octave away should be dropped entirely).
+    if (mode === 'force') {
+      const total = wts.reduce((a, b) => a + b, 0);
+      let acc = 0, center = sorted[sorted.length >> 1];
+      for (const j of cents.map((_, i) => i).sort((a, b) => cents[a] - cents[b])) {
+        acc += wts[j]; if (acc >= total / 2) { center = cents[j]; break; }
+      }
+      for (let k = 0; k < idx.length; k++) {
+        let c = cents[k];
+        while (c < center - 600) c += 1200;
+        while (c >= center + 600) c -= 1200;
+        out[idx[k]] = 55 * Math.pow(2, c / 1200);
+      }
+      return { f0: out, doubled: true };
     }
+
+    // AUTO: correct octave-tracking ERRORS while KEEPING genuine range and
+    // octave leaps. For each frame, compare to a local running median (~±0.2 s);
+    // only frames sitting ~an exact octave (or two) off that local median are
+    // octave glitches — fold just those. A note sung genuinely high/low (its
+    // neighbours go with it) moves the local median too, so it is left alone.
+    const half = Math.max(3, Math.round(0.2 / hopSec));
+    const winBuf = [];
+    let folded = 0;
     for (let k = 0; k < idx.length; k++) {
-      let c = cents[k];
-      while (c < center - 600) c += 1200;
-      while (c >= center + 600) c -= 1200;
-      out[idx[k]] = 55 * Math.pow(2, c / 1200);
+      winBuf.length = 0;
+      const a = Math.max(0, k - half), b = Math.min(idx.length - 1, k + half);
+      for (let j = a; j <= b; j++) winBuf.push(cents[j]);
+      winBuf.sort((x, y) => x - y);
+      const med = winBuf[winBuf.length >> 1];
+      const d = cents[k] - med;
+      const oct = Math.round(d / 1200);
+      if (oct !== 0 && Math.abs(d - oct * 1200) < 250) {  // ~an exact octave off → glitch
+        out[idx[k]] = 55 * Math.pow(2, (cents[k] - oct * 1200) / 1200);
+        folded++;
+      }
     }
-    return { f0: out, doubled: true };
+    return { f0: out, doubled: folded > idx.length * 0.04 };
   }
 
   /* ---------------------------------------------------------------- *
@@ -510,8 +512,8 @@
     const fps = sr / hop;
     const winF = Math.max(3, Math.round(0.14 * fps));     // local-mean window ~140 ms
     const minIOI = Math.max(2, Math.round(0.12 * fps));   // notes ≥ ~120 ms apart
-    const delta = opts.delta != null ? opts.delta : 0.13; // additive sensitivity floor
-    const ratio = opts.ratio != null ? opts.ratio : 2.0;  // must clearly exceed local mean
+    const delta = opts.delta != null ? opts.delta : 0.10; // additive sensitivity floor
+    const ratio = opts.ratio != null ? opts.ratio : 1.7;  // must clearly exceed local mean
     // A real syllable/word onset is a clear, prominent flux peak; vibrato,
     // tracking jitter and percussion residue make small bumps. Require the peak
     // to both rise well above the local mean AND be a strict local maximum, so

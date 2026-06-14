@@ -41,7 +41,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=11';
+  const WORKER_URL = 'js/worker.js?v=12';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -222,7 +222,7 @@
       if (result.tonic[0].uncertain) {
         toast('Sa may be off — check it with the Drone (see the note below the tonic).');
       } else if (state.octaveDoubled) {
-        toast('Two octave-apart voices detected — merged into one. Change with “Octave” in settings.');
+        toast('Fixed some octave glitches. If two voices an octave apart still show, pick “Single octave” under Octave.');
       }
     } catch (err) {
       els.progressCard.hidden = true;

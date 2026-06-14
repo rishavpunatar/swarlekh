@@ -649,24 +649,38 @@ test('analyzeRaga: per-swara intonation (komal ga sung flat)', () => {
 
 /* ------------------------ octave stabilization ------------------------ */
 
-test('stabilizeOctave: collapses an octave-doubled line to one register', () => {
+test('stabilizeOctave force: collapses an octave-doubled line to one register', () => {
   // Melody that flips octave on alternate notes (two voices an octave apart).
   const seq = [0, 12, 2, 14, 4, 16, 2, 14, 0, 12];
   const { f0, clarity } = trackFromRuns(seq.map((k) => [k, 18]));
-  const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'auto');
-  assert.ok(res.doubled, 'should detect octave doubling');
-  // After folding, every voiced pitch sits within one octave.
+  const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'force');
   const ks = [];
   for (let i = 0; i < res.f0.length; i++) if (res.f0[i] > 0) ks.push(Math.round(1200 * Math.log2(res.f0[i] / SA) / 100));
   const span = Math.max(...ks) - Math.min(...ks);
-  assert.ok(span <= 12, `folded span ${span} should be <= 12 semitones`);
+  assert.ok(span <= 12, `force-folded span ${span} should be <= 12 semitones`);
 });
 
-test('stabilizeOctave: leaves a clean single-octave melody alone', () => {
+test('stabilizeOctave auto: fixes an isolated octave glitch but keeps a real leap', () => {
+  // Held S, S' (a real octave leap), back to S — with one glitched frame an
+  // octave below in the middle of the first S. Auto should fix the glitch and
+  // leave the genuine S->S'->S leap intact.
+  const seq = [[0, 25], [7, 25], [12, 25], [7, 25], [0, 25]];   // S P S' P S — spans an octave
+  const { f0, clarity } = trackFromRuns(seq);
+  f0[10] = SA * Math.pow(2, -12 / 12);   // glitch one frame an octave low
+  const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'auto');
+  // glitch fixed
+  assert.ok(Math.abs(1200 * Math.log2(res.f0[10] / SA)) < 60, `glitch frame should snap to S, got ${(1200 * Math.log2(res.f0[10] / SA)).toFixed(0)}c`);
+  // genuine leap preserved: S' frames stay at +1200
+  let sPrime = 0;
+  for (let i = 55; i < 70; i++) if (res.f0[i] > 0) sPrime = 1200 * Math.log2(res.f0[i] / SA);
+  assert.ok(Math.abs(sPrime - 1200) < 60, `taar Sa must be kept at +1200, got ${sPrime.toFixed(0)}c`);
+});
+
+test('stabilizeOctave auto: leaves a clean single-octave melody alone', () => {
   const seq = [0, 2, 4, 5, 7, 5, 4, 2, 0];   // step-wise, no octave jumps
   const { f0, clarity } = trackFromRuns(seq.map((k) => [k, 22]));
   const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'auto');
-  assert.ok(!res.doubled, 'no doubling should be detected');
+  assert.ok(!res.doubled, 'no glitches should be detected');
   for (let i = 0; i < f0.length; i++) assert.strictEqual(res.f0[i], f0[i], 'track unchanged');
 });
 
