@@ -438,16 +438,23 @@
       if (d > 250) moves++;
       if (Math.abs(d - 1200) < 170) jumps++;
     }
-    const doubled = moves >= 8 && jumps >= 5 && jumps / moves >= 0.3;
+    // Spread of the voiced pitch: a single voice spans ~2 octaves at most, so a
+    // much wider spread is octave-tracking error, not real range.
+    const sorted = cents.slice().sort((a, b) => a - b);
+    const spread = sorted[Math.floor(sorted.length * 0.97)] - sorted[Math.floor(sorted.length * 0.03)];
+    const doubled = (moves >= 8 && jumps >= 5 && jumps / moves >= 0.3) || spread > 2000;
     if (mode !== 'force' && !doubled) return { f0: out, doubled: false };
 
-    // Dominant register = weighted median of the voiced pitch.
-    const order = cents.map((_, j) => j).sort((a, b) => cents[a] - cents[b]);
+    // Dominant register = the loudness/clarity-weighted median of the voiced
+    // pitch. Fold every frame into the single octave [center-600, center+600),
+    // collapsing a second voice an octave away and octave-tracking errors into
+    // one clean register. (A fixed center is deliberate: an adaptive one drifts
+    // and re-scatters the octaves.)
     const total = wts.reduce((a, b) => a + b, 0);
-    let acc = 0, center = cents[order[order.length >> 1]];
-    for (const j of order) { acc += wts[j]; if (acc >= total / 2) { center = cents[j]; break; } }
-
-    // Fold every voiced frame into [center-600, center+600).
+    let acc = 0, center = sorted[sorted.length >> 1];
+    for (const j of cents.map((_, i) => i).sort((a, b) => cents[a] - cents[b])) {
+      acc += wts[j]; if (acc >= total / 2) { center = cents[j]; break; }
+    }
     for (let k = 0; k < idx.length; k++) {
       let c = cents[k];
       while (c < center - 600) c += 1200;
@@ -651,26 +658,54 @@
     // singer's range too high (Sa placed too low).
     let totalW = 0;
     for (const r of rels) totalW += r.w;
+    // The voice is essentially never sung below Sa-by-much: don't place Sa
+    // more than ~a tone below the lowest frequently-sung pitch.
+    const cByVal = rels.map((r) => r.c).sort((a, b) => a - b);
+    const lowCents = cByVal[Math.floor(cByVal.length * 0.05)];
+    const minSaCents = lowCents - 250;
+    // Weighted median of the voiced pitch — the centre of the tessitura. A real
+    // Sa sits at or just below it (singers dwell on Sa and explore upward more
+    // than downward), so placements that put the median in the madhya saptak
+    // [Sa, Sa+~600] read naturally; ones that bury everything in mandra/taar do not.
+    let wAcc = 0, medC = cByVal[cByVal.length >> 1];
+    {
+      const byC = rels.slice().sort((a, b) => a.c - b.c);
+      for (const r of byC) { wAcc += r.w; if (wAcc >= totalW / 2) { medC = r.c; break; } }
+    }
+    const naturalness = (saCents) => {
+      const m = medC - saCents;                 // where the median sits, relative to Sa
+      // Median anywhere from Sa up to ~Pa is natural (covers Sa-centric and
+      // Pa/Ma-centric ragas). Median BELOW Sa means the voice is mostly mandra
+      // (Sa orphaned high) — penalised hard, since that's an octave misplacement.
+      if (m >= 0 && m <= 750) return 1;
+      const d = m < 0 ? -m * 1.6 : m - 750;
+      return Math.max(0.1, 1 - d / 500);
+    };
     const placed = [];
     for (const p of peaks.slice(0, 3)) {
-      let bestHz = 0, bestCov = -1;
+      let bestHz = 0, bestScore = -1, bestCov = 0, bestSa = 0;
       for (let oct = 0; oct <= 4; oct++) {
         const hz = 55 * Math.pow(2, (p.pc / 1200)) * Math.pow(2, oct);
         if (hz < 80 || hz > 400) continue;
         const saCents = 1200 * Math.log2(hz / 55);
+        if (saCents < minSaCents) continue;            // Sa not below the sung range
         let cov = 0;
         for (const r of rels) {
           const rc = r.c - saCents;
-          if (rc >= -500 && rc < 1500) cov += r.w;            // in singer's register
-          else if (rc >= 1500 && rc < 2100) cov += r.w * 0.25; // a bit of taar, weak credit
+          if (rc >= -500 && rc < 1500) cov += r.w;
+          else if (rc >= 1500 && rc < 2100) cov += r.w * 0.25;
         }
-        if (cov > bestCov) { bestCov = cov; bestHz = hz; }
+        const sc = cov * (0.3 + naturalness(saCents));   // octave that reads naturally
+        if (sc > bestScore) { bestScore = sc; bestHz = hz; bestCov = cov; bestSa = saCents; }
       }
-      if (bestHz > 0) placed.push({ hz: bestHz, score: p.score, coverage: totalW ? bestCov / totalW : 0 });
+      // Combine the pitch-class score with how naturally its best octave sits,
+      // so a strong class buried in mandra can't beat a clean madhya placement.
+      if (bestHz > 0) placed.push({ hz: bestHz, score: p.score * (0.4 + 0.6 * naturalness(bestSa)), coverage: totalW ? bestCov / totalW : 0 });
     }
+    placed.sort((a, b) => b.score - a.score);
     // Normalize scores to [0,1] relative to the best candidate. When the
-    // runner-up is nearly as strong, Sa is a close call between fifth-related
-    // notes — flag it so the UI nudges the user to verify against the drone.
+    // runner-up is nearly as strong, Sa is a close call — flag it so the UI
+    // nudges the user to verify against the drone.
     if (placed.length) {
       const top = Math.max(...placed.map(p => p.score), 1e-6);
       for (const p of placed) p.score = Math.max(0, p.score / top);
@@ -806,16 +841,19 @@
     const drift = Math.abs(b / q - a / q);
     const durSec = (end - start) * 0.016;            // hopSec is 16 ms
     const freq = durSec > 0 ? cross / (2 * durSec) : 0;
-    // Andolan: a slow (≤~4 Hz), wide (≥~45¢) oscillation that returns to centre.
-    // This is the signature of Darbari/Todi komal-ga, Bhairav re, etc. — even
-    // one full slow swing counts (the old ≥4-crossing rule missed slow ones).
-    if (cross >= 2 && freq <= 4 && range >= 45 && range <= 320 && drift < range * 0.55) {
+    // Andolan: a slow (≈1–3.5 Hz), wide (≥~70¢) oscillation that returns to
+    // centre over a real span (Darbari/Todi komal-ga, Bhairav re). Stricter than
+    // before so ordinary vibrato and quick murkis are not mislabelled ≈.
+    if (cross >= 3 && freq >= 0.8 && freq <= 3.5 && range >= 70 && range <= 320 &&
+        drift < range * 0.5 && durSec >= 0.4) {
       andolan = true;
       // Only expose neighbour swaras when the swing is wide enough to truly
       // reach them (≥~1.5 semitones); a narrow shake is just ≈X.
       if (range >= 150) { andolanLo = Math.round(cMin / 100); andolanHi = Math.round(cMax / 100); }
       else { andolanLo = andolanHi = Math.round(mean / 100); }
-    } else if (range > 70 && (drift > 70 || range > 110)) {
+    } else if (range > 110 && drift > 90) {
+      // Only a clear, directional glide within the note earns a ~ mark; plain
+      // vibrato/drift on a held note should read as a clean note.
       meend = true;
     }
     return { mean, andolan, meend, andolanLo, andolanHi };
@@ -849,13 +887,17 @@
         if (nhi - nlo > 3) break;                 // stays within a ~3-semitone band
         lo = nlo; hi = nhi; j++;
       }
-      if (j - i >= 2 && hi - lo >= 1) {
+      // Andolan is a SUSTAINED oscillation (≥~0.45 s, returns repeatedly) that
+      // sweeps between notes — distinct from a brief murki (a quick 2–4 note
+      // flourish, left for murki classification) and from plain vibrato.
+      const dur = tokens[j].t1 - tokens[i].t0;
+      if (j - i >= 2 && hi - lo >= 1 && dur >= 0.45) {
         let changes = 0, prevDir = 0;
         for (let m = i + 1; m <= j; m++) {
           const d = Math.sign(tokens[m].k - tokens[m - 1].k);
           if (d) { if (prevDir && d !== prevDir) changes++; prevDir = d; }
         }
-        if (changes >= 1 && meanDistToSemitone(cents, voiced, tokens[i].t0, tokens[j].t1, hopSec) > 16) {
+        if (changes >= 2 && meanDistToSemitone(cents, voiced, tokens[i].t0, tokens[j].t1, hopSec) > 16) {
           const ks = [];
           for (let m = i; m <= j; m++) ks.push(tokens[m].k);
           ks.sort((a, b) => a - b);

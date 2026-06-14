@@ -25,11 +25,12 @@ self.onmessage = function (e) {
   try {
     const prog = (stage, frac) => self.postMessage({ type: 'progress', stage, frac });
 
-    // Suppress tabla/percussion transients first (harmonic component only),
-    // then band-limit to the vocal range.
+    // Band-limit to the vocal range. (HPSS percussion-suppression is available
+    // as DSP.hpssHarmonic but is off by default — on real vocal+harmonium
+    // recordings it introduced high-frequency artifacts that worsened octave
+    // tracking; the band-pass + Viterbi handle accompaniment well enough.)
     prog('filter', 0);
-    const harmonic = DSP.hpssHarmonic(samples, sr, { progress: (f) => prog('filter', f * 0.5) });
-    const filtered = DSP.preFilter(harmonic, sr);
+    const filtered = DSP.preFilter(samples, sr);
 
     prog('pitch', 0);
     const track = DSP.yinTrack(filtered, sr, {}, (f) => prog('pitch', f));
