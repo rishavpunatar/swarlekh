@@ -42,7 +42,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=22';
+  const WORKER_URL = 'js/worker.js?v=23';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -150,11 +150,17 @@
   const SERVER_URL = 'http://127.0.0.1:8765';
   async function analyzeViaServer() {
     const wav = encodeWav(state.fileMono, state.fileSr);
-    const resp = await fetch(SERVER_URL + '/analyze', {
-      method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' },
-    });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    return await resp.json();   // { f0, periodicity, hopSec, sr }
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 30 * 60 * 1000);   // safety net, 30 min
+    try {
+      const resp = await fetch(SERVER_URL + '/analyze', {
+        method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' }, signal: ctrl.signal,
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      return await resp.json();   // { f0, periodicity, hopSec, sr }
+    } finally {
+      clearTimeout(to);
+    }
   }
 
   async function processFile(file) {
@@ -209,12 +215,23 @@
       if (state.engine === 'neural') {
         workerOpts = { neural: true };
       } else if (state.engine === 'server') {
-        setStage('Separating voice on local server… (a few minutes)', 0.12);
+        // The server doesn't stream sub-progress, so show a live elapsed timer
+        // and a slowly-creeping bar — otherwise the long separation looks frozen.
+        const t0 = performance.now();
+        const estMin = Math.max(1, Math.round(state.duration / 60));
+        const ticker = setInterval(() => {
+          const s = (performance.now() - t0) / 1000;
+          const mm = Math.floor(s / 60), ss = Math.floor(s % 60);
+          const frac = 0.12 + 0.64 * (1 - Math.exp(-s / 150));   // creeps 12%→~76%, never "completes"
+          setStage(`Separating voice on your server — ${mm}:${ss < 10 ? '0' : ''}${ss} elapsed (≈${estMin}–${estMin * 2} min)`, frac);
+        }, 1000);
         let data;
         try {
           data = await analyzeViaServer();
         } catch (err) {
-          throw new Error('Local server not reachable. Start it (see server/README.md), then pick "Best (local server)" again. [' + err.message + ']');
+          throw new Error('Local server not reachable or it errored. Check that server/start.command is running (and you are in Chrome), then pick "Best (local server)" again. [' + err.message + ']');
+        } finally {
+          clearInterval(ticker);
         }
         workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedHopSec: data.hopSec };
       }
