@@ -41,7 +41,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=16';
+  const WORKER_URL = 'js/worker.js?v=17';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -1242,29 +1242,43 @@
     cctx.stroke();
     cctx.globalAlpha = 1;
 
-    // ---- Name every note. A dot sits on the line at each note the voice hits,
+    // ---- Name EVERY note. A dot sits on the line at each note the voice hits,
     // and its swara is written beside it; glides name every scale-swara they
-    // travel through. Names are nudged into free lanes so each stays readable
-    // (zoom in if a fast run is too tight to fit them all). ----
+    // travel through. If a name won't fit, it is SHRUNK (down to ~7px) rather
+    // than ever dropped — names sit right beside their dot with no connector
+    // lines (those just read as clutter), each with a card-coloured halo so it
+    // stays legible over the curve and grid. ----
     const placed = [];   // boxes [x0,y0,x1,y1] already occupied this frame
     const free = (x0, y0, x1, y1) => {
       for (const b of placed) if (x0 < b[2] + 1 && x1 > b[0] - 1 && y0 < b[3] + 1 && y1 > b[1] - 1) return false;
       return true;
     };
     const labelAt = (text, cx, cy, big, color) => {
-      cctx.font = (big ? '700 13px ' : '600 11px ') + 'Georgia, serif';
-      const w = cctx.measureText(text).width + 6, h = big ? 16 : 13;
-      let ly = null;
-      for (const dy of [-15, 15, -28, 28, -42, 42, -56, 56]) {
-        if (free(cx - w / 2, cy + dy - h / 2, cx + w / 2, cy + dy + h / 2)) { ly = cy + dy; break; }
+      const sizes = big ? [13, 11, 9.5, 8, 7] : [11, 9.5, 8, 7];
+      const aboveFirst = cy > RULER + 46;
+      let fs = sizes[sizes.length - 1], ly = cy - 11, box = null;
+      for (const s of sizes) {
+        cctx.font = (big ? '700 ' : '600 ') + s + 'px Georgia, serif';
+        const w = cctx.measureText(text).width + 3, h = s + 3, base = h / 2 + 3;
+        const offs = aboveFirst ? [-base, base, -(base + 13), base + 13] : [base, -base, base + 13, -(base + 13)];
+        for (const dy of offs) {
+          const b = [cx - w / 2, cy + dy - h / 2, cx + w / 2, cy + dy + h / 2];
+          if (free(b[0], b[1], b[2], b[3])) { fs = s; ly = cy + dy; box = b; break; }
+        }
+        if (box) break;
       }
-      if (ly == null) return;   // no room — the dot still marks the note; zoom reveals the name
-      placed.push([cx - w / 2, ly - h / 2, cx + w / 2, ly + h / 2]);
-      if (Math.abs(ly - cy) > 18) {   // tie a nudged name back to its dot
-        cctx.strokeStyle = colors.grid; cctx.lineWidth = 1;
-        cctx.beginPath(); cctx.moveTo(cx, cy); cctx.lineTo(cx, ly + (ly > cy ? -h / 2 : h / 2)); cctx.stroke();
+      if (!box) {   // no gap even at the smallest size — draw it anyway, just above
+        fs = sizes[sizes.length - 1];
+        cctx.font = '600 ' + fs + 'px Georgia, serif';
+        const w = cctx.measureText(text).width + 3, h = fs + 3;
+        ly = cy - (h / 2 + 3); box = [cx - w / 2, ly - h / 2, cx + w / 2, ly + h / 2];
       }
-      cctx.fillStyle = color; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
+      placed.push(box);
+      cctx.font = (big ? '700 ' : '600 ') + fs + 'px Georgia, serif';
+      cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
+      cctx.lineWidth = 3; cctx.lineJoin = 'round'; cctx.strokeStyle = colors.card;
+      cctx.strokeText(text, cx, ly);   // halo for legibility
+      cctx.fillStyle = color;
       cctx.fillText(text, cx, ly);
     };
 
