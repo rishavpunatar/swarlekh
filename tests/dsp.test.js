@@ -256,45 +256,37 @@ function trackFromRuns(runs) {
   return { f0, clarity };
 }
 
-test('ornaments: single short note before a stable note becomes kan', () => {
+test('granular: a brief note between stable notes is picked out as its own swara', () => {
   const { f0, clarity } = trackFromRuns([[0, 30], [2, 3], [4, 30]]);
   const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
-  assert.deepStrictEqual(tokens.map(t => t.k), [0, 4]);
-  assert.deepStrictEqual(tokens[1].kan, [2]);
-  assert.strictEqual(DSP.tokenFullText(tokens[1]), '(R)G');
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 2, 4], 'each note shown, not bundled as kan');
 });
 
-test('ornaments: 2-4 short notes become a murki cluster', () => {
+test('granular: a murki reads note-by-note (G R G), not a bundled cluster', () => {
   const { f0, clarity } = trackFromRuns([[0, 30], [4, 3], [2, 3], [4, 30]]);
   const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
-  assert.deepStrictEqual(tokens.map(t => t.k), [0, 4]);
-  assert.deepStrictEqual(tokens[1].murki, [4, 2]);
-  assert.strictEqual(DSP.tokenFullText(tokens[1]), '(GR)G');
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 4, 2, 4], 'every note of the murki is its own swara');
 });
 
-test('ornaments: monotonic chain becomes a meend connector', () => {
+test('granular: a stepped run of distinct notes is shown note-by-note (not a meend)', () => {
+  // On-pitch staircase S r R g G — each note is HIT, so show each, not a glide.
   const { f0, clarity } = trackFromRuns([[0, 30], [1, 3], [2, 3], [3, 3], [4, 30]]);
-  const { tokens, phrases } = DSP.notate(f0, clarity, HOP, SA, {});
-  assert.deepStrictEqual(tokens.map(t => t.k), [0, 4]);
-  assert.ok(tokens[1].meendFromPrev, 'second token should carry meend connector');
-  assert.ok(!tokens[1].murki && !tokens[1].kan);
-  assert.deepStrictEqual(tokens[1].via, [0, 1, 2, 3, 4], 'via lists the swaras the glide touches');
-  assert.match(DSP.notationText(phrases), /S⌒.*⌒G/, 'connector shows the via path');
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 1, 2, 3, 4]);
+  assert.ok(!tokens.some(t => t.meendFromPrev), 'stepped notes are not a meend');
 });
 
-test('ornaments: >4 fast short notes promote to real tokens (taan)', () => {
+test('ornaments: >4 fast short notes show note-by-note (taan)', () => {
   const seq = [0, 2, 4, 5, 7, 5, 4, 2];
   const { f0, clarity } = trackFromRuns(seq.map(k => [k, 4]));
   const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
   assert.deepStrictEqual(tokens.map(t => t.k), seq);
 });
 
-test('ornaments: trailing short note becomes a grace after', () => {
+test('granular: a trailing brief note is its own swara', () => {
   const { f0, clarity } = trackFromRuns([[4, 30], [2, 3]]);
   const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
-  assert.strictEqual(tokens.length, 1);
-  assert.deepStrictEqual(tokens[0].graceAfter, [2]);
-  assert.strictEqual(DSP.tokenFullText(tokens[0]), 'G(R)');
+  assert.deepStrictEqual(tokens.map(t => t.k), [4, 2]);
 });
 
 test('ornaments: slow oscillation flagged as andolan', () => {

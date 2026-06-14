@@ -447,23 +447,30 @@
     // only frames sitting ~an exact octave (or two) off that local median are
     // octave glitches — fold just those. A note sung genuinely high/low (its
     // neighbours go with it) moves the local median too, so it is left alone.
-    const half = Math.max(3, Math.round(0.2 / hopSec));
+    const half = Math.max(4, Math.round(0.25 / hopSec));
+    const work = cents.slice();
     const winBuf = [];
-    let folded = 0;
-    for (let k = 0; k < idx.length; k++) {
-      winBuf.length = 0;
-      const a = Math.max(0, k - half), b = Math.min(idx.length - 1, k + half);
-      for (let j = a; j <= b; j++) winBuf.push(cents[j]);
-      winBuf.sort((x, y) => x - y);
-      const med = winBuf[winBuf.length >> 1];
-      const d = cents[k] - med;
-      const oct = Math.round(d / 1200);
-      if (oct !== 0 && Math.abs(d - oct * 1200) < 250) {  // ~an exact octave off → glitch
-        out[idx[k]] = 55 * Math.pow(2, (cents[k] - oct * 1200) / 1200);
-        folded++;
+    let totalFolded = 0;
+    // Iterate: each pass fixes the clearest glitches, which sharpens the local
+    // median so the next pass can fix short *clusters* of octave errors too.
+    for (let pass = 0; pass < 3; pass++) {
+      const src = work.slice();
+      let foldedThis = 0;
+      for (let k = 0; k < idx.length; k++) {
+        winBuf.length = 0;
+        const a = Math.max(0, k - half), b = Math.min(idx.length - 1, k + half);
+        for (let j = a; j <= b; j++) winBuf.push(src[j]);
+        winBuf.sort((x, y) => x - y);
+        const med = winBuf[winBuf.length >> 1];
+        const d = work[k] - med;
+        const oct = Math.round(d / 1200);
+        if (oct !== 0 && Math.abs(d - oct * 1200) < 250) { work[k] -= oct * 1200; foldedThis++; }
       }
+      totalFolded += foldedThis;
+      if (foldedThis === 0) break;
     }
-    return { f0: out, doubled: folded > idx.length * 0.04 };
+    for (let k = 0; k < idx.length; k++) out[idx[k]] = 55 * Math.pow(2, work[k] / 1200);
+    return { f0: out, doubled: totalFolded > idx.length * 0.03 };
   }
 
   /* ---------------------------------------------------------------- *
@@ -1053,28 +1060,24 @@
           mergeShortRuns(runs, stableFrames);
           for (const r of runs) tokens.push(makeToken(r));
         } else {
-          // Classify transient runs around stable ones.
+          // Pick out EVERY note the voice hits. Short runs around a stable note
+          // are promoted to their own swara (so a murki, a melisma on one word,
+          // or an alaap figure reads note-by-note), EXCEPT a smooth quantized
+          // glide into the next note, which stays a meend path. (Sustained
+          // oscillation and continuous sweeps are folded later by
+          // collapseAndolan/collapseGlides via the mean-distance test.)
           let pending = [];
           let lastStable = null;
           const flush = (cur) => {
             if (pending.length) {
               const ks = pending.map(r => r.k);
-              const promote = () => { for (const r of pending) tokens.push(makeToken(r)); };
-              if (pending.length > 4 || (!lastStable && !cur)) {
-                promote();                                   // fast taan or bare run
-              } else if (cur && lastStable && pending.length >= 2 && isMeendChain(lastStable.k, ks, cur.k)) {
-                cur.meendFromPrev = true;                    // quantized glide
-                cur.via = [lastStable.k].concat(ks, cur.k);  // swaras the glide touches
+              if (cur && lastStable && pending.length >= 2 && isMeendChain(lastStable.k, ks, cur.k) &&
+                  meanDistToSemitone(cents, voiced, pending[0].start * hopSec, pending[pending.length - 1].end * hopSec, hopSec) > 22) {
+                cur.meendFromPrev = true;
+                cur.via = [lastStable.k].concat(ks, cur.k);
                 cur.orn = (cur.orn || []).concat(pending.map(r => ornOf(r, 'meend')));
-              } else if (cur) {
-                if (ks.length === 1) cur.kan = ks.slice();
-                else cur.murki = ks.slice();
-                cur.orn = (cur.orn || []).concat(pending.map(r => ornOf(r, ks.length === 1 ? 'kan' : 'murki')));
-              } else if (lastStable && pending.length <= 2) {
-                lastStable.graceAfter = ks.slice();
-                lastStable.orn = (lastStable.orn || []).concat(pending.map(r => ornOf(r, 'grace')));
               } else {
-                promote();
+                for (const r of pending) tokens.push(makeToken(r));   // each note, distinct
               }
               pending = [];
             }
