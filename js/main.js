@@ -41,7 +41,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=14';
+  const WORKER_URL = 'js/worker.js?v=15';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -1106,6 +1106,25 @@
   function viewWidthSec() { return Math.max(1, (cvs.clientWidth - GUTTER) / state.pxPerSec); }
   function clampScroll(s) { return Math.max(0, Math.min(Math.max(0, state.duration - viewWidthSec() * 0.5), s)); }
 
+  // Indian classical melody moves in curves (meend/gamak), never angular steps —
+  // so every melodic line is drawn as a smooth Catmull-Rom spline through its
+  // points rather than straight segments. Caller handles beginPath()/stroke();
+  // this adds one moveTo + smooth bézier subpath for the given [x,y] points.
+  function smoothSub(ctx, pts) {
+    const n = pts.length;
+    if (n === 0) return;
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    if (n === 1) return;
+    if (n === 2) { ctx.lineTo(pts[1][0], pts[1][1]); return; }
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      ctx.bezierCurveTo(
+        p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6,
+        p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6,
+        p2[0], p2[1]);
+    }
+  }
+
   function drawCanvas() {
     if (!state.f0) return;
     const dpr = window.devicePixelRatio || 1;
@@ -1197,15 +1216,17 @@
     cctx.lineWidth = 1;
     cctx.globalAlpha = 0.32;
     cctx.beginPath();
-    let pen = false;
+    let run = [];
+    const flushRun = () => { if (run.length) { smoothSub(cctx, run); run = []; } };
     for (let i = i0; i <= i1; i++) {
       if (f0[i] > 0 && clarity[i] >= opts.clarityThresh) {
         const x = tToX(i * hopSec);
         const y = cToY(1200 * Math.log2(f0[i] / saHz));
-        if (y < RULER || y > H) { pen = false; continue; }
-        if (pen) cctx.lineTo(x, y); else { cctx.moveTo(x, y); pen = true; }
-      } else pen = false;
+        if (y < RULER || y > H) { flushRun(); continue; }
+        run.push([x, y]);
+      } else flushRun();
     }
+    flushRun();
     cctx.stroke();
     cctx.globalAlpha = 1;
 
@@ -1231,12 +1252,13 @@
         cctx.strokeStyle = colors.contour;
         cctx.globalAlpha = isActive ? 1 : 0.85;
         cctx.lineWidth = isActive ? 3 : 2;
+        cctx.lineCap = 'round'; cctx.lineJoin = 'round';
         cctx.beginPath();
+        const mpts = [];
         for (let p = 0; p < vv.length; p++) {
-          const px = tToX(tk.t0 + dur * (vv.length > 1 ? p / (vv.length - 1) : 0));
-          const py = cToY(vv[p] * 100);
-          if (p === 0) cctx.moveTo(px, py); else cctx.lineTo(px, py);
+          mpts.push([tToX(tk.t0 + dur * (vv.length > 1 ? p / (vv.length - 1) : 0)), cToY(vv[p] * 100)]);
         }
+        smoothSub(cctx, mpts);   // meend as a flowing curve through its swaras
         cctx.stroke();
         cctx.fillStyle = colors.contour;
         for (let p = 0; p < vv.length; p++) {

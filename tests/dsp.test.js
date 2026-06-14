@@ -329,17 +329,24 @@ test('ornaments: smooth mode suppresses ornament extraction', () => {
 
 const CLEAN = { clean: true, ornaments: false, minNoteMs: 150 };
 
-test('clean: weak short blips between phrases are dropped', () => {
+test('clean: keeps genuine short notes, drops only sub-100ms flicker', () => {
+  // Every note the voice actually hits must survive — including a ~0.18s note
+  // (k=4) and a ~0.14s note (k=2) between phrases. Only a 4-frame (~64ms),
+  // barely-voiced flicker (k=9) is removed.
+  const CLN = { clean: true, ornaments: true, minNoteMs: 90 };
   const { f0, clarity } = trackFromRuns([
-    [0, 32], [null, 30], [4, 12, 0.56], [null, 30], [7, 32], [null, 20], [2, 8, 0.53], [null, 30], [4, 32],
+    [0, 32], [null, 20], [4, 11, 0.62], [null, 20], [7, 32], [null, 20], [9, 4, 0.52], [null, 20], [2, 9, 0.62], [null, 20], [4, 32],
   ]);
-  const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
-  assert.deepStrictEqual(tokens.map(t => t.k), [0, 7, 4]);
+  const ks = DSP.notate(f0, clarity, HOP, SA, CLN).tokens.map(t => t.k);
+  assert.ok(ks.includes(4) && ks.includes(7) && ks.includes(2), `genuine short notes kept, got ${ks}`);
+  assert.ok(!ks.includes(9), `sub-100ms flicker dropped, got ${ks}`);
 });
 
-test('clean: glitch jump far from both neighbors is dropped', () => {
-  const { f0, clarity } = trackFromRuns([[0, 32], [12, 9], [2, 32]]);
-  const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+test('clean: drops a sub-100ms isolated octave stray (tracking glitch)', () => {
+  // A 5-frame (~80ms) spike an octave off both neighbours is a glitch, not a note.
+  const CLN = { clean: true, ornaments: true, minNoteMs: 90 };
+  const { f0, clarity } = trackFromRuns([[0, 32], [12, 5], [2, 32]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLN);
   assert.deepStrictEqual(tokens.map(t => t.k), [0, 2]);
 });
 

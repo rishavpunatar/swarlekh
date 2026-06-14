@@ -1199,19 +1199,22 @@
         tk.conf = c ? s / c : 0;
         tk.loud = c ? rs / c : 0;
       }
-      // 0. Loudness gate: a quiet sustained tone under the singing is usually
-      // tanpura/instrument bleed, not the voice — drop it (keeps Sa, the
-      // voice's own notes, since they're as loud as the rest of the singing).
+      // 0. Loudness gate: a quiet *sustained* tone under the singing is usually
+      // tanpura/instrument bleed, not the voice — drop it. Only gate long quiet
+      // tones (a held drone); a soft, quick vocal note in an alaap/murki is a
+      // real note the learner needs to see, so it's kept regardless of level.
       if (rms) {
         const lv = tokens.map((t) => t.loud).filter((x) => x > 0).sort((a, b) => a - b);
         const medLoud = lv.length ? lv[lv.length >> 1] : 0;
-        if (medLoud > 0) tokens = tokens.filter((tk) => tk.loud >= 0.3 * medLoud);
+        if (medLoud > 0) tokens = tokens.filter((tk) => tk.loud >= 0.16 * medLoud || (tk.t1 - tk.t0) < 0.4);
       }
-      // 1. Weak-short blips out.
+      // 1. Weak-short blips out. We want EVERY note the voice actually hits, so
+      // only a sub-100 ms run that is *also* barely above the voicing threshold
+      // (a tracking flicker, not a sung note) is removed — a clearly-voiced fast
+      // note in a taan/murki survives even when very short.
       let out = tokens.filter((tk) => {
         const dur = tk.t1 - tk.t0;
-        if (dur < 0.12 && tk.conf < thresh + 0.18) return false;
-        if (dur < 0.22 && tk.conf < thresh + 0.08) return false;
+        if (dur < 0.10 && tk.conf < thresh + 0.06) return false;
         return true;
       });
       // 2. Glitch jumps and far-out-of-tessitura strays.
@@ -1220,12 +1223,12 @@
       const centerK = wSum ? wk / wSum : 0;
       out = out.filter((tk, i) => {
         const dur = tk.t1 - tk.t0;
-        if (dur >= 0.25) return true;
-        if (Math.abs(tk.k - centerK) > 14) return false;
+        if (dur >= 0.22) return true;
+        if (Math.abs(tk.k - centerK) > 16) return false;       // outside any plausible tessitura
         const pv = out[i - 1], nx = out[i + 1];
         const dp = pv ? Math.abs(tk.k - pv.k) : 99;
         const dn = nx ? Math.abs(tk.k - nx.k) : 99;
-        return !(Math.min(dp, dn) > 5 && dur < 0.2);
+        return !(Math.min(dp, dn) > 7 && dur < 0.12);          // only a truly isolated micro-stray
       });
       // 3. Snap rare off-scale short notes onto the song's scale.
       const classDur = new Float64Array(12);
