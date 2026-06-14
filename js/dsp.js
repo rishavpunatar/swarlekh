@@ -989,20 +989,24 @@
         if (tokens[j + 1].glide || tokens[j].glide) break;
         if (tokens[j + 1].t0 - tokens[j].t1 > 0.12) break;
         const nlo = Math.min(lo, tokens[j + 1].k), nhi = Math.max(hi, tokens[j + 1].k);
-        if (nhi - nlo > 3) break;                 // stays within a ~3-semitone band
+        if (nhi - nlo > 2) break;                 // a real andolan shakes within ~2 semitones
         lo = nlo; hi = nhi; j++;
       }
-      // Andolan is a SUSTAINED oscillation (≥~0.45 s, returns repeatedly) that
-      // sweeps between notes — distinct from a brief murki (a quick 2–4 note
-      // flourish, left for murki classification) and from plain vibrato.
+      // Andolan is a NARROW, repeated shake between ~2 adjacent swaras, sustained
+      // but bounded (~0.45–1.5 s). A fast TAAN that sweeps through many notes
+      // over several seconds is NOT andolan — bundling it hides the very notes
+      // the ear hears, so cap the duration and require a genuine repeated
+      // oscillation (≥3 reversals) over ≤3 distinct pitches.
       const dur = tokens[j].t1 - tokens[i].t0;
-      if (j - i >= 2 && hi - lo >= 1 && dur >= 0.45) {
+      const distinct = new Set();
+      for (let m = i; m <= j; m++) distinct.add(tokens[m].k);
+      if (j - i >= 2 && hi - lo >= 1 && dur >= 0.45 && dur <= 1.5 && distinct.size <= 3) {
         let changes = 0, prevDir = 0;
         for (let m = i + 1; m <= j; m++) {
           const d = Math.sign(tokens[m].k - tokens[m - 1].k);
           if (d) { if (prevDir && d !== prevDir) changes++; prevDir = d; }
         }
-        if (changes >= 2 && meanDistToSemitone(cents, voiced, tokens[i].t0, tokens[j].t1, hopSec) > 16) {
+        if (changes >= 3 && meanDistToSemitone(cents, voiced, tokens[i].t0, tokens[j].t1, hopSec) > 16) {
           const ks = [];
           for (let m = i; m <= j; m++) ks.push(tokens[m].k);
           ks.sort((a, b) => a - b);
