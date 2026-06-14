@@ -481,19 +481,24 @@
       }
     }
     if (segs.length >= 2) {
-      // Register reference: octave-tracking errors are almost always octave-DOWN
-      // (YIN latching the sub-harmonic), so they only ever drag the pitch
-      // distribution lower. The UPPER part of the distribution is therefore the
-      // clean register — use a high percentile (p70) as the target the line
-      // should sit in. Each segment is pulled gently toward this register; that
-      // breaks the symmetry of "fold the wrong part up" vs "fold the right parts
-      // down" in favour of the vocally-plausible octave, while continuity (the
-      // dominant term) still protects genuine mandra/taar excursions that flow
-      // smoothly from their neighbours.
+      // Octave-tracking errors are almost always octave-DOWN (YIN latching the
+      // sub-harmonic); a genuine octave-UP error is rare. The octave term is
+      // therefore ASYMMETRIC:
+      //   • a segment sitting below the vocal FLOOR (~a sixth under the clean
+      //     p70 register) is pulled UP — it's almost certainly a sub-octave slip;
+      //   • folding a segment DOWN from its tracked octave is penalised — doing
+      //     so assumes a rare up-error, and a symmetric "pull to centre" was
+      //     dragging genuine taar (high) phrases down an octave (the 0:59 bug).
+      // Continuity (the dominant term) still carries real mandra/taar that flows
+      // smoothly from its neighbours.
       const REF = sorted[Math.floor(0.70 * (sorted.length - 1))];
-      const PULL = 0.5;
+      const FLOOR = REF - 900;
+      const PULL = 0.6, DOWNPEN = 22;
       const OFFS = [-24, -12, 0, 12, 24];
-      const reg = (i, o) => Math.abs(segs[i].med + OFFS[o] * 100 - REF) * PULL;
+      const reg = (i, o) => {
+        const eff = segs[i].med + OFFS[o] * 100;
+        return Math.max(0, FLOOR - eff) * PULL + (OFFS[o] < 0 ? -OFFS[o] * DOWNPEN : 0);
+      };
       const cost = OFFS.map((_, o) => reg(0, o));
       const back = [];
       for (let i = 1; i < segs.length; i++) {

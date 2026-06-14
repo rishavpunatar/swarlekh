@@ -30,7 +30,7 @@
     tokens: [], phrases: [],
     duration: 0, synthDuration: 0,
     loopA: null, loopB: null,
-    pxPerSec: 90, scrollSec: 0, centsLo: -700, centsHi: 1900,
+    pxPerSec: 120, scrollSec: 0, centsLo: -700, centsHi: 1900,
     playing: false,
     semitones: 0, fileMono: null, fileSr: 16000,
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
@@ -41,7 +41,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=15';
+  const WORKER_URL = 'js/worker.js?v=16';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -1139,6 +1139,15 @@
     cctx.fillStyle = colors.card;
     cctx.fillRect(0, 0, W, H);
 
+    // Follow the playhead while playing so the current notes stay on screen
+    // (the view is zoomed in for legibility, so it page-turns as it goes).
+    if (state.playing) {
+      const pt = origEl.currentTime, vw = viewWidthSec();
+      if (pt < state.scrollSec + vw * 0.12 || pt > state.scrollSec + vw * 0.82) {
+        state.scrollSec = clampScroll(pt - vw * 0.35);
+      }
+    }
+
     const { centsLo, centsHi, scrollSec, pxPerSec, saHz } = state;
     const tToX = (t) => GUTTER + (t - scrollSec) * pxPerSec;
     const cToY = (c) => RULER + (centsHi - c) / (centsHi - centsLo) * (H - RULER - 10);
@@ -1208,13 +1217,16 @@
       cctx.fillRect(tToX(state.loopA), RULER, (state.loopB - state.loopA) * pxPerSec, H - RULER);
     }
 
-    // raw contour — kept faint so the clean notes/slides read as the main line
+    // ---- The melody as ONE flowing curve. This is where the bends read: every
+    // meend, murki and gamak shows as the shape of the line (never straight
+    // segments). Bold, so it is the main thing on the canvas. ----
     const { f0, clarity, hopSec, opts } = state;
     const i0 = Math.max(0, Math.floor(scrollSec / hopSec));
     const i1 = Math.min(f0.length - 1, Math.ceil(tEnd / hopSec));
     cctx.strokeStyle = colors.contour;
-    cctx.lineWidth = 1;
-    cctx.globalAlpha = 0.32;
+    cctx.lineWidth = 2.4;
+    cctx.lineJoin = 'round'; cctx.lineCap = 'round';
+    cctx.globalAlpha = 0.5;
     cctx.beginPath();
     let run = [];
     const flushRun = () => { if (run.length) { smoothSub(cctx, run); run = []; } };
@@ -1230,90 +1242,82 @@
     cctx.stroke();
     cctx.globalAlpha = 1;
 
-    // Quantized swaras. Held notes -> thick saffron blocks labelled with the
-    // swara (the notes to sing & dwell on); quick notes -> thin indigo marks
-    // (fast movement / ornament). So the eye separates "sing this" from "this
-    // is a run". Ornament touches are drawn as small indigo ticks too.
-    cctx.textBaseline = 'middle';
-    cctx.textAlign = 'center';
+    // ---- Name every note. A dot sits on the line at each note the voice hits,
+    // and its swara is written beside it; glides name every scale-swara they
+    // travel through. Names are nudged into free lanes so each stays readable
+    // (zoom in if a fast run is too tight to fit them all). ----
+    const placed = [];   // boxes [x0,y0,x1,y1] already occupied this frame
+    const free = (x0, y0, x1, y1) => {
+      for (const b of placed) if (x0 < b[2] + 1 && x1 > b[0] - 1 && y0 < b[3] + 1 && y1 > b[1] - 1) return false;
+      return true;
+    };
+    const labelAt = (text, cx, cy, big, color) => {
+      cctx.font = (big ? '700 13px ' : '600 11px ') + 'Georgia, serif';
+      const w = cctx.measureText(text).width + 6, h = big ? 16 : 13;
+      let ly = null;
+      for (const dy of [-15, 15, -28, 28, -42, 42, -56, 56]) {
+        if (free(cx - w / 2, cy + dy - h / 2, cx + w / 2, cy + dy + h / 2)) { ly = cy + dy; break; }
+      }
+      if (ly == null) return;   // no room — the dot still marks the note; zoom reveals the name
+      placed.push([cx - w / 2, ly - h / 2, cx + w / 2, ly + h / 2]);
+      if (Math.abs(ly - cy) > 18) {   // tie a nudged name back to its dot
+        cctx.strokeStyle = colors.grid; cctx.lineWidth = 1;
+        cctx.beginPath(); cctx.moveTo(cx, cy); cctx.lineTo(cx, ly + (ly > cy ? -h / 2 : h / 2)); cctx.stroke();
+      }
+      cctx.fillStyle = color; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
+      cctx.fillText(text, cx, ly);
+    };
+
+    const vis = [];
     for (let ti = 0; ti < state.tokens.length; ti++) {
       const tk = state.tokens[ti];
-      if (tk.t1 < scrollSec || tk.t0 > tEnd) continue;
-      const isActive = ti === activeTokIdx;
-      const dur = tk.t1 - tk.t0;
-      const fast = dur < 0.16;
-      const x = tToX(tk.t0), w = Math.max(2, dur * pxPerSec - 1);
-      const y = cToY(tk.k * 100);
+      if (tk.t1 >= scrollSec && tk.t0 <= tEnd) vis.push(ti);
+    }
+    const isGlide = (tk) => (tk.glide || tk.meendFromPrev) && tk.via && tk.via.length > 1;
+    const viaX = (tk, p, n) => tToX(tk.t0 + (tk.t1 - tk.t0) * (n > 1 ? p / (n - 1) : 0));
 
-      // Meend: draw the glide as a ramp through the swaras it touches, with a
-      // dot on each — so you see the path, not a block.
-      if (tk.glide && tk.via && tk.via.length > 1) {
+    // Pass 1 — dots & gesture bands: every note is marked, even where its name won't fit.
+    for (const ti of vis) {
+      const tk = state.tokens[ti];
+      const isActive = ti === activeTokIdx;
+      if (isGlide(tk)) {
         const vv = viaDisplay(tk.via);
-        cctx.strokeStyle = colors.contour;
-        cctx.globalAlpha = isActive ? 1 : 0.85;
-        cctx.lineWidth = isActive ? 3 : 2;
-        cctx.lineCap = 'round'; cctx.lineJoin = 'round';
-        cctx.beginPath();
-        const mpts = [];
-        for (let p = 0; p < vv.length; p++) {
-          mpts.push([tToX(tk.t0 + dur * (vv.length > 1 ? p / (vv.length - 1) : 0)), cToY(vv[p] * 100)]);
-        }
-        smoothSub(cctx, mpts);   // meend as a flowing curve through its swaras
-        cctx.stroke();
-        cctx.fillStyle = colors.contour;
-        for (let p = 0; p < vv.length; p++) {
-          const px = tToX(tk.t0 + dur * (vv.length > 1 ? p / (vv.length - 1) : 0));
-          cctx.beginPath(); cctx.arc(px, cToY(vv[p] * 100), 2.6, 0, 2 * Math.PI); cctx.fill();
-        }
-        cctx.globalAlpha = 1;
-        continue;
+        cctx.fillStyle = colors.contour; cctx.globalAlpha = isActive ? 1 : 0.85;
+        for (let p = 0; p < vv.length; p++) { cctx.beginPath(); cctx.arc(viaX(tk, p, vv.length), cToY(vv[p] * 100), 3, 0, 2 * Math.PI); cctx.fill(); }
+        cctx.globalAlpha = 1; continue;
       }
-      // Andolan: a band spanning the swing, with the anchor swara on it.
+      const dur = tk.t1 - tk.t0;
       if (tk.andolan && tk.andolanLo != null && tk.andolanHi > tk.andolanLo) {
+        const x = tToX(tk.t0), w = Math.max(3, dur * pxPerSec - 1);
         const yTop = cToY(tk.andolanHi * 100), yBot = cToY(tk.andolanLo * 100);
-        cctx.fillStyle = colors.accent;
-        cctx.globalAlpha = isActive ? 0.38 : 0.2;
+        cctx.fillStyle = colors.accent; cctx.globalAlpha = isActive ? 0.3 : 0.16;
         cctx.beginPath(); cctx.roundRect(x, yTop - 2, w, (yBot - yTop) + 4, 4); cctx.fill();
-        cctx.globalAlpha = isActive ? 1 : 0.85;
-        cctx.fillRect(x, y - 1.5, w, 3);
-        if (w >= 14) {
-          cctx.fillStyle = '#ffffff'; cctx.font = '700 11px Georgia, serif';
-          cctx.fillText(glyph(DSP.swaraInfo(tk.k).letter), x + w / 2, y + 0.5);
-        }
         cctx.globalAlpha = 1;
+      }
+      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
+      const held = dur >= 0.28;
+      const r = isActive ? 6 : (held ? 4.5 : 3);
+      if (isActive) { cctx.fillStyle = colors.accentSoft; cctx.beginPath(); cctx.arc(cx, cy, r + 5, 0, 2 * Math.PI); cctx.fill(); }
+      cctx.fillStyle = isActive || held ? colors.accent : colors.contour;
+      cctx.globalAlpha = isActive || held ? 1 : 0.8;
+      cctx.beginPath(); cctx.arc(cx, cy, r, 0, 2 * Math.PI); cctx.fill();
+      cctx.globalAlpha = 1;
+    }
+
+    // Pass 2 — names, important notes first so they always win a lane.
+    const prio = (ti) => { const t = state.tokens[ti]; return ti === activeTokIdx ? 3 : (t.t1 - t.t0) >= 0.28 ? 2 : isGlide(t) || t.andolan ? 1.5 : 1; };
+    for (const ti of vis.slice().sort((a, b) => prio(b) - prio(a) || state.tokens[a].t0 - state.tokens[b].t0)) {
+      const tk = state.tokens[ti];
+      const isActive = ti === activeTokIdx;
+      if (isGlide(tk)) {
+        const vv = viaDisplay(tk.via);
+        for (let p = 0; p < vv.length; p++) labelAt(tokenGlyph(vv[p]), viaX(tk, p, vv.length), cToY(vv[p] * 100), false, colors.contour);
         continue;
       }
-      const half = fast ? 2.5 : (dur >= 0.30 ? 6 : 4.5);
-      cctx.fillStyle = fast ? colors.contour : colors.accent;
-      cctx.globalAlpha = isActive ? 1 : (fast ? 0.62 : (dur >= 0.30 ? 0.95 : 0.78));
-      cctx.beginPath();
-      cctx.roundRect(x, y - (isActive ? half + 1.5 : half), w, (isActive ? half + 1.5 : half) * 2, fast ? 2 : 4);
-      cctx.fill();
-      // Label the swara on notes wide enough to carry it.
-      if (!fast && w >= 13) {
-        cctx.globalAlpha = 1;
-        cctx.fillStyle = '#ffffff';
-        cctx.font = '700 11px Georgia, serif';
-        cctx.fillText(glyph(DSP.swaraInfo(tk.k).letter), x + w / 2, y + 0.5);
-      }
-      if (tk.orn) {
-        for (const o of tk.orn) {
-          const ox = tToX(o.t0), ow = Math.max(2, (o.t1 - o.t0) * pxPerSec - 1);
-          const oy = cToY(o.k * 100);
-          cctx.fillStyle = colors.contour;
-          cctx.globalAlpha = o.type === 'meend' ? 0.32 : 0.55;
-          cctx.beginPath();
-          cctx.roundRect(ox, oy - 2.5, ow, 5, 2);
-          cctx.fill();
-          // Name the swara each ornament touch lands on, when there's room.
-          if (ow >= 9) {
-            cctx.globalAlpha = 0.95;
-            cctx.fillStyle = colors.contour;
-            cctx.font = '600 9px Georgia, serif';
-            cctx.fillText(DSP.swaraInfo(o.k).letter, ox + ow / 2, oy - 8);
-          }
-        }
-      }
+      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
+      const big = isActive || (tk.t1 - tk.t0) >= 0.28;
+      const col = isActive ? colors.accent : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
+      labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);
     }
     cctx.globalAlpha = 1;
 
