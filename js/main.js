@@ -42,7 +42,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=21';
+  const WORKER_URL = 'js/worker.js?v=22';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -119,7 +119,8 @@
 
   const STAGE_LABEL = { loading: 'Loading neural model…', filter: 'Filtering…', pitch: 'Tracking pitch…', tonic: 'Finding Sa…', synth: 'Rendering melody…' };
 
-  function runWorker(samples, sr, neural) {
+  function runWorker(samples, sr, opts) {
+    opts = opts || {};
     return new Promise((resolve, reject) => {
       if (worker) worker.terminate();
       worker = new Worker(WORKER_URL);
@@ -133,8 +134,27 @@
         else if (m.type === 'error') reject(new Error(m.message));
       };
       worker.onerror = (e) => reject(new Error(e.message || 'Analysis failed'));
-      worker.postMessage({ samples, sr, neural: !!neural }, [samples.buffer]);
+      worker.postMessage({
+        samples, sr,
+        neural: !!opts.neural,
+        providedF0: opts.providedF0 || null,
+        providedClarity: opts.providedClarity || null,
+        providedHopSec: opts.providedHopSec || 0,
+      }, [samples.buffer]);
     });
+  }
+
+  // "Best (local server)" engine: POST the original-rate mono as a WAV to the
+  // local Demucs+CREPE server (127.0.0.1), which returns the pitch track of the
+  // separated voice. Audio only ever goes to your own machine.
+  const SERVER_URL = 'http://127.0.0.1:8765';
+  async function analyzeViaServer() {
+    const wav = encodeWav(state.fileMono, state.fileSr);
+    const resp = await fetch(SERVER_URL + '/analyze', {
+      method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' },
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return await resp.json();   // { f0, periodicity, hopSec, sr }
   }
 
   async function processFile(file) {
@@ -185,7 +205,20 @@
       src.start();
       const mono = (await oac.startRendering()).getChannelData(0);
 
-      const result = await runWorker(new Float32Array(mono), targetSr, state.engine === 'neural');
+      let workerOpts = {};
+      if (state.engine === 'neural') {
+        workerOpts = { neural: true };
+      } else if (state.engine === 'server') {
+        setStage('Separating voice on local server… (a few minutes)', 0.12);
+        let data;
+        try {
+          data = await analyzeViaServer();
+        } catch (err) {
+          throw new Error('Local server not reachable. Start it (see server/README.md), then pick "Best (local server)" again. [' + err.message + ']');
+        }
+        workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedHopSec: data.hopSec };
+      }
+      const result = await runWorker(new Float32Array(mono), targetSr, workerOpts);
       if (!result.f0.length) throw new Error('This clip is too short to analyze.');
 
       state.f0auto = result.f0;            // worker's auto-stabilized track
@@ -780,6 +813,7 @@
     state.engine = engineSel.value;
     if (state.ready && state.file) {
       if (state.engine === 'neural') toast('Loading neural model (≈3 MB, once) and re-analyzing — give it a moment.');
+      else if (state.engine === 'server') toast('Sending to your local server to separate the voice — can take a few minutes.');
       processFile(state.file);
     }
   });
@@ -1236,23 +1270,48 @@
     const { f0, clarity, hopSec, opts } = state;
     const i0 = Math.max(0, Math.floor(scrollSec / hopSec));
     const i1 = Math.min(f0.length - 1, Math.ceil(tEnd / hopSec));
-    cctx.strokeStyle = colors.contour;
-    cctx.lineWidth = 2.4;
+    // The line is coloured by how the pitch is MOVING, so the kinds of bend read
+    // at a glance: steady note (indigo) vs a glide. Glide speed (net cents/sec,
+    // measured over ±3 frames so vibrato — which nets to ~0 — stays "steady")
+    // splits into a slow meend (thick saffron) and a quick bend / step (thin
+    // saffron). So a long expressive slide looks different from a fast flick or
+    // a clean note change.
+    const MOVE = [
+      { c: colors.contour, w: 2.3, a: 0.5 },   // 0 steady / vibrato
+      { c: colors.accent, w: 3.4, a: 0.85 },   // 1 slow bend (meend)
+      { c: colors.accent, w: 1.5, a: 0.95 },   // 2 quick bend / step
+    ];
     cctx.lineJoin = 'round'; cctx.lineCap = 'round';
-    cctx.globalAlpha = 0.5;
-    cctx.beginPath();
-    let run = [];
-    const flushRun = () => { if (run.length) { smoothSub(cctx, run); run = []; } };
+    let pts = [], cnt = [];
+    const flushRun = () => {
+      if (pts.length >= 2) {
+        const cls = new Array(pts.length);
+        for (let k = 0; k < pts.length; k++) {
+          const a = Math.max(0, k - 3), b = Math.min(pts.length - 1, k + 3);
+          const slope = Math.abs(cnt[b] - cnt[a]) / (((b - a) * hopSec) || 1);   // cents/sec
+          cls[k] = slope < 250 ? 0 : slope < 1500 ? 1 : 2;
+        }
+        let s = 0;
+        for (let k = 1; k <= pts.length; k++) {
+          if (k === pts.length || cls[k] !== cls[s]) {
+            const st = MOVE[cls[s]];
+            cctx.strokeStyle = st.c; cctx.lineWidth = st.w; cctx.globalAlpha = st.a;
+            cctx.beginPath(); smoothSub(cctx, pts.slice(s, Math.min(pts.length, k + 1))); cctx.stroke();
+            s = k;
+          }
+        }
+      }
+      pts = []; cnt = [];
+    };
     for (let i = i0; i <= i1; i++) {
       if (f0[i] > 0 && clarity[i] >= opts.clarityThresh) {
-        const x = tToX(i * hopSec);
-        const y = cToY(1200 * Math.log2(f0[i] / saHz));
+        const cc = 1200 * Math.log2(f0[i] / saHz);
+        const y = cToY(cc);
         if (y < RULER || y > H) { flushRun(); continue; }
-        run.push([x, y]);
+        pts.push([tToX(i * hopSec), y]); cnt.push(cc);
       } else flushRun();
     }
     flushRun();
-    cctx.stroke();
     cctx.globalAlpha = 1;
 
     // ---- Name EVERY note. A dot sits on the line at each note the voice hits,

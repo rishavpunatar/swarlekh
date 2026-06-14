@@ -48,8 +48,22 @@ self.onmessage = async function (e) {
     prog('filter', 0);
     const filtered = DSP.preFilter(samples, sr);
 
+    const external = !!e.data.providedF0;   // pitch track from the local Demucs+CREPE server
     let track;
-    if (e.data.neural) {
+    if (external) {
+      // The heavy lifting (vocal separation + CREPE) happened on the local
+      // server; wrap its f0/periodicity like a yinTrack result and compute the
+      // per-frame rms here for the loudness gate.
+      prog('pitch', 0.5);
+      const pf = e.data.providedF0, pc = e.data.providedClarity, ph = e.data.providedHopSec || 0.016;
+      const hs = Math.round(ph * sr), rmsArr = new Float32Array(pf.length);
+      for (let k = 0; k < pf.length; k++) {
+        let en = 0; const st = k * hs;
+        for (let j = 0; j < 1024 && st + j < samples.length; j++) en += samples[st + j] * samples[st + j];
+        rmsArr[k] = Math.sqrt(en / 1024);
+      }
+      track = { f0: Float32Array.from(pf), clarity: Float32Array.from(pc), rms: rmsArr, hopSec: ph };
+    } else if (e.data.neural) {
       await ensureNeural(prog);
       prog('pitch', 0);
       track = await CREPE.track('../models/crepe/model.json', samples, sr, (f) => prog('pitch', f));
@@ -59,18 +73,19 @@ self.onmessage = async function (e) {
     }
     const f0raw = track.f0.slice();
 
-    // Collapse octave-tracking errors so Sa and everything downstream sit in one
-    // consistent register. CREPE is already octave-accurate, so it only needs the
-    // gentle isolated-glitch pass; the full 'auto' align is for YIN's noisy track.
-    const stab = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, e.data.neural ? 'gentle' : 'auto');
+    // A CREPE-based track (in-browser, or the separated-vocal server track) is
+    // already octave-accurate → gentle glitch-only pass; YIN's noisy track gets
+    // the full 'auto' register align.
+    const cleanTrack = e.data.neural || external;
+    const stab = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, cleanTrack ? 'gentle' : 'auto');
 
     prog('tonic', 0);
     // Sa is a property of the music, not the tracker. CREPE's flatter salience
     // confuses the (YIN-tuned) tonic scorer into borderline Sa-vs-third picks,
-    // so in neural mode detect Sa from a quick YIN pass and apply it to CREPE's
-    // notes — they share the same register (both call Sa ≈208 Hz), verified.
+    // so for a CREPE-based track detect Sa from a quick YIN pass and apply it to
+    // the notes — they share the same register (both call Sa ≈208 Hz), verified.
     let tonic;
-    if (e.data.neural) {
+    if (cleanTrack) {
       const yt = DSP.yinTrack(filtered, sr, {});
       const ys = DSP.stabilizeOctave(yt.f0, yt.clarity, yt.rms, yt.hopSec, 'auto');
       tonic = DSP.detectTonic(ys.f0, yt.clarity, yt.hopSec, yt.rms);
