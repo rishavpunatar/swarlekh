@@ -1684,14 +1684,17 @@
    * estimate the original's smooth envelope via cepstral liftering, then scale
    * the shifted spectrum by env(f)/env(f/r) — which undoes the envelope
    * (formant) scaling that the resample-based shift introduced. */
-  function formantCorrect(orig, shifted, sr, r, progress) {
+  function formantCorrect(orig, shifted, sr, r, progress, qOverride) {
     const N = 1024, H = 256, Nh = N >> 1, nBins = Nh + 1;
     const len = Math.min(orig.length, shifted.length);
     const nFrames = len >= N ? Math.floor((len - N) / H) + 1 : 0;
     if (nFrames <= 0) return shifted;
     const win = new Float32Array(N);
     for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
-    const Q = Math.max(24, Math.min(80, Math.round(0.001 * sr)));   // cepstral lifter ≈ formant detail
+    // Cepstral lifter cutoff: high enough to capture the FORMANT PEAKS (so the
+    // gain can relocate them), but below the pitch-period quefrency so harmonics
+    // aren't baked into the envelope. ≈ sr/(2·f0_max≈350).
+    const Q = qOverride || Math.max(40, Math.min(90, Math.round(sr / 700)));
     const reO = new Float32Array(N), imO = new Float32Array(N);
     const reS = new Float32Array(N), imS = new Float32Array(N);
     const env = new Float32Array(nBins);
@@ -1747,7 +1750,7 @@
   return {
     preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notationText, analyzeRaga,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
-    pitchShift, timeStretch, resampleLinear,
+    pitchShift, timeStretch, resampleLinear, formantCorrect,
     SWARA_LETTERS,
     _internal: { biquadCoefs, applyBiquad, viterbiSelect, postProcess, VIT, YIN, isMeendChain },
   };
