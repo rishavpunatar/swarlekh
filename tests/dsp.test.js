@@ -303,6 +303,17 @@ test('ornaments: slow oscillation flagged as andolan', () => {
   assert.strictEqual(DSP.tokenFullText(tokens[0]), '≈G');
 });
 
+test('granular: a held note with two sparse grace touches keeps the touches', () => {
+  // The 0:56 case: held R, a brief up-touch to g, back to a sustained R, then a
+  // brief down-touch to r, landing on S. The two ±1 touches are far apart with a
+  // real hold between them — NOT a fast oscillation, so they must NOT be folded
+  // into one ≈R; each touch is a note the singer hits and must stay visible.
+  const { f0, clarity } = trackFromRuns([[2, 51], [3, 5], [2, 18], [1, 3], [0, 10]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, {});
+  assert.deepStrictEqual(tokens.map(t => t.k), [2, 3, 2, 1, 0], 'both grace touches surface');
+  assert.ok(!tokens.some(t => t.andolan), 'a held note with sparse touches is not andolan');
+});
+
 test('ornaments: slow WIDE andolan (Darbari komal-ga) is caught with its range', () => {
   // 1.4 Hz, ±110 cents around komal-ga (k=3) — a slow, wide oscillation.
   const n = 90;

@@ -879,7 +879,9 @@
 
   /* Fold repeated brief ±1-semitone excursions back into their anchor note,
    * so andolan/gamak reads as one oscillating swara instead of fragmenting.
-   * A single excursion is left alone — that's a kan, handled later. */
+   * Only a genuinely fast oscillation is folded (see the excursion-rate gate
+   * below); a single excursion, or a held swara with a couple of sparse grace
+   * touches, is left alone so those touches stay visible as distinct notes. */
   function absorbOscillations(runs, stableFrames) {
     let changed = true;
     while (changed) {
@@ -893,7 +895,15 @@
           if (Math.abs(r.k - k0) <= 1 && (r.end - r.start) < stableFrames) { nExc++; j++; continue; }
           break;
         }
-        if (nExc >= 2 && j - i >= 4) {
+        // Collapse only a genuinely fast oscillation (andolan/gamak): the ±1
+        // touches must recur often enough across the span (≳2 per second, i.e.
+        // ~0.035 per 16 ms frame). A held swara with a couple of sparse grace
+        // touches has a low excursion rate — leave those touches as their own
+        // notes so they stay visible. (A slower continuous swing is still folded
+        // downstream by collapseAndolan from the token stream, where over-
+        // collapsing here would have destroyed the touches irreversibly.)
+        const spanFrames = j > i ? runs[j - 1].end - runs[i].start : 0;
+        if (nExc >= 2 && j - i >= 4 && spanFrames > 0 && nExc / spanFrames >= 0.035) {
           runs.splice(i, j - i, { start: runs[i].start, end: runs[j - 1].end, k: k0 });
           changed = true;
         }
@@ -946,11 +956,18 @@
     const drift = Math.abs(b / q - a / q);
     const durSec = (end - start) * 0.016;            // hopSec is 16 ms
     const freq = durSec > 0 ? cross / (2 * durSec) : 0;
+    // A true andolan keeps MOVING between two swaras, so few frames sit at the
+    // centre; a held note with a couple of brief touches sits MOSTLY at centre.
+    // Reject the latter so it reads as a held note (and its touches aren't
+    // hidden inside a bogus ≈).
+    let nearC = 0;
+    for (let j = start; j < end; j++) if (Math.abs(cents[j] - mean) < 35) nearC++;
+    const fracCentre = nearC / (end - start);
     // Andolan: a slow (≈1–3.5 Hz), wide (≥~70¢) oscillation that returns to
     // centre over a real span (Darbari/Todi komal-ga, Bhairav re). Stricter than
     // before so ordinary vibrato and quick murkis are not mislabelled ≈.
     if (cross >= 3 && freq >= 0.8 && freq <= 3.5 && range >= 70 && range <= 320 &&
-        drift < range * 0.5 && durSec >= 0.4) {
+        drift < range * 0.5 && durSec >= 0.4 && fracCentre < 0.55) {
       andolan = true;
       // Only expose neighbour swaras when the swing is wide enough to truly
       // reach them (≥~1.5 semitones); a narrow shake is just ≈X.
