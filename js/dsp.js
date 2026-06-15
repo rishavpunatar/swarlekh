@@ -1694,7 +1694,12 @@
     // Cepstral lifter cutoff: high enough to capture the FORMANT PEAKS (so the
     // gain can relocate them), but below the pitch-period quefrency so harmonics
     // aren't baked into the envelope. ≈ sr/(2·f0_max≈350).
-    const Q = qOverride || Math.max(40, Math.min(90, Math.round(sr / 700)));
+    // Cepstral lifter cutoff: must stay BELOW the harmonic-spacing quefrency
+    // (≈sr/f0) or the "envelope" captures harmonics and the correction re-imposes
+    // the original pitch (undoing the shift). ~sr/700 captures formants at music
+    // rates (~63 @44.1k) while staying safely below harmonics; a low floor keeps
+    // low-sample-rate signals safe too.
+    const Q = qOverride || Math.max(12, Math.min(90, Math.round(sr / 700)));
     const reO = new Float32Array(N), imO = new Float32Array(N);
     const reS = new Float32Array(N), imS = new Float32Array(N);
     const env = new Float32Array(nBins);
