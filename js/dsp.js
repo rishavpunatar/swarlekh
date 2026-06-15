@@ -1641,9 +1641,11 @@
     const re = new Float32Array(N), im = new Float32Array(N);
     const mag = new Float32Array(H + 1), phi = new Float32Array(H + 1);
     const prevPhi = new Float32Array(H + 1), sumPhi = new Float32Array(H + 1);
+    const synPhi = new Float32Array(H + 1);
     const omega = new Float32Array(H + 1);
     for (let k = 0; k <= H; k++) omega[k] = 2 * Math.PI * Ha * k / N;
     const ratio = Hs / Ha;
+    const peaks = [];
 
     for (let m = 0; m < nFrames; m++) {
       const off = m * Ha;
@@ -1655,17 +1657,39 @@
         phi[k] = Math.atan2(iq, r);
       }
       if (m === 0) {
-        for (let k = 0; k <= H; k++) { sumPhi[k] = phi[k]; prevPhi[k] = phi[k]; }
+        for (let k = 0; k <= H; k++) { sumPhi[k] = phi[k]; prevPhi[k] = phi[k]; synPhi[k] = phi[k]; }
       } else {
+        // Standard phase-vocoder phase propagation (free-running accumulator).
         for (let k = 0; k <= H; k++) {
           const dphi = princarg(phi[k] - prevPhi[k] - omega[k]);
           sumPhi[k] += (omega[k] + dphi) * ratio;
           prevPhi[k] = phi[k];
         }
+        // Identity phase locking (Laroche & Dolson 1999): without it every bin's
+        // phase drifts independently, so the harmonics of the voice lose their
+        // relative alignment — the hollow, reverberant "phasiness" that makes a
+        // shifted voice sound robotic/zombie-like. Lock each bin to its nearest
+        // spectral peak: reuse the peak's propagated phase plus the bin's
+        // ORIGINAL offset from that peak, keeping each harmonic group coherent.
+        peaks.length = 0;
+        for (let k = 2; k < H - 1; k++) {
+          const mk = mag[k];
+          if (mk > mag[k - 1] && mk >= mag[k + 1] && mk > mag[k - 2] && mk >= mag[k + 2]) peaks.push(k);
+        }
+        if (peaks.length === 0) {
+          for (let k = 0; k <= H; k++) synPhi[k] = sumPhi[k];
+        } else {
+          let pi = 0;
+          for (let k = 0; k <= H; k++) {
+            while (pi < peaks.length - 1 && Math.abs(peaks[pi + 1] - k) <= Math.abs(peaks[pi] - k)) pi++;
+            const p = peaks[pi];
+            synPhi[k] = sumPhi[p] + (phi[k] - phi[p]);
+          }
+        }
       }
       for (let k = 0; k <= H; k++) {
-        re[k] = mag[k] * Math.cos(sumPhi[k]);
-        im[k] = mag[k] * Math.sin(sumPhi[k]);
+        re[k] = mag[k] * Math.cos(synPhi[k]);
+        im[k] = mag[k] * Math.sin(synPhi[k]);
       }
       for (let k = 1; k < H; k++) { re[N - k] = re[k]; im[N - k] = -im[k]; }
       im[0] = 0; im[H] = 0;
