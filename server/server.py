@@ -19,8 +19,13 @@ import soundfile as sf
 import torch, torchaudio, torchcrepe
 import pyworld as pw
 import librosa
+import pyrubberband
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
+
+# Ensure the Rubber Band CLI (Homebrew) is on PATH even under launchd, whose
+# LaunchAgents start with a minimal PATH that excludes /opt/homebrew/bin.
+os.environ['PATH'] = '/opt/homebrew/bin:' + os.environ.get('PATH', '')
 from demucs.pretrained import get_model
 from demucs.apply import apply_model
 
@@ -185,10 +190,10 @@ def world_pitch_shift(mono, sr, semitones, f0=None, t=None):
 
 @app.post('/transpose')
 def transpose():
-    """Transpose the whole recording to a new key: the singer is shifted with WORLD
-    (formant-preserving) driven by a smooth, octave-accurate CREPE f0; the pitched
-    accompaniment with a phase vocoder; the DRUMS are kept at original pitch
-    (percussion has no key, so shifting only smears them). All remixed. ?semitones."""
+    """Transpose the whole recording to a new key: the singer with WORLD (formant-
+    preserving) driven by a smooth, octave-accurate CREPE f0; the tabla/drums
+    (pitched — tuned to Sa) with a transient-crisp Rubber Band shift so it stays
+    crisp; the harmonium/rest with a smooth Rubber Band shift. Remixed. ?semitones."""
     semis = float(request.args.get('semitones', -7))
     t0 = time.time()
     raw = request.get_data()
@@ -222,14 +227,16 @@ def transpose():
         f0_use = _f0
     y_voc = world_pitch_shift(voc_w, WORLD_SR, semis, f0=f0_use, t=tw)
 
-    # Music: keep the drums at ORIGINAL pitch (no percussion smear); shift only the
-    # pitched rest with a phase vocoder.
-    drm_w = torchaudio.functional.resample(drm, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
-    rest_w = torchaudio.functional.resample(rest, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
-    y_rest = librosa.effects.pitch_shift(rest_w.astype(np.float32), sr=WORLD_SR, n_steps=semis)
+    # Music: the tabla (drums) IS pitched — tuned to Sa — so it must shift in key,
+    # but as percussion it needs a transient-preserving shift (Rubber Band, crisp)
+    # to stay crisp not smeared; the harmonium/rest gets a normal Rubber Band shift.
+    drm_w = torchaudio.functional.resample(drm, DEMUCS_SR, WORLD_SR)[0].cpu().numpy().astype(np.float32)
+    rest_w = torchaudio.functional.resample(rest, DEMUCS_SR, WORLD_SR)[0].cpu().numpy().astype(np.float32)
+    y_drm = pyrubberband.pitch_shift(drm_w, WORLD_SR, semis, rbargs={'-c': '6'})   # crisp transients (percussion)
+    y_rest = pyrubberband.pitch_shift(rest_w, WORLD_SR, semis)                     # smooth (harmonium etc.)
 
-    L = min(len(y_voc), len(drm_w), len(y_rest))
-    out = y_voc[:L] + drm_w[:L] + y_rest[:L]           # remix in the new key
+    L = min(len(y_voc), len(y_drm), len(y_rest))
+    out = y_voc[:L] + y_drm[:L] + y_rest[:L]           # remix in the new key
     pk = float(np.max(np.abs(out))) or 1.0
     out = (out / pk * 0.95).astype(np.float32)
     buf = io.BytesIO()
