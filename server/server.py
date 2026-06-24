@@ -54,13 +54,16 @@ CHUNK = int(30 * DEMUCS_SR)      # separate ~30 s at a time …
 OVERLAP = int(1.0 * DEMUCS_SR)   # … with a 1 s crossfade at the joins
 
 
-def separate_vocals(mix):
-    """mix: torch [2, n] @44.1k -> vocal stem [2, n], separated in CHUNKS so
-    peak memory stays ~one window's worth (not the whole song's 4 stems, which
-    OOMs 8 GB machines). Overlap-add with a triangular crossfade hides seams."""
+def separate_stems(mix):
+    """mix: torch [2, n] @44.1k -> (vocals, drums) each [2, n], separated in CHUNKS
+    so peak memory stays ~one window's worth (not the whole song's 4 stems, which
+    OOMs 8 GB machines). The pitched accompaniment (bass+other) is recovered by the
+    caller as mix - vocals - drums. Overlap-add crossfade hides the seams."""
     model, voc_idx = get_demucs()
+    drum_idx = model.sources.index('drums')
     n = mix.shape[1]
     voc = torch.zeros(2, n)
+    drm = torch.zeros(2, n)
     wsum = torch.zeros(n)
     pos, idx = 0, 0
     nchunks = max(1, (n + CHUNK - 1) // CHUNK)
@@ -72,37 +75,38 @@ def separate_vocals(mix):
         with torch.no_grad():
             src = apply_model(model, mix[:, a:b][None], device=DEVICE,
                               split=True, overlap=0.1, progress=False)[0]
-        v = src[voc_idx]                  # [2, b-a]
         L = b - a
         w = torch.ones(L)
         if a > 0: w[:OVERLAP] = torch.linspace(0, 1, OVERLAP)        # fade in over the join
         if b < n: w[-OVERLAP:] = torch.linspace(1, 0, OVERLAP)       # fade out into the next
-        voc[:, a:b] += v * w
+        voc[:, a:b] += src[voc_idx] * w
+        drm[:, a:b] += src[drum_idx] * w
         wsum[a:b] += w
-        del src, v
+        del src
         gc.collect()
         pos = b
-    return voc / wsum.clamp(min=1e-6)
+    wsum = wsum.clamp(min=1e-6)
+    return voc / wsum, drm / wsum
 
 
-# Cache the most recently separated vocal so /transpose can reuse the separation
-# /analyze just did (the "Best" engine separates the same bytes first). Keyed by
-# a hash of the posted audio; the client sends identical WAV to both endpoints,
-# so the normal analyze->transpose flow is a cache hit and skips the slow Demucs.
-_voc_cache = {'key': None, 'voc44': None}
+# Cache the most recently separated stems so /transpose can reuse the separation
+# /analyze just did (the "Best" engine separates the same bytes first). Keyed by a
+# hash of the posted audio; the client sends identical WAV to both endpoints, so
+# the normal analyze->transpose flow is a cache hit and skips the slow Demucs.
+_stem_cache = {'key': None, 'voc44': None, 'drm44': None}
 
 
-def separated_voice_44k(raw, x):
-    """Mono vocal [1, n] @44.1k, reusing the cached separation when the posted
-    audio matches the last separated (skips the ~minutes-long Demucs pass)."""
+def separated_stems_44k(raw, x):
+    """(vocal, drums) mono [1, n] @44.1k, reusing the cached separation when the
+    posted audio matches the last separated (skips the ~minutes-long Demucs pass)."""
     key = hashlib.md5(raw).hexdigest()
-    if _voc_cache['key'] == key and _voc_cache['voc44'] is not None:
-        print('[swarlekh] reusing cached separated voice (skipping Demucs)', flush=True)
-        return _voc_cache['voc44']
-    voc = separate_vocals(x).mean(0, keepdim=True)      # [1, n] @44.1k
-    _voc_cache['key'] = key
-    _voc_cache['voc44'] = voc
-    return voc
+    if _stem_cache['key'] == key and _stem_cache['voc44'] is not None:
+        print('[swarlekh] reusing cached separation (skipping Demucs)', flush=True)
+        return _stem_cache['voc44'], _stem_cache['drm44']
+    voc, drm = separate_stems(x)
+    voc = voc.mean(0, keepdim=True); drm = drm.mean(0, keepdim=True)   # [1, n] @44.1k
+    _stem_cache.update(key=key, voc44=voc, drm44=drm)
+    return voc, drm
 
 
 @app.get('/')
@@ -120,7 +124,7 @@ def analyze():
         x = x.repeat(2, 1)                             # mono -> stereo for Demucs
     if in_sr != DEMUCS_SR:
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
-    voc = separated_voice_44k(raw, x)                  # [1, n] @44.1k (cached for /transpose)
+    voc, _ = separated_stems_44k(raw, x)               # [1, n] @44.1k (cached for /transpose)
     voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)  # [1, n] @16k
     t_sep = time.time() - t0
     print('[swarlekh] separation done in %.1fs — tracking pitch on the clean voice…' % t_sep, flush=True)
@@ -161,17 +165,15 @@ def analyze():
 WORLD_SR = 24000     # WORLD runs here: plenty for voice, ~2x faster than 44.1k
 
 
-def world_pitch_shift(mono, sr, semitones):
+def world_pitch_shift(mono, sr, semitones, f0=None, t=None):
     """Shift ONLY pitch, keeping the spectral envelope (formants) fixed — so the
     voice changes key but still sounds like the same person, not chipmunk/zombie.
     WORLD decomposes into f0 + spectral envelope + aperiodicity; we scale f0 and
-    resynthesize with the ORIGINAL envelope. mono: float32 @sr -> float32 @sr."""
+    resynthesize with the ORIGINAL envelope. Pass a CREPE f0 (smooth + octave-
+    accurate) via f0/t; otherwise harvest is the fallback. mono float32 @sr."""
     x = mono.astype(np.float64)
-    # harvest, not dio: dio makes octave errors at register extremes and on held
-    # tonic notes (Sa) — that jumps the shifted note an octave and sounds wrong on
-    # the high/low notes and near Sa. harvest is far more octave-robust. Wide range
-    # covers mandra → taar saptak.
-    f0, t = pw.harvest(x, sr, f0_floor=55.0, f0_ceil=1100.0)
+    if f0 is None:
+        f0, t = pw.harvest(x, sr, f0_floor=55.0, f0_ceil=1100.0)
     sp = pw.cheaptrick(x, f0, t, sr)      # spectral envelope = formants (kept)
     ap = pw.d4c(x, f0, t, sr)             # aperiodicity (breath/voicing)
     y = pw.synthesize(f0 * (2.0 ** (semitones / 12.0)), sp, ap, sr)
@@ -183,9 +185,10 @@ def world_pitch_shift(mono, sr, semitones):
 
 @app.post('/transpose')
 def transpose():
-    """Transpose the whole recording to a new key: the singer (Demucs) is shifted
-    with WORLD (formant-preserving, natural), the rest of the music with a phase
-    vocoder, then mixed back so you keep the accompaniment. ?semitones=-7."""
+    """Transpose the whole recording to a new key: the singer is shifted with WORLD
+    (formant-preserving) driven by a smooth, octave-accurate CREPE f0; the pitched
+    accompaniment with a phase vocoder; the DRUMS are kept at original pitch
+    (percussion has no key, so shifting only smears them). All remixed. ?semitones."""
     semis = float(request.args.get('semitones', -7))
     t0 = time.time()
     raw = request.get_data()
@@ -195,16 +198,38 @@ def transpose():
         x = x.repeat(2, 1)
     if in_sr != DEMUCS_SR:
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
-    voc = separated_voice_44k(raw, x)                  # [1, n] @44.1k (reuses /analyze's separation)
-    accomp = x.mean(0, keepdim=True) - voc             # music = full mix − vocals
-    print('[swarlekh] separated in %.1fs — shifting voice (WORLD) + music %.1f st…'
+    voc, drm = separated_stems_44k(raw, x)             # [1, n] each @44.1k (reuses /analyze's separation)
+    rest = x.mean(0, keepdim=True) - voc - drm         # pitched accompaniment (bass + harmonium…)
+    print('[swarlekh] separated in %.1fs — CREPE f0 → WORLD voice + shift music %.1f st…'
           % (time.time() - t0, semis), flush=True)
+
+    # Voice f0 from CREPE: smooth + octave-accurate, so the shifted voice doesn't
+    # turn robotic (harvest jitter) or jump octaves on high/low notes and Sa.
+    voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)            # [1, n] @16k
+    f0c, pdc = torchcrepe.predict(voc16, SR, hop_length=HOP, fmin=50, fmax=1100,
+                                  model='tiny', decoder=torchcrepe.decode.weighted_argmax,
+                                  return_periodicity=True, batch_size=512, device=DEVICE)
+    f0c = torchcrepe.filter.median(f0c, 3)[0].cpu().numpy()
+    pdc = pdc[0].cpu().numpy()
+    crepe_t = np.arange(len(f0c)) * (HOP / SR)
     voc_w = torchaudio.functional.resample(voc, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
-    acc_w = torchaudio.functional.resample(accomp, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
-    y_voc = world_pitch_shift(voc_w, WORLD_SR, semis)                       # natural, formant-preserving
-    y_acc = librosa.effects.pitch_shift(acc_w.astype(np.float32), sr=WORLD_SR, n_steps=semis)  # instruments
-    L = min(len(y_voc), len(y_acc))
-    out = y_voc[:L] + y_acc[:L]                         # remix in the new key: voice + music
+    _f0, tw = pw.dio(voc_w.astype(np.float64), WORLD_SR)                  # just for WORLD's frame times
+    vmask = f0c > 0
+    if int(vmask.sum()) > 1:
+        f0_use = np.interp(tw, crepe_t[vmask], f0c[vmask])               # smooth over voiced frames
+        f0_use = np.where(np.interp(tw, crepe_t, pdc) > 0.25, f0_use, 0.0)  # unvoiced -> 0
+    else:
+        f0_use = _f0
+    y_voc = world_pitch_shift(voc_w, WORLD_SR, semis, f0=f0_use, t=tw)
+
+    # Music: keep the drums at ORIGINAL pitch (no percussion smear); shift only the
+    # pitched rest with a phase vocoder.
+    drm_w = torchaudio.functional.resample(drm, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
+    rest_w = torchaudio.functional.resample(rest, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
+    y_rest = librosa.effects.pitch_shift(rest_w.astype(np.float32), sr=WORLD_SR, n_steps=semis)
+
+    L = min(len(y_voc), len(drm_w), len(y_rest))
+    out = y_voc[:L] + drm_w[:L] + y_rest[:L]           # remix in the new key
     pk = float(np.max(np.abs(out))) or 1.0
     out = (out / pk * 0.95).astype(np.float32)
     buf = io.BytesIO()
