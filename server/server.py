@@ -32,10 +32,18 @@ DEMUCS_SR = 44100
 # transformer here (measured ~10x), so CPU (multi-threaded) is the fast path.
 torch.set_num_threads(os.cpu_count() or 4)
 DEVICE = 'cpu'
-print(f'[swarlekh] loading Demucs (htdemucs) … device={DEVICE}')
-_demucs = get_model('htdemucs'); _demucs.eval()
-_voc_idx = _demucs.sources.index('vocals')
-print('[swarlekh] ready. POST audio to  http://127.0.0.1:%d/analyze' % PORT)
+# Lazy-load Demucs on first use (not at startup) so the always-on login service
+# idles light — the ~1 GB model is only paged in when a separation actually runs.
+_demucs = None
+_voc_idx = None
+def get_demucs():
+    global _demucs, _voc_idx
+    if _demucs is None:
+        print('[swarlekh] loading Demucs (htdemucs) … device=%s' % DEVICE, flush=True)
+        _demucs = get_model('htdemucs'); _demucs.eval()
+        _voc_idx = _demucs.sources.index('vocals')
+    return _demucs, _voc_idx
+print('[swarlekh] ready (model loads on first request). POST audio to http://127.0.0.1:%d/analyze' % PORT)
 
 app = Flask(__name__)
 CORS(app)   # allow the GitHub-Pages page (and localhost) to call this
@@ -49,6 +57,7 @@ def separate_vocals(mix):
     """mix: torch [2, n] @44.1k -> vocal stem [2, n], separated in CHUNKS so
     peak memory stays ~one window's worth (not the whole song's 4 stems, which
     OOMs 8 GB machines). Overlap-add with a triangular crossfade hides seams."""
+    model, voc_idx = get_demucs()
     n = mix.shape[1]
     voc = torch.zeros(2, n)
     wsum = torch.zeros(n)
@@ -60,9 +69,9 @@ def separate_vocals(mix):
         idx += 1
         print('[swarlekh] separating chunk %d/%d …' % (idx, nchunks), flush=True)
         with torch.no_grad():
-            src = apply_model(_demucs, mix[:, a:b][None], device=DEVICE,
+            src = apply_model(model, mix[:, a:b][None], device=DEVICE,
                               split=True, overlap=0.1, progress=False)[0]
-        v = src[_voc_idx]                 # [2, b-a]
+        v = src[voc_idx]                  # [2, b-a]
         L = b - a
         w = torch.ones(L)
         if a > 0: w[:OVERLAP] = torch.linspace(0, 1, OVERLAP)        # fade in over the join

@@ -42,3 +42,26 @@ server)"** and upload as usual.
   localhost).
 
 Stop it with Ctrl‑C. If you change `server.py`, restart it.
+
+## Keep it running automatically (login service)
+
+So you never have to start it by hand, install it as a macOS LaunchAgent — it
+starts at login and restarts itself if it ever stops:
+
+```sh
+cp server/com.swarlekh.server.plist ~/Library/LaunchAgents/
+launchctl load -w ~/Library/LaunchAgents/com.swarlekh.server.plist
+```
+
+The model loads lazily (only when the first request arrives), so it idles light.
+Logs go to `server/server.log`.
+
+To stop / uninstall it:
+
+```sh
+launchctl unload ~/Library/LaunchAgents/com.swarlekh.server.plist
+rm ~/Library/LaunchAgents/com.swarlekh.server.plist
+```
+
+(The plist uses absolute paths for this machine — edit them if your checkout
+lives elsewhere.)
