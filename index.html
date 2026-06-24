@@ -43,6 +43,17 @@
       <div class="bar"><div id="progBar"></div></div>
     </section>
 
+    <section id="keyCard" class="card" hidden>
+      <div class="key-row">
+        <span class="key-cur">Your recording is in <b id="curKey">…</b></span>
+        <label class="ctl">Practise in
+          <select id="targetKeySel"></select>
+        </label>
+        <button id="keyGoBtn" class="mini-btn">Separate voice &amp; transpose →</button>
+      </div>
+      <p class="hint">Pick the key (Sa) you want to sing in. We’ll isolate the singer on your local server and shift <b>only the voice</b> — keeping the timbre — then open the dashboard in your key. The first run separates the voice, so it takes a minute or two. Leave it on <b>(original)</b> to just analyse without transposing.</p>
+    </section>
+
     <div id="resultArea" hidden>
       <section id="firstRun" class="card intro" hidden>
         <div class="intro-steps">
@@ -183,10 +194,10 @@
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=32"></script>
-  <script src="js/dsp.js?v=32"></script>
-  <script src="js/ragas.js?v=32"></script>
-  <script src="js/ragaId.js?v=32"></script>
-  <script src="js/main.js?v=32"></script>
+  <script src="js/fft.js?v=33"></script>
+  <script src="js/dsp.js?v=33"></script>
+  <script src="js/ragas.js?v=33"></script>
+  <script src="js/ragaId.js?v=33"></script>
+  <script src="js/main.js?v=33"></script>
 </body>
 </html>

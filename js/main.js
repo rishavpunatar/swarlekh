@@ -8,6 +8,7 @@
     dropzone: $('dropzone'), fileInput: $('fileInput'), chooseBtn: $('chooseBtn'),
     progressCard: $('progressCard'), progStage: $('progStage'), progPct: $('progPct'), progBar: $('progBar'),
     resultArea: $('resultArea'),
+    keyCard: $('keyCard'), curKey: $('curKey'), targetKeySel: $('targetKeySel'), keyGoBtn: $('keyGoBtn'),
     playBtn: $('playBtn'), timeDisp: $('timeDisp'), speedSel: $('speedSel'), sourceSel: $('sourceSel'),
     loopABtn: $('loopABtn'), loopBBtn: $('loopBBtn'), loopClearBtn: $('loopClearBtn'), loopDisp: $('loopDisp'),
     ragaThaat: $('ragaThaat'), ragaGuess: $('ragaGuess'), swarPalette: $('swarPalette'), ragaGrammar: $('ragaGrammar'),
@@ -43,7 +44,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=32';
+  const WORKER_URL = 'js/worker.js?v=33';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -101,7 +102,7 @@
 
   els.chooseBtn.addEventListener('click', () => els.fileInput.click());
   els.fileInput.addEventListener('change', () => {
-    if (els.fileInput.files[0]) processFile(els.fileInput.files[0]);
+    if (els.fileInput.files[0]) previewKey(els.fileInput.files[0]);
   });
   els.dropzone.addEventListener('dragover', (e) => { e.preventDefault(); els.dropzone.classList.add('dragover'); });
   els.dropzone.addEventListener('dragleave', () => els.dropzone.classList.remove('dragover'));
@@ -109,7 +110,90 @@
     e.preventDefault();
     els.dropzone.classList.remove('dragover');
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) processFile(f);
+    if (f) previewKey(f);
+  });
+
+  // New onboarding flow: upload → detect the current key → user picks a target
+  // key → run the Best (local-server) separation + analysis AND the natural-voice
+  // transpose in one go, landing on the dashboard already in their key.
+  async function previewKey(file) {
+    try {
+      pause();
+      state.ready = false;
+      els.resultArea.hidden = true;
+      els.keyCard.hidden = true;
+      els.dropzone.classList.add('compact');
+      els.progressCard.hidden = false;
+      state.fileName = file.name;
+      state.file = file;
+      setStage('Decoding audio…', 0.1);
+      const ab = await file.arrayBuffer();
+      const ctx = ensureCtx();
+      let buf;
+      try { buf = await ctx.decodeAudioData(ab); }
+      catch (e) { throw new Error('Could not decode this file — is it a valid audio file?'); }
+      if (buf.duration < 1) throw new Error('This clip is too short to analyze.');
+      state.duration = buf.duration;
+
+      // Full-rate mono kept for the transpose later.
+      const fmono = new Float32Array(buf.length);
+      for (let c = 0; c < buf.numberOfChannels; c++) {
+        const d = buf.getChannelData(c);
+        for (let i = 0; i < buf.length; i++) fmono[i] += d[i] / buf.numberOfChannels;
+      }
+      state.fileMono = fmono;
+      state.fileSr = buf.sampleRate;
+      if (origUrl) URL.revokeObjectURL(origUrl);
+      origUrl = URL.createObjectURL(file);
+      origEl.src = origUrl;
+
+      // Quick key (Sa) detection — Fast YIN over the first ~90 s is plenty to find
+      // the tonic and keeps this step to a couple of seconds.
+      setStage('Finding the key…', 0.5);
+      const detectSec = Math.min(90, buf.duration);
+      const tsr = 16000;
+      const oac = new OfflineAudioContext(1, Math.ceil(detectSec * tsr), tsr);
+      const src = oac.createBufferSource();
+      src.buffer = buf; src.connect(oac.destination); src.start(0, 0, detectSec);
+      const mono = (await oac.startRendering()).getChannelData(0);
+      const result = await runWorker(new Float32Array(mono), tsr, {});
+      state.saHz = (result.tonic && result.tonic[0] && result.tonic[0].hz) || state.saHz || 220;
+
+      els.curKey.textContent = noteName(state.saHz);
+      populateTargetKeys();
+      els.progressCard.hidden = true;
+      els.keyCard.hidden = false;
+    } catch (err) {
+      els.progressCard.hidden = true;
+      els.dropzone.classList.remove('compact');
+      toast(err.message || String(err));
+    }
+  }
+
+  function populateTargetKeys() {
+    const sel = els.targetKeySel;
+    sel.textContent = '';
+    for (let s = -PITCH_LIMIT; s <= PITCH_LIMIT; s++) {
+      const opt = document.createElement('option');
+      opt.value = String(s);
+      const k = noteName(state.saHz * Math.pow(2, s / 12));
+      opt.textContent = s === 0 ? `${k} (original)` : `${k} (${s > 0 ? '+' : ''}${s})`;
+      sel.appendChild(opt);
+    }
+    sel.value = '0';
+  }
+
+  if (els.keyGoBtn) els.keyGoBtn.addEventListener('click', async () => {
+    const target = parseInt(els.targetKeySel.value, 10) || 0;
+    els.keyCard.hidden = true;
+    state.engine = 'server';
+    const eSel = $('engineSel'); if (eSel) eSel.value = 'server';
+    try {
+      await processFile(state.file);                              // separate voice + analyze + reveal
+      if (target !== 0 && state.ready) await applyPitch(target);  // natural-voice transpose (cache hit)
+    } catch (err) {
+      toast('Could not complete: ' + (err.message || err));
+    }
   });
 
   function setStage(label, frac) {
@@ -1370,9 +1454,14 @@
       { c: colors.accent, w: 1.5, a: 0.95 },   // 2 quick bend / step
     ];
     cctx.lineJoin = 'round'; cctx.lineCap = 'round';
-    let pts = [], cnt = [];
+    // Bridge brief drop-outs (so one note's line doesn't shatter at a clarity
+    // dip) and drop isolated tiny fragments — together these remove the "random
+    // unconnected lines" and leave clean lines tracing the melody through the notes.
+    const BRIDGE = Math.max(2, Math.round(0.16 / hopSec));   // connect gaps ≤ ~160 ms
+    const MINLEN = Math.max(3, Math.round(0.06 / hopSec));   // drop runs shorter than ~60 ms
+    let pts = [], cnt = [], gap = 0;
     const flushRun = () => {
-      if (pts.length >= 2) {
+      if (pts.length >= MINLEN) {
         const cls = new Array(pts.length);
         for (let k = 0; k < pts.length; k++) {
           const a = Math.max(0, k - 3), b = Math.min(pts.length - 1, k + 3);
@@ -1395,9 +1484,9 @@
       if (f0[i] > 0 && clarity[i] >= opts.clarityThresh) {
         const cc = 1200 * Math.log2(f0[i] / saHz);
         const y = cToY(cc);
-        if (y < RULER || y > H) { flushRun(); continue; }
-        pts.push([tToX(i * hopSec), y]); cnt.push(cc);
-      } else flushRun();
+        if (y < RULER || y > H) { flushRun(); gap = 0; continue; }
+        pts.push([tToX(i * hopSec), y]); cnt.push(cc); gap = 0;
+      } else if (pts.length && ++gap > BRIDGE) { flushRun(); gap = 0; }
     }
     flushRun();
     cctx.globalAlpha = 1;
