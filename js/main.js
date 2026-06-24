@@ -18,6 +18,7 @@
     copyBtn: $('copyBtn'), dlTxtBtn: $('dlTxtBtn'), dlJsonBtn: $('dlJsonBtn'), dlWavBtn: $('dlWavBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
+    vtBtn: $('vtBtn'), vtStatus: $('vtStatus'), vtResult: $('vtResult'),
     sensSlider: $('sensSlider'), sensVal: $('sensVal'),
     minNoteSlider: $('minNoteSlider'), minNoteVal: $('minNoteVal'),
     statsLine: $('statsLine'), toast: $('toast'),
@@ -42,7 +43,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=30';
+  const WORKER_URL = 'js/worker.js?v=31';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -1005,6 +1006,49 @@
   els.pitchDownBtn.addEventListener('click', () => applyPitch(state.semitones - 1));
   els.pitchUpBtn.addEventListener('click', () => applyPitch(state.semitones + 1));
   els.pitchSel.addEventListener('change', () => applyPitch(parseInt(els.pitchSel.value, 10)));
+
+  // --- Natural voice transpose (beta) ---
+  // The in-app Pitch control shifts the whole MIX client-side (phase vocoder),
+  // which sounds robotic on big shifts. This asks the local server to isolate
+  // just the singer (Demucs) and shift ONLY the pitch (WORLD vocoder), keeping
+  // the formants — so the voice changes key but still sounds like the singer.
+  let vtUrl = null;
+  if (els.vtBtn) els.vtBtn.addEventListener('click', async () => {
+    if (!state.fileMono) { toast('Load a recording first.'); return; }
+    const semis = state.semitones || -7;
+    const label = (semis > 0 ? '+' : '') + semis;
+    els.vtBtn.disabled = true;
+    const t0 = Date.now();
+    let timer = setInterval(() => {
+      els.vtStatus.textContent = `Separating the voice & shifting ${label} st… ${Math.round((Date.now() - t0) / 1000)}s`;
+    }, 500);
+    try {
+      const wav = encodeWav(state.fileMono, state.fileSr);
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 10 * 60 * 1000);
+      const resp = await fetch(SERVER_URL + '/transpose?semitones=' + semis, {
+        method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' }, signal: ctrl.signal,
+      });
+      clearTimeout(to);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const blob = await resp.blob();
+      clearInterval(timer); timer = null;
+      if (vtUrl) URL.revokeObjectURL(vtUrl);
+      vtUrl = URL.createObjectURL(blob);
+      els.vtResult.innerHTML = '';
+      const a = document.createElement('audio');
+      a.controls = true; a.autoplay = true; a.src = vtUrl;
+      a.style.width = '100%'; a.style.marginTop = '8px';
+      els.vtResult.appendChild(a);
+      els.vtStatus.textContent = `Voice at ${label} st (${Math.round((Date.now() - t0) / 1000)}s) — does it sound natural?`;
+    } catch (err) {
+      els.vtStatus.textContent = '';
+      toast('Voice transpose failed (' + ((err && err.message) || err) + '). Is the local server running?');
+    } finally {
+      if (timer) clearInterval(timer);
+      els.vtBtn.disabled = false;
+    }
+  });
 
   async function play() {
     if (!state.ready) return;

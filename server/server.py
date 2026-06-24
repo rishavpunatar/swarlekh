@@ -17,7 +17,8 @@ import io, os, gc, time
 import numpy as np
 import soundfile as sf
 import torch, torchaudio, torchcrepe
-from flask import Flask, request, jsonify
+import pyworld as pw
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from demucs.pretrained import get_model
 from demucs.apply import apply_model
@@ -125,6 +126,49 @@ def analyze():
                    periodicity=[round(float(x), 3) for x in pd],
                    rms=[round(float(x), 5) for x in rms],
                    hopSec=HOP / SR, sr=SR)
+
+
+WORLD_SR = 24000     # WORLD runs here: plenty for voice, ~2x faster than 44.1k
+
+
+def world_pitch_shift(mono, sr, semitones):
+    """Shift ONLY pitch, keeping the spectral envelope (formants) fixed — so the
+    voice changes key but still sounds like the same person, not chipmunk/zombie.
+    WORLD decomposes into f0 + spectral envelope + aperiodicity; we scale f0 and
+    resynthesize with the ORIGINAL envelope. mono: float32 @sr -> float32 @sr."""
+    x = mono.astype(np.float64)
+    f0, t = pw.harvest(x, sr)             # robust f0 (handles unvoiced as 0)
+    sp = pw.cheaptrick(x, f0, t, sr)      # spectral envelope = formants (kept)
+    ap = pw.d4c(x, f0, t, sr)             # aperiodicity (breath/voicing)
+    y = pw.synthesize(f0 * (2.0 ** (semitones / 12.0)), sp, ap, sr)
+    pk = float(np.max(np.abs(y))) or 1.0
+    return (y / pk * 0.95).astype(np.float32)
+
+
+@app.post('/transpose')
+def transpose():
+    """Isolate the singer (Demucs) and transpose JUST the voice (WORLD), formant-
+    preserving. Returns a WAV of the shifted voice. ?semitones=-7 (default)."""
+    semis = float(request.args.get('semitones', -7))
+    t0 = time.time()
+    raw = request.get_data()
+    audio, in_sr = sf.read(io.BytesIO(raw), dtype='float32', always_2d=True)
+    x = torch.tensor(audio.T)
+    if x.shape[0] == 1:
+        x = x.repeat(2, 1)
+    if in_sr != DEMUCS_SR:
+        x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
+    voc = separate_vocals(x).mean(0, keepdim=True)     # [1, n] @44.1k
+    print('[swarlekh] separated in %.1fs — WORLD pitch-shift %.1f st…'
+          % (time.time() - t0, semis), flush=True)
+    voc_w = torchaudio.functional.resample(voc, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
+    y = world_pitch_shift(voc_w, WORLD_SR, semis)
+    buf = io.BytesIO()
+    sf.write(buf, y, WORLD_SR, format='WAV', subtype='PCM_16')
+    buf.seek(0)
+    print('[swarlekh] /transpose done in %.1fs (%.1f st, %d samples)'
+          % (time.time() - t0, semis, len(y)), flush=True)
+    return Response(buf.read(), mimetype='audio/wav')
 
 
 if __name__ == '__main__':
