@@ -44,7 +44,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=33';
+  const WORKER_URL = 'js/worker.js?v=34';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -102,7 +102,7 @@
 
   els.chooseBtn.addEventListener('click', () => els.fileInput.click());
   els.fileInput.addEventListener('change', () => {
-    if (els.fileInput.files[0]) previewKey(els.fileInput.files[0]);
+    if (els.fileInput.files[0]) startUpload(els.fileInput.files[0]);
   });
   els.dropzone.addEventListener('dragover', (e) => { e.preventDefault(); els.dropzone.classList.add('dragover'); });
   els.dropzone.addEventListener('dragleave', () => els.dropzone.classList.remove('dragover'));
@@ -110,8 +110,17 @@
     e.preventDefault();
     els.dropzone.classList.remove('dragover');
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) previewKey(f);
+    if (f) startUpload(f);
   });
+
+  // After upload, go straight to the Best (local-server) voice separation +
+  // analysis, then the dashboard. Pitch is changed there — each change asks the
+  // server to re-shift the voice and remix the music into the chosen key.
+  function startUpload(file) {
+    state.engine = 'server';
+    const eSel = $('engineSel'); if (eSel) eSel.value = 'server';
+    processFile(file);
+  }
 
   // New onboarding flow: upload → detect the current key → user picks a target
   // key → run the Best (local-server) separation + analysis AND the natural-voice

@@ -18,6 +18,7 @@ import numpy as np
 import soundfile as sf
 import torch, torchaudio, torchcrepe
 import pyworld as pw
+import librosa
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from demucs.pretrained import get_model
@@ -166,21 +167,25 @@ def world_pitch_shift(mono, sr, semitones):
     WORLD decomposes into f0 + spectral envelope + aperiodicity; we scale f0 and
     resynthesize with the ORIGINAL envelope. mono: float32 @sr -> float32 @sr."""
     x = mono.astype(np.float64)
-    # Wide f0 range so taar saptak isn't clipped — dio's default ceiling (800 Hz)
-    # cuts off a singer's high notes, which then resynthesize wrong ("go weird").
-    _f0, t = pw.dio(x, sr, f0_floor=65.0, f0_ceil=1200.0)
-    f0 = pw.stonemask(x, _f0, t, sr)      # refine (dio+stonemask >> harvest in speed)
+    # harvest, not dio: dio makes octave errors at register extremes and on held
+    # tonic notes (Sa) — that jumps the shifted note an octave and sounds wrong on
+    # the high/low notes and near Sa. harvest is far more octave-robust. Wide range
+    # covers mandra → taar saptak.
+    f0, t = pw.harvest(x, sr, f0_floor=55.0, f0_ceil=1100.0)
     sp = pw.cheaptrick(x, f0, t, sr)      # spectral envelope = formants (kept)
     ap = pw.d4c(x, f0, t, sr)             # aperiodicity (breath/voicing)
     y = pw.synthesize(f0 * (2.0 ** (semitones / 12.0)), sp, ap, sr)
-    pk = float(np.max(np.abs(y))) or 1.0
-    return (y / pk * 0.95).astype(np.float32)
+    # Match the input loudness (no peak-normalize — the music is mixed in after).
+    ry = float(np.sqrt(np.mean(y * y))) or 1.0
+    rx = float(np.sqrt(np.mean(x * x)))
+    return (y * (rx / ry)).astype(np.float32)
 
 
 @app.post('/transpose')
 def transpose():
-    """Isolate the singer (Demucs) and transpose JUST the voice (WORLD), formant-
-    preserving. Returns a WAV of the shifted voice. ?semitones=-7 (default)."""
+    """Transpose the whole recording to a new key: the singer (Demucs) is shifted
+    with WORLD (formant-preserving, natural), the rest of the music with a phase
+    vocoder, then mixed back so you keep the accompaniment. ?semitones=-7."""
     semis = float(request.args.get('semitones', -7))
     t0 = time.time()
     raw = request.get_data()
@@ -191,15 +196,22 @@ def transpose():
     if in_sr != DEMUCS_SR:
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
     voc = separated_voice_44k(raw, x)                  # [1, n] @44.1k (reuses /analyze's separation)
-    print('[swarlekh] separated in %.1fs — WORLD pitch-shift %.1f st…'
+    accomp = x.mean(0, keepdim=True) - voc             # music = full mix − vocals
+    print('[swarlekh] separated in %.1fs — shifting voice (WORLD) + music %.1f st…'
           % (time.time() - t0, semis), flush=True)
     voc_w = torchaudio.functional.resample(voc, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
-    y = world_pitch_shift(voc_w, WORLD_SR, semis)
+    acc_w = torchaudio.functional.resample(accomp, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
+    y_voc = world_pitch_shift(voc_w, WORLD_SR, semis)                       # natural, formant-preserving
+    y_acc = librosa.effects.pitch_shift(acc_w.astype(np.float32), sr=WORLD_SR, n_steps=semis)  # instruments
+    L = min(len(y_voc), len(y_acc))
+    out = y_voc[:L] + y_acc[:L]                         # remix in the new key: voice + music
+    pk = float(np.max(np.abs(out))) or 1.0
+    out = (out / pk * 0.95).astype(np.float32)
     buf = io.BytesIO()
-    sf.write(buf, y, WORLD_SR, format='WAV', subtype='PCM_16')
+    sf.write(buf, out, WORLD_SR, format='WAV', subtype='PCM_16')
     buf.seek(0)
     print('[swarlekh] /transpose done in %.1fs (%.1f st, %d samples)'
-          % (time.time() - t0, semis, len(y)), flush=True)
+          % (time.time() - t0, semis, len(out)), flush=True)
     return Response(buf.read(), mimetype='audio/wav')
 
 
