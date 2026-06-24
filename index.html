@@ -88,16 +88,6 @@
         </div>
       </section>
 
-      <section id="vtCard" class="card">
-        <div class="vt-row">
-          <span class="card-label">Natural voice transpose <span class="muted">· beta</span></span>
-          <button id="vtBtn" class="mini-btn">Make the voice at this pitch</button>
-          <span id="vtStatus" class="muted"></span>
-        </div>
-        <div id="vtResult"></div>
-        <p class="hint">Set the <b>Pitch</b> above, then click. This isolates just the singer and shifts <b>only the pitch</b> — keeping the timbre — using the WORLD vocoder on your local server (the “Best” engine’s server must be running). First run separates the voice, so a full song takes a minute or two. The clip that appears is the voice alone, in your key.</p>
-      </section>
-
       <section id="ragaCard" class="card">
         <div class="raga-head">
           <span class="card-label">Raag analysis</span>
@@ -138,28 +128,6 @@
         The line is the melody, coloured by movement: <b style="color:var(--indigo)">indigo</b> where a note is steady,
         <b style="color:var(--accent)">saffron where it bends</b> — a <b>thick</b> saffron sweep is a slow meend, a <b>thin</b> one a quick bend or step.
         Each <b>dot</b> is a note the voice hits, named with its swara. Solid grid lines are the song’s scale — zoom in to read fast runs.</p>
-      </section>
-
-      <section id="notationCard" class="card">
-        <div class="canvas-toolbar">
-          <span class="card-label">Sargam notation</span>
-          <span class="spacer"></span>
-          <button id="copyBtn" class="mini-btn">Copy</button>
-          <button id="dlTxtBtn" class="mini-btn">Download .txt</button>
-          <button id="dlJsonBtn" class="mini-btn">Download .json</button>
-          <button id="dlWavBtn" class="mini-btn" title="The synthesized melody line as a WAV file">Melody .wav</button>
-        </div>
-        <details class="legend-details">
-          <summary>How to read the sargam ▾</summary>
-          <p class="legend">
-            <b>S r R g G m M P d D n N</b> — capitals shuddh, lowercase komal (re ga dha ni);
-            <b>m</b> = shuddh Ma, <b>M</b> = teevra Ma · dot above / <b>X'</b> = taar saptak,
-            dot below / <b>.X</b> = mandra saptak · <b>–</b> ≈ 0.3&nbsp;s held<br>
-            ornaments: <b>(R)G</b> = kan (grace) · <b>(GRG)m</b> = murki · <b>S⌒R⌒G</b> = meend gliding through those swaras ·
-            <b>≈g(R–g)</b> = andolan oscillating between those swaras · <b>~X</b> = glide within the note
-          </p>
-        </details>
-        <div id="notation"></div>
       </section>
 
       <section id="settingsCard" class="card">
@@ -215,10 +183,10 @@
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=31"></script>
-  <script src="js/dsp.js?v=31"></script>
-  <script src="js/ragas.js?v=31"></script>
-  <script src="js/ragaId.js?v=31"></script>
-  <script src="js/main.js?v=31"></script>
+  <script src="js/fft.js?v=32"></script>
+  <script src="js/dsp.js?v=32"></script>
+  <script src="js/ragas.js?v=32"></script>
+  <script src="js/ragaId.js?v=32"></script>
+  <script src="js/main.js?v=32"></script>
 </body>
 </html>

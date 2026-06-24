@@ -211,7 +211,7 @@ body.deva .tok, body.deva .swar-letter {
 
 /* Canvas */
 .canvas-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-#contour { width: 100%; height: 340px; display: block; border-radius: 8px; cursor: crosshair; touch-action: pan-y; }
+#contour { width: 100%; height: 560px; display: block; border-radius: 8px; cursor: crosshair; touch-action: pan-y; }
 
 /* Notation */
 .legend { font-size: 12.5px; color: var(--muted); margin: 4px 0 12px; }
@@ -290,5 +290,5 @@ kbd {
 @media (max-width: 640px) {
   .player-row, .tonic-row, .settings-row { gap: 10px; }
   .tok { font-size: 17px; }
-  #contour { height: 260px; }
+  #contour { height: 400px; }
 }

@@ -13,7 +13,7 @@ pick Pitch engine → "Best (local server)".
 
 Run:  server/.venv/bin/python server/server.py
 """
-import io, os, gc, time
+import io, os, gc, time, hashlib
 import numpy as np
 import soundfile as sf
 import torch, torchaudio, torchcrepe
@@ -75,6 +75,26 @@ def separate_vocals(mix):
     return voc / wsum.clamp(min=1e-6)
 
 
+# Cache the most recently separated vocal so /transpose can reuse the separation
+# /analyze just did (the "Best" engine separates the same bytes first). Keyed by
+# a hash of the posted audio; the client sends identical WAV to both endpoints,
+# so the normal analyze->transpose flow is a cache hit and skips the slow Demucs.
+_voc_cache = {'key': None, 'voc44': None}
+
+
+def separated_voice_44k(raw, x):
+    """Mono vocal [1, n] @44.1k, reusing the cached separation when the posted
+    audio matches the last separated (skips the ~minutes-long Demucs pass)."""
+    key = hashlib.md5(raw).hexdigest()
+    if _voc_cache['key'] == key and _voc_cache['voc44'] is not None:
+        print('[swarlekh] reusing cached separated voice (skipping Demucs)', flush=True)
+        return _voc_cache['voc44']
+    voc = separate_vocals(x).mean(0, keepdim=True)      # [1, n] @44.1k
+    _voc_cache['key'] = key
+    _voc_cache['voc44'] = voc
+    return voc
+
+
 @app.get('/')
 def health():
     return jsonify(ok=True, device=DEVICE, hopSec=HOP / SR, sr=SR)
@@ -90,8 +110,8 @@ def analyze():
         x = x.repeat(2, 1)                             # mono -> stereo for Demucs
     if in_sr != DEMUCS_SR:
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
-    voc = separate_vocals(x)                           # [2, n] @44.1k
-    voc16 = torchaudio.functional.resample(voc.mean(0, keepdim=True), DEMUCS_SR, SR)  # [1, n] @16k
+    voc = separated_voice_44k(raw, x)                  # [1, n] @44.1k (cached for /transpose)
+    voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)  # [1, n] @16k
     t_sep = time.time() - t0
     print('[swarlekh] separation done in %.1fs — tracking pitch on the clean voice…' % t_sep, flush=True)
 
@@ -137,7 +157,10 @@ def world_pitch_shift(mono, sr, semitones):
     WORLD decomposes into f0 + spectral envelope + aperiodicity; we scale f0 and
     resynthesize with the ORIGINAL envelope. mono: float32 @sr -> float32 @sr."""
     x = mono.astype(np.float64)
-    f0, t = pw.harvest(x, sr)             # robust f0 (handles unvoiced as 0)
+    # Wide f0 range so taar saptak isn't clipped — dio's default ceiling (800 Hz)
+    # cuts off a singer's high notes, which then resynthesize wrong ("go weird").
+    _f0, t = pw.dio(x, sr, f0_floor=65.0, f0_ceil=1200.0)
+    f0 = pw.stonemask(x, _f0, t, sr)      # refine (dio+stonemask >> harvest in speed)
     sp = pw.cheaptrick(x, f0, t, sr)      # spectral envelope = formants (kept)
     ap = pw.d4c(x, f0, t, sr)             # aperiodicity (breath/voicing)
     y = pw.synthesize(f0 * (2.0 ** (semitones / 12.0)), sp, ap, sr)
@@ -158,7 +181,7 @@ def transpose():
         x = x.repeat(2, 1)
     if in_sr != DEMUCS_SR:
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
-    voc = separate_vocals(x).mean(0, keepdim=True)     # [1, n] @44.1k
+    voc = separated_voice_44k(raw, x)                  # [1, n] @44.1k (reuses /analyze's separation)
     print('[swarlekh] separated in %.1fs — WORLD pitch-shift %.1f st…'
           % (time.time() - t0, semis), flush=True)
     voc_w = torchaudio.functional.resample(voc, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()

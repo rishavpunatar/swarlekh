@@ -43,7 +43,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=31';
+  const WORKER_URL = 'js/worker.js?v=32';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -599,6 +599,7 @@
   });
 
   function applyPcHighlight() {
+    if (!els.notation) return;   // notation UI removed — contour highlight handled in drawCanvas
     const pc = state.highlightPc;
     els.notation.classList.toggle('filtering', pc != null);
     els.notation.querySelectorAll('.tok').forEach((el) => {
@@ -607,6 +608,7 @@
   }
 
   function renderNotation() {
+    if (!els.notation) return;   // sargam notation UI removed
     els.notation.textContent = '';
     activeLineIdx = -1;
     activeTokIdx = -1;
@@ -708,7 +710,7 @@
     applyPcHighlight();
   }
 
-  els.notation.addEventListener('click', seekFromTokenEl);
+  if (els.notation) els.notation.addEventListener('click', seekFromTokenEl);
   function seekFromTokenEl(e) {
     const t = e.target.closest('[data-i]');
     if (!t) return;
@@ -748,7 +750,7 @@
       `        (R)G = kan; (GRG)m = murki; X~Y = meend; ≈X = andolan/gamak; ~X = glide in note\n\n`;
   }
 
-  els.copyBtn.addEventListener('click', async () => {
+  if (els.copyBtn) els.copyBtn.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(exportHeader() + DSP.notationText(state.phrases, state.scale));
       els.copyBtn.textContent = 'Copied ✓';
@@ -766,10 +768,10 @@
   }
   const baseName = () => state.fileName.replace(/\.[^.]+$/, '') || 'swarlekh';
 
-  els.dlTxtBtn.addEventListener('click', () =>
+  if (els.dlTxtBtn) els.dlTxtBtn.addEventListener('click', () =>
     download(new Blob([exportHeader() + DSP.notationText(state.phrases, state.scale)], { type: 'text/plain' }), baseName() + '.sargam.txt'));
 
-  els.dlJsonBtn.addEventListener('click', () => {
+  if (els.dlJsonBtn) els.dlJsonBtn.addEventListener('click', () => {
     const data = {
       app: 'SwarLekh', version: 1, file: state.fileName,
       saHz: +state.saHz.toFixed(2), options: state.opts,
@@ -795,7 +797,7 @@
     download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), baseName() + '.sargam.json');
   });
 
-  els.dlWavBtn.addEventListener('click', async () => {
+  if (els.dlWavBtn) els.dlWavBtn.addEventListener('click', async () => {
     if (!synthUrl) return;
     const blob = await (await fetch(synthUrl)).blob();
     download(blob, baseName() + '.melody.wav');
@@ -841,7 +843,7 @@
   scriptSel.addEventListener('change', () => {
     state.script = scriptSel.value;
     document.body.classList.toggle('deva', state.script === 'devanagari');
-    if (state.ready) { renderRaga(); renderNotation(); }
+    if (state.ready) renderRaga();
   });
 
   const detailSel = $('detailSel');
@@ -975,31 +977,50 @@
   async function applyPitch(semitones) {
     semitones = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, semitones));
     if (!state.ready || semitones === state.semitones) return;
+    const prev = state.semitones;
     state.semitones = semitones;
     updatePitchUI();
 
     const cached = pitchCache.get(semitones);
     if (cached) { origUrl = cached.origUrl; synthUrl = cached.synthUrl; swapAudioSources(origUrl, synthUrl); return; }
 
+    // Any non-zero pitch is rendered by the local server: it isolates the singer
+    // (Demucs) and shifts ONLY the voice's pitch (WORLD vocoder, formants kept),
+    // so the transpose still sounds like the same person. That shifted VOICE
+    // becomes the single playback track, synced to the contour. (Pitch 0 is the
+    // cached original, set at load.)
     const seq = ++pitchSeq;
     els.pitchCtl.classList.add('busy');
+    const tStart = Date.now();
+    const timer = setInterval(() => {
+      if (seq === pitchSeq) els.pitchKey.textContent = `transposing… ${Math.round((Date.now() - tStart) / 1000)}s`;
+    }, 500);
     try {
       const r = Math.pow(2, semitones / 12);
-      const shifted = await runPitchWorker(state.fileMono.slice(), state.fileSr, semitones,
-        (f) => { if (seq === pitchSeq) els.pitchKey.textContent = `shifting… ${Math.round(f * 100)}%`; });
-      // Re-synthesize the melody guide at the matching pitch (cheap, exact).
+      const wav = encodeWav(state.fileMono, state.fileSr);
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 10 * 60 * 1000);
+      const resp = await fetch(SERVER_URL + '/transpose?semitones=' + semitones, {
+        method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' }, signal: ctrl.signal,
+      });
+      clearTimeout(to);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const blob = await resp.blob();
+      // Re-synthesize the melody guide at the matching pitch (for the "Listen to" options).
       const f0s = new Float32Array(state.f0.length);
       for (let i = 0; i < f0s.length; i++) f0s[i] = state.f0[i] > 0 ? state.f0[i] * r : 0;
       const syn = DSP.synthesize(f0s, state.clarity, state.hopSec, state.sr);
       if (seq !== pitchSeq) return; // a newer request superseded this one
-      const oUrl = URL.createObjectURL(encodeWav(shifted, state.fileSr));
+      const oUrl = URL.createObjectURL(blob);
       const sUrl = URL.createObjectURL(encodeWav(syn, state.sr));
       pitchCache.set(semitones, { origUrl: oUrl, synthUrl: sUrl });
       origUrl = oUrl; synthUrl = sUrl;
       swapAudioSources(oUrl, sUrl);
     } catch (err) {
-      toast('Pitch shift failed: ' + (err.message || err));
+      toast('Voice transpose failed (' + ((err && err.message) || err) + '). Is the local “Best” server running?');
+      state.semitones = prev;   // keep the working pitch; audio was not swapped
     } finally {
+      clearInterval(timer);
       if (seq === pitchSeq) { els.pitchCtl.classList.remove('busy'); updatePitchUI(); }
     }
   }
@@ -1172,7 +1193,7 @@
     if (tokIdx >= 0 && t > toks[tokIdx].t1 + 0.35 &&
         (tokIdx + 1 >= toks.length || toks[tokIdx + 1].t0 > t)) tokIdx = -1;
 
-    if (lineIdx !== activeLineIdx) {
+    if (els.notation && lineIdx !== activeLineIdx) {
       els.notation.querySelectorAll('.active-line').forEach(el => el.classList.remove('active-line'));
       activeLineIdx = lineIdx;
       if (lineIdx >= 0) {
@@ -1187,7 +1208,7 @@
         }
       }
     }
-    if (tokIdx !== activeTokIdx) {
+    if (els.notation && tokIdx !== activeTokIdx) {
       els.notation.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
       activeTokIdx = tokIdx;
       if (tokIdx >= 0) {
