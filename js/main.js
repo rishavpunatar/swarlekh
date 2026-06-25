@@ -44,7 +44,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=34';
+  const WORKER_URL = 'js/worker.js?v=35';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -1468,6 +1468,25 @@
     // unconnected lines" and leave clean lines tracing the melody through the notes.
     const BRIDGE = Math.max(2, Math.round(0.16 / hopSec));   // connect gaps ≤ ~160 ms
     const MINLEN = Math.max(3, Math.round(0.06 / hopSec));   // drop runs shorter than ~60 ms
+    // Smooth the contour line so it reads as the melodic SHAPE — rounding off the
+    // vibrato and micro-jitter you don't sight-read when learning a sargam or a
+    // murki (the dots & labels still mark each exact note). Each voiced frame is
+    // averaged with its voiced neighbours (±SMOOTH frames); unvoiced gaps aren't
+    // crossed, so note onsets stay put.
+    const SMOOTH = 3;   // ±3 frames ≈ ±48 ms (≈110 ms window)
+    const cval = new Float32Array(i1 - i0 + 1);
+    for (let i = i0; i <= i1; i++) {
+      cval[i - i0] = (f0[i] > 0 && clarity[i] >= opts.clarityThresh) ? 1200 * Math.log2(f0[i] / saHz) : NaN;
+    }
+    const csm = new Float32Array(cval.length);
+    for (let k = 0; k < cval.length; k++) {
+      if (isNaN(cval[k])) { csm[k] = NaN; continue; }
+      let s = 0, c = 0;
+      for (let j = Math.max(0, k - SMOOTH); j <= Math.min(cval.length - 1, k + SMOOTH); j++) {
+        if (!isNaN(cval[j])) { s += cval[j]; c++; }
+      }
+      csm[k] = s / c;
+    }
     let pts = [], cnt = [], gap = 0;
     const flushRun = () => {
       if (pts.length >= MINLEN) {
@@ -1491,7 +1510,7 @@
     };
     for (let i = i0; i <= i1; i++) {
       if (f0[i] > 0 && clarity[i] >= opts.clarityThresh) {
-        const cc = 1200 * Math.log2(f0[i] / saHz);
+        const cc = csm[i - i0];
         const y = cToY(cc);
         if (y < RULER || y > H) { flushRun(); gap = 0; continue; }
         pts.push([tToX(i * hopSec), y]); cnt.push(cc); gap = 0;
