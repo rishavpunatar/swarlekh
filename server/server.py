@@ -179,7 +179,7 @@ def world_pitch_shift(mono, sr, semitones, f0=None, t=None):
     x = mono.astype(np.float64)
     if f0 is None:
         f0, t = pw.harvest(x, sr, f0_floor=55.0, f0_ceil=1100.0)
-    sp = pw.cheaptrick(x, f0, t, sr)      # spectral envelope = formants (kept)
+    sp = pw.cheaptrick(x, f0, t, sr, f0_floor=40.0)   # low floor → longer FFT → smoother envelope on deep low notes
     ap = pw.d4c(x, f0, t, sr)             # aperiodicity (breath/voicing)
     y = pw.synthesize(f0 * (2.0 ** (semitones / 12.0)), sp, ap, sr)
     # Match the input loudness (no peak-normalize — the music is mixed in after).
