@@ -33,6 +33,8 @@ PORT = 8765
 HOP = 256            # 16 ms at 16 kHz — matches the in-browser pipeline
 SR = 16000
 DEMUCS_SR = 44100
+ANALYSIS_STRETCH = 2.0   # slow the voice this much before CREPE so fast murki/sargam
+                         # notes (often <~64 ms, CREPE's window) resolve as distinct notes
 
 # CPU, deliberately: Apple's MPS backend is far SLOWER than CPU for Demucs's
 # transformer here (measured ~10x), so CPU (multi-threaded) is the fast path.
@@ -130,41 +132,45 @@ def analyze():
     if in_sr != DEMUCS_SR:
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
     voc, _ = separated_stems_44k(raw, x)               # [1, n] @44.1k (cached for /transpose)
-    voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)  # [1, n] @16k
+    voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)[0].cpu().numpy().astype(np.float32)  # [n] @16k
     t_sep = time.time() - t0
-    print('[swarlekh] separation done in %.1fs — tracking pitch on the clean voice…' % t_sep, flush=True)
+    print('[swarlekh] separation done in %.1fs — slowing %gx + tracking pitch on the clean voice…'
+          % (t_sep, ANALYSIS_STRETCH), flush=True)
+
+    # Slow the voice down BEFORE pitch tracking: a fast murki/sargam note can be
+    # shorter than CREPE's ~64 ms analysis window, so two notes blur into one and
+    # the note is missed. Stretching the voice ~2x pushes each note past the window
+    # so it resolves cleanly; we then report f0 at the matching finer hop, which
+    # maps straight back onto the original timing.
+    voc16s = pyrubberband.time_stretch(voc16, SR, 1.0 / ANALYSIS_STRETCH)   # rate<1 = slower / longer
+    hop_sec = (HOP / SR) / ANALYSIS_STRETCH                                  # finer effective hop on the original timeline
 
     # 'tiny' model + weighted_argmax: on the CLEAN separated voice the separation
-    # has already done the hard part, so tiny CREPE is just as octave-accurate as
-    # full but ~10x faster — full CREPE on CPU is minutes/song. Viterbi is also
-    # dropped (O(frames x 360^2), far too slow); the client smooths what's left.
-    f0, pd = torchcrepe.predict(voc16, SR, hop_length=HOP, fmin=50, fmax=1100,
+    # has already done the hard part, so tiny CREPE is octave-accurate and fast.
+    f0, pd = torchcrepe.predict(torch.tensor(voc16s)[None], SR, hop_length=HOP, fmin=50, fmax=1100,
                                 model='tiny', decoder=torchcrepe.decode.weighted_argmax,
                                 return_periodicity=True, batch_size=512, device=DEVICE)
     f0 = torchcrepe.filter.median(f0, 3)               # cheap jitter/glitch smoothing
     f0 = f0[0].cpu().numpy(); pd = pd[0].cpu().numpy()
 
-    # VOCAL-ENERGY GATE: separation isn't perfect — instrumental-only stretches
-    # leave a faint residual in the "vocals" stem that would otherwise be
-    # transcribed as spurious (guitar/harmonium) notes. Measure the separated
-    # voice's per-frame loudness and silence frames where it's well below the
-    # singing level, so only actual sung notes survive.
-    v = voc16[0].cpu().numpy()
+    # VOCAL-ENERGY GATE on the SAME (slowed) timeline: separation isn't perfect —
+    # instrumental-only stretches leave a faint residual that would read as spurious
+    # notes; silence frames well below the singing level so only sung notes survive.
     n_frames = len(f0)
     rms = np.zeros(n_frames, dtype='float32')
     for i in range(n_frames):
         s = i * HOP
-        rms[i] = float(np.sqrt(np.mean(v[s:s + 1024] ** 2))) if s + 1024 <= len(v) else 0.0
+        rms[i] = float(np.sqrt(np.mean(voc16s[s:s + 1024] ** 2))) if s + 1024 <= len(voc16s) else 0.0
     loud = np.percentile(rms[rms > 0], 90) if np.any(rms > 0) else 0.0
     thresh = max(0.08 * loud, 1e-4)                    # ~residual is far quieter than singing
     keep = (pd > 0.01) & (rms > thresh)
     f0 = np.where(keep, f0, 0.0)
-    print('[swarlekh] %.1fs sep + %.1fs total · %d frames · %d voiced after vocal gate'
-          % (t_sep, time.time() - t0, n_frames, int(keep.sum())), flush=True)
+    print('[swarlekh] %.1fs sep + %.1fs total · %d frames @ %.0fms hop · %d voiced'
+          % (t_sep, time.time() - t0, n_frames, hop_sec * 1000, int(keep.sum())), flush=True)
     return jsonify(f0=[round(float(x), 2) for x in f0],
                    periodicity=[round(float(x), 3) for x in pd],
                    rms=[round(float(x), 5) for x in rms],
-                   hopSec=HOP / SR, sr=SR)
+                   hopSec=hop_sec, sr=SR)
 
 
 WORLD_SR = 24000     # WORLD runs here: plenty for voice, ~2x faster than 44.1k

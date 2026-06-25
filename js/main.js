@@ -44,7 +44,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=35';
+  const WORKER_URL = 'js/worker.js?v=36';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -1473,7 +1473,7 @@
     // murki (the dots & labels still mark each exact note). Each voiced frame is
     // averaged with its voiced neighbours (±SMOOTH frames); unvoiced gaps aren't
     // crossed, so note onsets stay put.
-    const SMOOTH = 3;   // ±3 frames ≈ ±48 ms (≈110 ms window)
+    const SMOOTH = Math.max(1, Math.round(0.048 / hopSec));   // ±~48 ms window, adapts to the hop
     const cval = new Float32Array(i1 - i0 + 1);
     for (let i = i0; i <= i1; i++) {
       cval[i - i0] = (f0[i] > 0 && clarity[i] >= opts.clarityThresh) ? 1200 * Math.log2(f0[i] / saHz) : NaN;
