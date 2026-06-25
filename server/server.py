@@ -33,8 +33,10 @@ PORT = 8765
 HOP = 256            # 16 ms at 16 kHz — matches the in-browser pipeline
 SR = 16000
 DEMUCS_SR = 44100
-ANALYSIS_STRETCH = 2.0   # slow the voice this much before CREPE so fast murki/sargam
-                         # notes (often <~64 ms, CREPE's window) resolve as distinct notes
+ANALYSIS_STRETCH = 3.0   # slow the voice this much before CREPE so fast murki/sargam
+                         # notes (often <~64 ms, CREPE's window) resolve as distinct notes.
+                         # Measured sweet spot: 3x captures ~60ms notes fully and recovers
+                         # most ~40ms ones; 4x starts degrading (stretch artifacts confuse CREPE).
 
 # CPU, deliberately: Apple's MPS backend is far SLOWER than CPU for Demucs's
 # transformer here (measured ~10x), so CPU (multi-threaded) is the fast path.
