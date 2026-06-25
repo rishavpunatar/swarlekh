@@ -190,10 +190,10 @@ def world_pitch_shift(mono, sr, semitones, f0=None, t=None):
 
 @app.post('/transpose')
 def transpose():
-    """Transpose the whole recording to a new key: the singer with WORLD (formant-
-    preserving) driven by a smooth, octave-accurate CREPE f0; the tabla/drums
-    (pitched — tuned to Sa) with a transient-crisp Rubber Band shift so it stays
-    crisp; the harmonium/rest with a smooth Rubber Band shift. Remixed. ?semitones."""
+    """Transpose the whole recording to a new key, all with Rubber Band: the singer
+    with formant preservation (-F) so the voice stays natural across the range; the
+    tabla/drums (pitched — tuned to Sa) transient-crisp so they stay crisp; the
+    harmonium/rest smooth. Remixed. ?semitones=-7."""
     semis = float(request.args.get('semitones', -7))
     t0 = time.time()
     raw = request.get_data()
@@ -205,27 +205,15 @@ def transpose():
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
     voc, drm = separated_stems_44k(raw, x)             # [1, n] each @44.1k (reuses /analyze's separation)
     rest = x.mean(0, keepdim=True) - voc - drm         # pitched accompaniment (bass + harmonium…)
-    print('[swarlekh] separated in %.1fs — CREPE f0 → WORLD voice + shift music %.1f st…'
+    print('[swarlekh] separated in %.1fs — Rubber Band voice (formant) + music %.1f st…'
           % (time.time() - t0, semis), flush=True)
 
-    # Voice f0 from CREPE: smooth + octave-accurate, so the shifted voice doesn't
-    # turn robotic (harvest jitter) or jump octaves on high/low notes and Sa.
-    voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)            # [1, n] @16k
-    f0c, pdc = torchcrepe.predict(voc16, SR, hop_length=HOP, fmin=50, fmax=1100,
-                                  model='tiny', decoder=torchcrepe.decode.weighted_argmax,
-                                  return_periodicity=True, batch_size=512, device=DEVICE)
-    f0c = torchcrepe.filter.median(f0c, 3)[0].cpu().numpy()
-    pdc = pdc[0].cpu().numpy()
-    crepe_t = np.arange(len(f0c)) * (HOP / SR)
-    voc_w = torchaudio.functional.resample(voc, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
-    _f0, tw = pw.dio(voc_w.astype(np.float64), WORLD_SR)                  # just for WORLD's frame times
-    vmask = f0c > 0
-    if int(vmask.sum()) > 1:
-        f0_use = np.interp(tw, crepe_t[vmask], f0c[vmask])               # smooth over voiced frames
-        f0_use = np.where(np.interp(tw, crepe_t, pdc) > 0.25, f0_use, 0.0)  # unvoiced -> 0
-    else:
-        f0_use = _f0
-    y_voc = world_pitch_shift(voc_w, WORLD_SR, semis, f0=f0_use, t=tw)
+    # Voice: Rubber Band (R3) with FORMANT PRESERVATION (-F). Unlike WORLD it shifts
+    # uniformly across the whole range — no harmonic under-sampling — so the high
+    # and low octaves don't go robotic. (The WORLD+CREPE path is kept in
+    # world_pitch_shift if we ever want to switch back.)
+    voc_w = torchaudio.functional.resample(voc, DEMUCS_SR, WORLD_SR)[0].cpu().numpy().astype(np.float32)
+    y_voc = pyrubberband.pitch_shift(voc_w, WORLD_SR, semis, rbargs={'-F': ''})
 
     # Music: the tabla (drums) IS pitched — tuned to Sa — so it must shift in key,
     # but as percussion it needs a transient-preserving shift (Rubber Band, crisp)
