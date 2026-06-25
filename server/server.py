@@ -179,8 +179,11 @@ def world_pitch_shift(mono, sr, semitones, f0=None, t=None):
     x = mono.astype(np.float64)
     if f0 is None:
         f0, t = pw.harvest(x, sr, f0_floor=55.0, f0_ceil=1100.0)
-    sp = pw.cheaptrick(x, f0, t, sr, f0_floor=40.0)   # low floor → longer FFT → smoother envelope on deep low notes
-    ap = pw.d4c(x, f0, t, sr)             # aperiodicity (breath/voicing)
+    # Low f0_floor → longer FFT → smoother envelope on deep low notes. cheaptrick
+    # and d4c MUST share fft_size or synthesize() rejects the spec/ap dim mismatch.
+    fft_size = pw.get_cheaptrick_fft_size(sr, 40.0)
+    sp = pw.cheaptrick(x, f0, t, sr, f0_floor=40.0, fft_size=fft_size)
+    ap = pw.d4c(x, f0, t, sr, fft_size=fft_size)   # aperiodicity (breath/voicing)
     y = pw.synthesize(f0 * (2.0 ** (semitones / 12.0)), sp, ap, sr)
     # Match the input loudness (no peak-normalize — the music is mixed in after).
     ry = float(np.sqrt(np.mean(y * y))) or 1.0
