@@ -44,7 +44,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=37';
+  const WORKER_URL = 'js/worker.js?v=38';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -525,7 +525,12 @@
 
   function renotateNow() {
     if (!state.f0) return;
-    const res = DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, state.opts);
+    // A fine-hop track (the server's 4 ms Praat-CC) resolves 30-40 ms sargam
+    // notes, so lower the ornament floor to keep them; coarser tracks (16 ms
+    // YIN/CREPE) keep the safer floor — a lower one only surfaces their blur.
+    const opts = Object.assign({}, state.opts);
+    if (state.hopSec <= 0.006 && opts.ornaments && opts.ornMinMs > 25) opts.ornMinMs = 25;
+    const res = DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
     state.tokens = res.tokens;
     state.phrases = res.phrases;
     state.raga = DSP.analyzeRaga(res.tokens, res.phrases);

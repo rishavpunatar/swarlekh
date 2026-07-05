@@ -882,11 +882,15 @@
    * Only a genuinely fast oscillation is folded (see the excursion-rate gate
    * below); a single excursion, or a held swara with a couple of sparse grace
    * touches, is left alone so those touches stay visible as distinct notes. */
-  function absorbOscillations(runs, stableFrames) {
+  function absorbOscillations(runs, stableFrames, isReal) {
     let changed = true;
     while (changed) {
       changed = false;
       for (let i = 0; i < runs.length; i++) {
+        // Passing-tone anchor gate: a mid-glide fragment must not seed an
+        // absorption — anchored on it, a real murki (G-R-G) gets swallowed
+        // into one bogus in-between swara.
+        if (isReal && (runs[i].end - runs[i].start) < stableFrames && !isReal(runs[i])) continue;
         const k0 = runs[i].k;
         let j = i, nExc = 0;
         while (j < runs.length) {
@@ -1154,6 +1158,21 @@
     };
     const ornOf = (r, type) => ({ k: r.k, t0: r.start * hopSec, t1: r.end * hopSec, type });
 
+    // Passing-tone gate: a short run is a REAL sung note only if the pitch
+    // LEVELS OFF inside it — at least one frame step below gateCps cents/sec.
+    // A fragment whose every frame is still moving is just a glide passing
+    // through that semitone, not a note the singer hit. (gateCentsPerSec: 0
+    // disables the gate and reproduces the pre-gate behaviour exactly.)
+    const gateCps = opts.gateCentsPerSec != null ? opts.gateCentsPerSec : 900;
+    const maxStepCents = gateCps * hopSec;
+    const hasPlateau = (r) => {
+      if (gateCps <= 0) return true;
+      for (let j = r.start; j < r.end - 1; j++) {
+        if (Math.abs(cents[j + 1] - cents[j]) < maxStepCents) return true;
+      }
+      return false;
+    };
+
     let tokens = [];
     let segStart = -1;
     for (let i = 0; i <= n; i++) {
@@ -1170,7 +1189,7 @@
           }
         }
         mergeShortRuns(runs, minFrames);
-        if (ornaments) absorbOscillations(runs, stableFrames);
+        if (ornaments) absorbOscillations(runs, stableFrames, hasPlateau);
         if (runs.length === 1 && runs[0].end - runs[0].start < stableFrames && !ornaments) runs = [];
 
         if (!ornaments) {
@@ -1194,7 +1213,17 @@
                 cur.via = [lastStable.k].concat(ks, cur.k);
                 cur.orn = (cur.orn || []).concat(pending.map(r => ornOf(r, 'meend')));
               } else {
-                for (const r of pending) tokens.push(makeToken(r));   // each note, distinct
+                // Keep only the runs where the voice actually LANDED; pure
+                // passing tones either fold into a meend path or drop.
+                const real = pending.filter(hasPlateau);
+                if (real.length) {
+                  for (const r of real) tokens.push(makeToken(r));   // each sung note, distinct
+                } else if (cur && lastStable && isMeendChain(lastStable.k, ks, cur.k)) {
+                  cur.meendFromPrev = true;
+                  cur.via = [lastStable.k].concat(ks, cur.k);
+                  cur.orn = (cur.orn || []).concat(pending.map(r => ornOf(r, 'meend')));
+                }
+                // else: mid-glide transients with nowhere to attach — drop.
               }
               pending = [];
             }

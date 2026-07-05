@@ -931,3 +931,53 @@ test('detectTonic: places Sa in the singer octave', () => {
   assert.ok(Math.abs(1200 * Math.log2(best.hz / 196)) < 30,
     `expected ~196 Hz, got ${best.hz.toFixed(1)} (cands: ${tonic.map(c => c.hz.toFixed(1)).join(', ')})`);
 });
+
+/* ------------------- passing-tone gate (fine-hop tracks) ------------------- */
+
+// Build an f0 track from a list of [k_or_null, ms, glideToNextFrac] at a fine hop.
+function fineTrack(notes, hop, sa) {
+  const cents = [];
+  for (let i = 0; i < notes.length; i++) {
+    const [k, ms, gf] = notes[i];
+    const nfr = Math.round(ms / 1000 / hop);
+    const g = i < notes.length - 1 && gf ? Math.max(1, Math.round(nfr * gf)) : 0;
+    for (let j = 0; j < nfr - g; j++) cents.push(k * 100);
+    for (let j = 1; j <= g; j++) cents.push(k * 100 + (notes[i + 1][0] - k) * 100 * j / (g + 1));
+  }
+  const f0 = new Float32Array(cents.length), cl = new Float32Array(cents.length).fill(0.9);
+  for (let i = 0; i < cents.length; i++) f0[i] = sa * Math.pow(2, cents[i] / 1200);
+  return { f0, cl };
+}
+
+test('fine hop: 40ms sargam run resolves note-by-note (praat-track regime)', () => {
+  const hop = 0.004, sa = 220;
+  const seq = [0, 2, 4, 5, 7, 9, 11, 12, 11, 9, 7, 5, 4, 2, 0];
+  const { f0, cl } = fineTrack(seq.map(k => [k, 40, 0.15]), hop, sa);
+  const { tokens } = DSP.notate(f0, cl, hop, sa, { clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130, clarityThresh: 0.5 });
+  assert.deepStrictEqual(tokens.map(t => t.k), seq, 'every 40ms note is its own swara');
+});
+
+test('passing-tone gate: glide fragments do not become fake notes', () => {
+  // Held S, one continuous fast glide up to G (passing r and R mid-glide with
+  // no plateau), held G. The r/R fragments must NOT appear as sung notes.
+  const hop = 0.004, sa = 220;
+  const cents = [];
+  const put = (v, ms) => { for (let j = 0; j < Math.round(ms / 1000 / hop); j++) cents.push(v); };
+  put(0, 300);
+  const gl = Math.round(0.06 / hop);                     // 60ms continuous sweep 0->400c
+  for (let j = 1; j <= gl; j++) cents.push(400 * j / (gl + 1));
+  put(400, 300);
+  const f0 = new Float32Array(cents.length), cl = new Float32Array(cents.length).fill(0.9);
+  for (let i = 0; i < cents.length; i++) f0[i] = sa * Math.pow(2, cents[i] / 1200);
+  const { tokens } = DSP.notate(f0, cl, hop, sa, { clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130, clarityThresh: 0.5 });
+  const ks = tokens.map(t => t.k);
+  assert.ok(!ks.includes(1) && !ks.includes(2), `no fake passing notes, got ${ks.join(',')}`);
+  assert.ok(ks.includes(0) && ks.includes(4), `S and G kept, got ${ks.join(',')}`);
+});
+
+test('passing-tone gate: fast murki (G R G) survives, glide fragment does not swallow it', () => {
+  const hop = 0.004, sa = 220;
+  const { f0, cl } = fineTrack([[0, 400, 0.1], [4, 40, 0.1], [2, 40, 0.1], [4, 40, 0.1], [5, 400, 0]], hop, sa);
+  const { tokens } = DSP.notate(f0, cl, hop, sa, { clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130, clarityThresh: 0.5 });
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 4, 2, 4, 5], 'murki notes all surface');
+});

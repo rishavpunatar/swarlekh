@@ -20,6 +20,7 @@ import torch, torchaudio, torchcrepe
 import pyworld as pw
 import librosa
 import pyrubberband
+import parselmouth
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 
@@ -33,10 +34,6 @@ PORT = 8765
 HOP = 256            # 16 ms at 16 kHz — matches the in-browser pipeline
 SR = 16000
 DEMUCS_SR = 44100
-ANALYSIS_STRETCH = 3.0   # slow the voice this much before CREPE so fast murki/sargam
-                         # notes (often <~64 ms, CREPE's window) resolve as distinct notes.
-                         # Measured sweet spot: 3x captures ~60ms notes fully and recovers
-                         # most ~40ms ones; 4x starts degrading (stretch artifacts confuse CREPE).
 
 # CPU, deliberately: Apple's MPS backend is far SLOWER than CPU for Demucs's
 # transformer here (measured ~10x), so CPU (multi-threaded) is the fast path.
@@ -134,35 +131,38 @@ def analyze():
     if in_sr != DEMUCS_SR:
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
     voc, _ = separated_stems_44k(raw, x)               # [1, n] @44.1k (cached for /transpose)
-    voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)[0].cpu().numpy().astype(np.float32)  # [n] @16k
+    voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)[0].cpu().numpy().astype(np.float64)  # [n] @16k
     t_sep = time.time() - t0
-    print('[swarlekh] separation done in %.1fs — slowing %gx + tracking pitch on the clean voice…'
-          % (t_sep, ANALYSIS_STRETCH), flush=True)
+    print('[swarlekh] separation done in %.1fs -- Praat-CC pitch on the clean voice...' % t_sep, flush=True)
 
-    # Slow the voice down BEFORE pitch tracking: a fast murki/sargam note can be
-    # shorter than CREPE's ~64 ms analysis window, so two notes blur into one and
-    # the note is missed. Stretching the voice ~2x pushes each note past the window
-    # so it resolves cleanly; we then report f0 at the matching finer hop, which
-    # maps straight back onto the original timing.
-    voc16s = pyrubberband.time_stretch(voc16, SR, 1.0 / ANALYSIS_STRETCH)   # rate<1 = slower / longer
-    hop_sec = (HOP / SR) / ANALYSIS_STRETCH                                  # finer effective hop on the original timeline
+    # Praat cross-correlation replaces CREPE here (benchmarked on synthetic
+    # fast-sargam suites): its analysis window is 1/pitch_floor -- ~5-10 ms vs
+    # CREPE's fixed 64 ms -- so 30-40 ms murki/sargam notes resolve as distinct
+    # notes with NO time-stretch preprocessing, at ~1/1000th the compute
+    # (bench: FAST_EDIT 3 vs CREPE-x3's 7; 0 with the client's plateau gate).
+    # Two passes: a quick low-floor pass finds the singer's register, then the
+    # real pass uses the highest safe floor = smallest window (a fixed 200 Hz
+    # floor would clip mandra-saptak / low voices).
+    snd = parselmouth.Sound(voc16, sampling_frequency=SR)
+    quick = snd.to_pitch_cc(time_step=0.01, pitch_floor=75.0, pitch_ceiling=1200.0)
+    qf = quick.selected_array['frequency']; qf = qf[qf > 0]
+    floor = float(np.clip(0.8 * np.percentile(qf, 5), 75.0, 200.0)) if qf.size else 120.0
+    hop_sec = 0.004
+    p2 = snd.to_pitch_cc(time_step=hop_sec, pitch_floor=floor, pitch_ceiling=1200.0, very_accurate=True)
+    f0 = np.nan_to_num(p2.selected_array['frequency'])
+    # Praat's voicing decision is baked into f0>0; give voiced frames a flat
+    # clarity the client's 0.5 threshold passes (bench-validated encoding).
+    pd = np.where(f0 > 0, 0.9, 0.0)
 
-    # 'tiny' model + weighted_argmax: on the CLEAN separated voice the separation
-    # has already done the hard part, so tiny CREPE is octave-accurate and fast.
-    f0, pd = torchcrepe.predict(torch.tensor(voc16s)[None], SR, hop_length=HOP, fmin=50, fmax=1100,
-                                model='tiny', decoder=torchcrepe.decode.weighted_argmax,
-                                return_periodicity=True, batch_size=512, device=DEVICE)
-    f0 = torchcrepe.filter.median(f0, 3)               # cheap jitter/glitch smoothing
-    f0 = f0[0].cpu().numpy(); pd = pd[0].cpu().numpy()
-
-    # VOCAL-ENERGY GATE on the SAME (slowed) timeline: separation isn't perfect —
-    # instrumental-only stretches leave a faint residual that would read as spurious
-    # notes; silence frames well below the singing level so only sung notes survive.
+    # VOCAL-ENERGY GATE: separation isn't perfect -- instrumental-only stretches
+    # leave a faint residual that would read as spurious notes; silence frames
+    # well below the singing level so only sung notes survive.
     n_frames = len(f0)
+    hop_n = int(round(hop_sec * SR))
     rms = np.zeros(n_frames, dtype='float32')
     for i in range(n_frames):
-        s = i * HOP
-        rms[i] = float(np.sqrt(np.mean(voc16s[s:s + 1024] ** 2))) if s + 1024 <= len(voc16s) else 0.0
+        s = i * hop_n
+        rms[i] = float(np.sqrt(np.mean(voc16[s:s + 1024] ** 2))) if s + 1024 <= len(voc16) else 0.0
     loud = np.percentile(rms[rms > 0], 90) if np.any(rms > 0) else 0.0
     thresh = max(0.08 * loud, 1e-4)                    # ~residual is far quieter than singing
     keep = (pd > 0.01) & (rms > thresh)
