@@ -167,11 +167,24 @@ def analyze():
     thresh = max(0.08 * loud, 1e-4)                    # ~residual is far quieter than singing
     keep = (pd > 0.01) & (rms > thresh)
     f0 = np.where(keep, f0, 0.0)
-    print('[swarlekh] %.1fs sep + %.1fs total · %d frames @ %.0fms hop · %d voiced'
-          % (t_sep, time.time() - t0, n_frames, hop_sec * 1000, int(keep.sum())), flush=True)
+
+    # Syllable/consonant onsets, detected on the SEPARATED voice — every sung
+    # articulation ("sa", "re"…) starts a fresh note in the notation. Detecting
+    # here (not on the mix, where tabla strokes drown them) makes each consonant
+    # a clean, visible note boundary.
+    try:
+        onsets = librosa.onset.onset_detect(y=voc16.astype(np.float32), sr=SR,
+                                            hop_length=160, units='time', backtrack=True)
+        onsets = [round(float(t), 3) for t in onsets]
+    except Exception as e:
+        print('[swarlekh] onset detect failed: %s' % e, flush=True)
+        onsets = []
+    print('[swarlekh] %.1fs sep + %.1fs total · %d frames @ %.0fms hop · %d voiced · %d onsets'
+          % (t_sep, time.time() - t0, n_frames, hop_sec * 1000, int(keep.sum()), len(onsets)), flush=True)
     return jsonify(f0=[round(float(x), 2) for x in f0],
                    periodicity=[round(float(x), 3) for x in pd],
                    rms=[round(float(x), 5) for x in rms],
+                   onsets=onsets,
                    hopSec=hop_sec, sr=SR)
 
 

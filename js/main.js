@@ -44,7 +44,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=38';
+  const WORKER_URL = 'js/worker.js?v=39';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -235,6 +235,7 @@
         providedClarity: opts.providedClarity || null,
         providedRms: opts.providedRms || null,
         providedHopSec: opts.providedHopSec || 0,
+        providedOnsets: opts.providedOnsets || null,
       }, [samples.buffer]);
     });
   }
@@ -328,7 +329,7 @@
         } finally {
           clearInterval(ticker);
         }
-        workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedRms: data.rms, providedHopSec: data.hopSec };
+        workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedRms: data.rms, providedHopSec: data.hopSec, providedOnsets: data.onsets };
       }
       const result = await runWorker(new Float32Array(mono), targetSr, workerOpts);
       if (!result.f0.length) throw new Error('This clip is too short to analyze.');
@@ -1458,22 +1459,24 @@
     const MINLEN = Math.max(3, Math.round(0.06 / hopSec));   // drop runs shorter than ~60 ms
     // Smooth the contour line so it reads as the melodic SHAPE — rounding off the
     // vibrato and micro-jitter you don't sight-read when learning a sargam or a
-    // murki (the dots & labels still mark each exact note). Each voiced frame is
-    // averaged with its voiced neighbours (±SMOOTH frames); unvoiced gaps aren't
-    // crossed, so note onsets stay put.
-    const SMOOTH = Math.max(1, Math.round(0.048 / hopSec));   // ±~48 ms window, adapts to the hop
+    // murki. A MEDIAN over a short window (±~16 ms) kills jitter while
+    // PRESERVING each fast note's plateau — a wide mean flattened 40-80 ms
+    // notes so their dots floated off the line. Unvoiced gaps aren't crossed.
+    const SMOOTH = Math.max(1, Math.round(0.016 / hopSec));   // ±~16 ms window, adapts to the hop
     const cval = new Float32Array(i1 - i0 + 1);
     for (let i = i0; i <= i1; i++) {
       cval[i - i0] = (f0[i] > 0 && clarity[i] >= opts.clarityThresh) ? 1200 * Math.log2(f0[i] / saHz) : NaN;
     }
     const csm = new Float32Array(cval.length);
+    const win = [];
     for (let k = 0; k < cval.length; k++) {
       if (isNaN(cval[k])) { csm[k] = NaN; continue; }
-      let s = 0, c = 0;
+      win.length = 0;
       for (let j = Math.max(0, k - SMOOTH); j <= Math.min(cval.length - 1, k + SMOOTH); j++) {
-        if (!isNaN(cval[j])) { s += cval[j]; c++; }
+        if (!isNaN(cval[j])) win.push(cval[j]);
       }
-      csm[k] = s / c;
+      win.sort((a, b) => a - b);
+      csm[k] = win[win.length >> 1];
     }
     let pts = [], cnt = [], gap = 0;
     const flushRun = () => {
@@ -1573,7 +1576,10 @@
         cctx.beginPath(); cctx.roundRect(x, yTop - 2, w, (yBot - yTop) + 4, 4); cctx.fill();
         cctx.globalAlpha = 1;
       }
-      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
+      // Anchor the dot to the SUNG pitch (token mean cents), not the quantized
+      // grid — so it sits ON the curve even when the note is sung komal-ish or
+      // between grid lines. The label still names the quantized swara.
+      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.cents != null ? tk.cents : tk.k * 100);
       const held = dur >= 0.28;
       const r = isActive ? 6 : (held ? 4.5 : 3);
       if (isActive) { cctx.fillStyle = colors.accentSoft; cctx.beginPath(); cctx.arc(cx, cy, r + 5, 0, 2 * Math.PI); cctx.fill(); }
@@ -1593,7 +1599,7 @@
         for (let p = 0; p < vv.length; p++) labelAt(tokenGlyph(vv[p]), viaX(tk, p, vv.length), cToY(vv[p] * 100), false, colors.contour);
         continue;
       }
-      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
+      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.cents != null ? tk.cents : tk.k * 100);
       const big = isActive || (tk.t1 - tk.t0) >= 0.28;
       const col = isActive ? colors.accent : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
       labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);

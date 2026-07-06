@@ -100,9 +100,13 @@ self.onmessage = async function (e) {
       tonic = DSP.detectTonic(stab.f0, track.clarity, track.hopSec, track.rms);
     }
 
-    // Syllable/word onsets, on the band-limited signal so tabla is suppressed.
+    // Syllable/consonant onsets. The local server detects them on the
+    // SEPARATED voice (clean consonants, no tabla) and sends times in seconds
+    // — convert to frame indices. Otherwise detect on the band-limited mix.
     const hopSamples = Math.round(track.hopSec * sr);
-    const onsets = DSP.detectOnsets(filtered, sr, hopSamples);
+    const onsets = (external && e.data.providedOnsets && e.data.providedOnsets.length)
+      ? e.data.providedOnsets.map(function (t) { return Math.round(t / track.hopSec); })
+      : DSP.detectOnsets(filtered, sr, hopSamples);
 
     prog('synth', 0);
     const synth = DSP.synthesize(stab.f0, track.clarity, track.hopSec, sr);
