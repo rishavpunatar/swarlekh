@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; media-src blob:; worker-src 'self'; connect-src 'self' http://127.0.0.1:8765 http://localhost:8765; base-uri 'none'; form-action 'none'">
+  <meta name="color-scheme" content="light dark">
   <title>SwarLekh — sargam notation from your recordings</title>
   <meta name="description" content="Upload a Hindustani vocal recording and get swara (sargam) notation. Runs entirely in your browser — audio never leaves your device.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -15,7 +16,7 @@
     <div class="brand">
       <img src="favicon.svg" alt="" width="34" height="34">
       <div>
-        <h1>SwarLekh</h1>
+        <h1>Swar<b>Lekh</b></h1>
         <p class="tagline">Hindustani sargam from your recordings</p>
       </div>
     </div>
@@ -39,6 +40,7 @@
       <div class="prog-row">
         <span id="progStage">Decoding audio…</span>
         <span id="progPct" class="muted"></span>
+        <button id="cancelBtn" class="mini-btn" type="button">Cancel</button>
       </div>
       <div class="bar"><div id="progBar"></div></div>
     </section>
@@ -47,9 +49,9 @@
       <section id="firstRun" class="card intro" hidden>
         <div class="intro-steps">
           <span><b>1</b> Check <b>Sa</b> is right — use the Drone to match the song’s home note.</span>
-          <span><b>2</b> <b>Raag analysis</b> shows which swaras the piece uses, and the scale family.</span>
-          <span><b>3</b> Press play — the current line &amp; swara highlight as it sings.</span>
-          <span><b>4</b> The <b>contour</b> + <b>sargam</b> give every note, meend &amp; ornament.</span>
+          <span><b>2</b> Press play — the contour follows the voice, naming every swara as it’s sung.</span>
+          <span><b>3</b> Drag on the ruler above the contour to <b>loop a phrase</b>; slow it with <b>Speed</b>.</span>
+          <span><b>4</b> Try <b>Sing along</b> — your own pitch draws over the melody, live and on-device.</span>
         </div>
         <button id="firstRunClose" class="mini-btn" type="button">Got it</button>
       </section>
@@ -82,8 +84,17 @@
           <span class="ctl loop-ctl">Loop
             <button id="loopABtn" class="mini-btn" title="Set loop start at playhead ( [ )">A</button>
             <button id="loopBBtn" class="mini-btn" title="Set loop end at playhead ( ] )">B</button>
+            <button id="phrasePrevBtn" class="mini-btn" title="Loop the previous line ( , )">⟨</button>
+            <button id="phraseNextBtn" class="mini-btn" title="Loop this / the next line ( . )">⟩</button>
+            <span id="phraseDisp" class="muted"></span>
             <button id="loopClearBtn" class="mini-btn" title="Clear loop (L)">✕</button>
             <span id="loopDisp" class="muted"></span>
+            <button id="rampBtn" class="mini-btn" title="Ramp practice: with a loop set, each repeat speeds up by 0.05× from 0.65× until full speed.">Ramp</button>
+            <span id="rampDisp" class="muted"></span>
+          </span>
+          <span class="ctl mic-ctl">
+            <button id="micBtn" class="mini-btn" title="Sing along: your pitch draws live over the melody. Analyzed on this device only — never recorded, never uploaded. Headphones recommended.">🎤 Sing along</button>
+            <span id="micReadout" class="muted"></span>
           </span>
         </div>
       </section>
@@ -124,10 +135,15 @@
           <button id="zoomInBtn" class="mini-btn" title="Zoom in">+</button>
         </div>
         <canvas id="contour"></canvas>
-        <p class="hint">Click to seek · drag to pan · scroll/pinch&nbsp;± to zoom.
-        The line is the melody, coloured by movement: <b style="color:var(--indigo)">indigo</b> where a note is steady,
-        <b style="color:var(--accent)">saffron where it bends</b> — a <b>thick</b> saffron sweep is a slow meend, a <b>thin</b> one a quick bend or step.
-        Each <b>dot</b> is a note the voice hits, named with its swara. Solid grid lines are the song’s scale — zoom in to read fast runs.</p>
+        <details class="legend-details">
+          <summary>How to read &amp; use the contour ▾</summary>
+          <p class="hint">Click to seek · drag to pan · <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+scroll or&nbsp;± to zoom ·
+          drag along the <b>ruler at the top</b> to loop a passage (double-click it to clear).
+          The line is the melody: <b style="color:var(--indigo)">indigo</b> where a note is steady,
+          <b style="color:var(--accent)">saffron where it bends</b> — thick saffron is a slow meend, thin is a quick bend.
+          Each <b>dot</b> is a note the voice hits, named with its swara; solid grid lines are the song’s scale.
+          With <b>Sing along</b> on, your voice draws as a <b style="color:var(--mic, #2a8f7a)">teal</b> trail over the melody.</p>
+        </details>
       </section>
 
       <section id="settingsCard" class="card">
@@ -176,17 +192,18 @@
 
   <footer>
     <p>Audio is processed entirely on this device — nothing is uploaded, no analytics, no third-party assets.
+    Sing-along uses your microphone live and in memory only — nothing is ever recorded or transmitted.
     <b>Pitch</b> transposes the recording to your own Sa (notation is unchanged — sargam is the same in any key); <b>Speed</b> slows it down without changing pitch.
-    Shortcuts: <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>[</kbd><kbd>]</kbd> loop · <kbd>L</kbd> clear loop.
+    Shortcuts: <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>[</kbd><kbd>]</kbd> loop · <kbd>,</kbd><kbd>.</kbd> phrase loop · <kbd>L</kbd> clear loop.
     <a href="https://github.com/rishavpunatar/swarlekh" rel="noopener">Source on GitHub</a></p>
   </footer>
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=39"></script>
-  <script src="js/dsp.js?v=39"></script>
-  <script src="js/ragas.js?v=39"></script>
-  <script src="js/ragaId.js?v=39"></script>
-  <script src="js/main.js?v=39"></script>
+  <script src="js/fft.js?v=40"></script>
+  <script src="js/dsp.js?v=40"></script>
+  <script src="js/ragas.js?v=40"></script>
+  <script src="js/ragaId.js?v=40"></script>
+  <script src="js/main.js?v=40"></script>
 </body>
 </html>

@@ -8,18 +8,17 @@
     dropzone: $('dropzone'), fileInput: $('fileInput'), chooseBtn: $('chooseBtn'),
     progressCard: $('progressCard'), progStage: $('progStage'), progPct: $('progPct'), progBar: $('progBar'),
     resultArea: $('resultArea'),
-    keyCard: $('keyCard'), curKey: $('curKey'), targetKeySel: $('targetKeySel'), keyGoBtn: $('keyGoBtn'),
     playBtn: $('playBtn'), timeDisp: $('timeDisp'), speedSel: $('speedSel'), sourceSel: $('sourceSel'),
     loopABtn: $('loopABtn'), loopBBtn: $('loopBBtn'), loopClearBtn: $('loopClearBtn'), loopDisp: $('loopDisp'),
     ragaThaat: $('ragaThaat'), ragaGuess: $('ragaGuess'), swarPalette: $('swarPalette'), ragaGrammar: $('ragaGrammar'),
     tonicCard: $('tonicCard'), tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
     tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
-    notation: $('notation'),
-    copyBtn: $('copyBtn'), dlTxtBtn: $('dlTxtBtn'), dlJsonBtn: $('dlJsonBtn'), dlWavBtn: $('dlWavBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
-    vtBtn: $('vtBtn'), vtStatus: $('vtStatus'), vtResult: $('vtResult'),
+    micBtn: $('micBtn'), micReadout: $('micReadout'),
+    phrasePrevBtn: $('phrasePrevBtn'), phraseNextBtn: $('phraseNextBtn'), phraseDisp: $('phraseDisp'),
+    rampBtn: $('rampBtn'), rampDisp: $('rampDisp'),
     sensSlider: $('sensSlider'), sensVal: $('sensVal'),
     minNoteSlider: $('minNoteSlider'), minNoteVal: $('minNoteVal'),
     statsLine: $('statsLine'), toast: $('toast'),
@@ -32,6 +31,10 @@
     tokens: [], phrases: [],
     duration: 0, synthDuration: 0,
     loopA: null, loopB: null,
+    phraseLoop: -1,                 // index into state.phrases; -1 = no phrase loop
+    ramp: { on: false, rate: 0 },   // speed-ramp practice (active only with a loop)
+    micTrail: [],                   // [{t, cents, wall}] — sung trail drawn on the contour
+    micCents: null,                 // latest voiced mic reading (cents rel. original Sa space)
     pxPerSec: 120, scrollSec: 0, centsLo: -700, centsHi: 1900,
     playing: false,
     semitones: 0, fileMono: null, fileSr: 16000,
@@ -44,7 +47,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=39';
+  const WORKER_URL = 'js/worker.js?v=40';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -122,88 +125,6 @@
     processFile(file);
   }
 
-  // New onboarding flow: upload → detect the current key → user picks a target
-  // key → run the Best (local-server) separation + analysis AND the natural-voice
-  // transpose in one go, landing on the dashboard already in their key.
-  async function previewKey(file) {
-    try {
-      pause();
-      state.ready = false;
-      els.resultArea.hidden = true;
-      els.keyCard.hidden = true;
-      els.dropzone.classList.add('compact');
-      els.progressCard.hidden = false;
-      state.fileName = file.name;
-      state.file = file;
-      setStage('Decoding audio…', 0.1);
-      const ab = await file.arrayBuffer();
-      const ctx = ensureCtx();
-      let buf;
-      try { buf = await ctx.decodeAudioData(ab); }
-      catch (e) { throw new Error('Could not decode this file — is it a valid audio file?'); }
-      if (buf.duration < 1) throw new Error('This clip is too short to analyze.');
-      state.duration = buf.duration;
-
-      // Full-rate mono kept for the transpose later.
-      const fmono = new Float32Array(buf.length);
-      for (let c = 0; c < buf.numberOfChannels; c++) {
-        const d = buf.getChannelData(c);
-        for (let i = 0; i < buf.length; i++) fmono[i] += d[i] / buf.numberOfChannels;
-      }
-      state.fileMono = fmono;
-      state.fileSr = buf.sampleRate;
-      if (origUrl) URL.revokeObjectURL(origUrl);
-      origUrl = URL.createObjectURL(file);
-      origEl.src = origUrl;
-
-      // Quick key (Sa) detection — Fast YIN over the first ~90 s is plenty to find
-      // the tonic and keeps this step to a couple of seconds.
-      setStage('Finding the key…', 0.5);
-      const detectSec = Math.min(90, buf.duration);
-      const tsr = 16000;
-      const oac = new OfflineAudioContext(1, Math.ceil(detectSec * tsr), tsr);
-      const src = oac.createBufferSource();
-      src.buffer = buf; src.connect(oac.destination); src.start(0, 0, detectSec);
-      const mono = (await oac.startRendering()).getChannelData(0);
-      const result = await runWorker(new Float32Array(mono), tsr, {});
-      state.saHz = (result.tonic && result.tonic[0] && result.tonic[0].hz) || state.saHz || 220;
-
-      els.curKey.textContent = noteName(state.saHz);
-      populateTargetKeys();
-      els.progressCard.hidden = true;
-      els.keyCard.hidden = false;
-    } catch (err) {
-      els.progressCard.hidden = true;
-      els.dropzone.classList.remove('compact');
-      toast(err.message || String(err));
-    }
-  }
-
-  function populateTargetKeys() {
-    const sel = els.targetKeySel;
-    sel.textContent = '';
-    for (let s = -PITCH_LIMIT; s <= PITCH_LIMIT; s++) {
-      const opt = document.createElement('option');
-      opt.value = String(s);
-      const k = noteName(state.saHz * Math.pow(2, s / 12));
-      opt.textContent = s === 0 ? `${k} (original)` : `${k} (${s > 0 ? '+' : ''}${s})`;
-      sel.appendChild(opt);
-    }
-    sel.value = '0';
-  }
-
-  if (els.keyGoBtn) els.keyGoBtn.addEventListener('click', async () => {
-    const target = parseInt(els.targetKeySel.value, 10) || 0;
-    els.keyCard.hidden = true;
-    state.engine = 'server';
-    const eSel = $('engineSel'); if (eSel) eSel.value = 'server';
-    try {
-      await processFile(state.file);                              // separate voice + analyze + reveal
-      if (target !== 0 && state.ready) await applyPitch(target);  // natural-voice transpose (cache hit)
-    } catch (err) {
-      toast('Could not complete: ' + (err.message || err));
-    }
-  });
 
   function setStage(label, frac) {
     els.progStage.textContent = label;
@@ -241,29 +162,81 @@
   }
 
   // "Best (local server)" engine: POST the original-rate mono as a WAV to the
-  // local Demucs+CREPE server (127.0.0.1), which returns the pitch track of the
+  // local Demucs+Praat server (127.0.0.1), which returns the pitch track of the
   // separated voice. Audio only ever goes to your own machine.
   const SERVER_URL = 'http://127.0.0.1:8765';
+  let analyzeAbort = null;   // lets the Cancel button stop a long separation
   async function analyzeViaServer() {
     const wav = encodeWav(state.fileMono, state.fileSr);
-    const ctrl = new AbortController();
+    analyzeAbort = new AbortController();
+    const ctrl = analyzeAbort;
     const to = setTimeout(() => ctrl.abort(), 30 * 60 * 1000);   // safety net, 30 min
     try {
       const resp = await fetch(SERVER_URL + '/analyze', {
         method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' }, signal: ctrl.signal,
       });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return await resp.json();   // { f0, periodicity, hopSec, sr }
+      return await resp.json();   // { f0, periodicity, rms, onsets, hopSec, sr }
     } finally {
       clearTimeout(to);
+      if (analyzeAbort === ctrl) analyzeAbort = null;
     }
   }
 
+  // Quick reachability probe so a visitor without the local server never
+  // dead-ends: if it isn't up, we fall back to the in-browser engine instead
+  // of failing after a long wait.
+  async function serverUp() {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 1500);
+      const r = await fetch(SERVER_URL + '/', { signal: c.signal });
+      clearTimeout(t);
+      return r.ok;
+    } catch (e) { return false; }
+  }
+
+  /* Per-file analysis cache (IndexedDB, on-device): re-uploading the same
+   * recording tomorrow restores the separated-voice analysis instantly instead
+   * of re-running the multi-minute separation. Keyed by SHA-256 of the file. */
+  function idbOpen() {
+    return new Promise((res, rej) => {
+      const rq = indexedDB.open('swarlekh', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('analysis');
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+  }
+  async function idbGet(key) {
+    try {
+      const db = await idbOpen();
+      return await new Promise((res) => {
+        const rq = db.transaction('analysis').objectStore('analysis').get(key);
+        rq.onsuccess = () => res(rq.result || null);
+        rq.onerror = () => res(null);
+      });
+    } catch (e) { return null; }
+  }
+  function idbPut(key, val) {
+    idbOpen().then((db) => db.transaction('analysis', 'readwrite').objectStore('analysis').put(val, key)).catch(() => {});
+  }
+  async function fileHash(ab) {
+    const h = await crypto.subtle.digest('SHA-256', ab);
+    return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  let processSeq = 0;
   async function processFile(file) {
+    const seq = ++processSeq;                 // supersedes any in-flight run
+    pitchSeq++;                               // …and any in-flight pitch shift
+    const stale = () => seq !== processSeq;
     try {
       state.ready = false;
       pause();
+      stopMic();
       state.loopA = state.loopB = null;
+      state.phraseLoop = -1;
+      state.ramp.on = false; rampUI();
       updateLoopUI();
       clearPitchCache();
       state.semitones = 0;
@@ -275,6 +248,8 @@
       setStage('Decoding audio…', 0.04);
 
       const ab = await file.arrayBuffer();
+      if (stale()) return;
+      const hash = await fileHash(ab.slice(0));   // digest before decode detaches anything
       const ctx = ensureCtx();
       let buf;
       try {
@@ -282,6 +257,7 @@
       } catch (err) {
         throw new Error('Could not decode this file — is it a valid audio file?');
       }
+      if (stale()) return;
       state.duration = buf.duration;
       if (buf.duration < 1) throw new Error('This clip is too short to analyze.');
 
@@ -306,32 +282,58 @@
       src.connect(oac.destination);
       src.start();
       const mono = (await oac.startRendering()).getChannelData(0);
+      if (stale()) return;
 
       let workerOpts = {};
       if (state.engine === 'neural') {
         workerOpts = { neural: true };
       } else if (state.engine === 'server') {
-        // The server doesn't stream sub-progress, so show a live elapsed timer
-        // and a slowly-creeping bar — otherwise the long separation looks frozen.
-        const t0 = performance.now();
-        const estMin = Math.max(1, Math.round(state.duration / 60));
-        const ticker = setInterval(() => {
-          const s = (performance.now() - t0) / 1000;
-          const mm = Math.floor(s / 60), ss = Math.floor(s % 60);
-          const frac = 0.12 + 0.64 * (1 - Math.exp(-s / 150));   // creeps 12%→~76%, never "completes"
-          setStage(`Separating voice on your server — ${mm}:${ss < 10 ? '0' : ''}${ss} elapsed (≈${estMin}–${estMin * 2} min)`, frac);
-        }, 1000);
-        let data;
-        try {
-          data = await analyzeViaServer();
-        } catch (err) {
-          throw new Error('Local server not reachable or it errored. Check that server/start.command is running (and you are in Chrome), then pick "Best (local server)" again. [' + err.message + ']');
-        } finally {
-          clearInterval(ticker);
+        // Same file analyzed before? Restore the separated-voice analysis
+        // instantly from the on-device cache instead of re-separating.
+        const cached = await idbGet(hash);
+        if (stale()) return;
+        if (cached && cached.f0 && cached.f0.length) {
+          workerOpts = { providedF0: cached.f0, providedClarity: cached.periodicity, providedRms: cached.rms, providedHopSec: cached.hopSec, providedOnsets: cached.onsets };
+          toast('Analyzed this recording before — restored instantly.');
+        } else if (!(await serverUp())) {
+          if (stale()) return;
+          // No local server: never dead-end — analyze in the browser instead.
+          state.engine = 'yin';
+          const eSel = $('engineSel'); if (eSel) eSel.value = 'yin';
+          toast('Local analysis server not running — using the in-browser engine. Start the server (server/README.md) and re-upload for the highest quality.');
+        } else {
+          if (stale()) return;
+          // The server doesn't stream sub-progress, so show a live elapsed
+          // timer — honest about the wait, cancellable any time.
+          const t0 = performance.now();
+          const estMin = Math.max(1, Math.round(state.duration / 60));
+          const ticker = setInterval(() => {
+            const s = (performance.now() - t0) / 1000;
+            const mm = Math.floor(s / 60), ss = Math.floor(s % 60);
+            const frac = 0.12 + 0.64 * (1 - Math.exp(-s / 150));
+            setStage(`Isolating the voice on your local server — ${mm}:${ss < 10 ? '0' : ''}${ss} elapsed (typically ${estMin}–${estMin * 2} min, once per recording)`, frac);
+          }, 1000);
+          let data = null;
+          try {
+            data = await analyzeViaServer();
+          } catch (err) {
+            if (stale()) return;
+            if (err && err.name === 'AbortError') return;   // user cancelled
+            state.engine = 'yin';
+            const eSel = $('engineSel'); if (eSel) eSel.value = 'yin';
+            toast('The local server hit an error — continuing with the in-browser engine. (' + (err.message || err) + ')');
+          } finally {
+            clearInterval(ticker);
+          }
+          if (stale()) return;
+          if (data) {
+            workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedRms: data.rms, providedHopSec: data.hopSec, providedOnsets: data.onsets };
+            idbPut(hash, { f0: data.f0, periodicity: data.periodicity, rms: data.rms, onsets: data.onsets, hopSec: data.hopSec, ts: Date.now() });
+          }
         }
-        workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedRms: data.rms, providedHopSec: data.hopSec, providedOnsets: data.onsets };
       }
       const result = await runWorker(new Float32Array(mono), targetSr, workerOpts);
+      if (stale()) return;
       if (!result.f0.length) throw new Error('This clip is too short to analyze.');
 
       state.f0auto = result.f0;            // worker's auto-stabilized track
@@ -346,7 +348,7 @@
       applyOctaveMode(false);
       state.synthDuration = result.synth.length / targetSr;
 
-      setStage('Building notation…', 0.96);
+      setStage('Building the contour…', 0.96);
       if (synthUrl) URL.revokeObjectURL(synthUrl);
       synthUrl = URL.createObjectURL(encodeWav(result.synth, targetSr));
       synthEl.src = synthUrl;
@@ -373,10 +375,21 @@
         toast('Fixed some octave glitches. If two voices an octave apart still show, pick “Single octave” under Octave.');
       }
     } catch (err) {
+      if (seq !== processSeq) return;
       els.progressCard.hidden = true;
+      if (!state.ready) els.dropzone.classList.remove('compact');
       toast(err.message || String(err));
     }
   }
+
+  // Cancel a long separation and return to the dropzone.
+  if ($('cancelBtn')) $('cancelBtn').addEventListener('click', () => {
+    processSeq++;
+    if (analyzeAbort) analyzeAbort.abort();
+    els.progressCard.hidden = true;
+    if (!state.ready) els.dropzone.classList.remove('compact');
+    else els.resultArea.hidden = false;
+  });
 
   // First-run guide — shown once (stored locally; nothing leaves the device).
   function maybeShowFirstRun() {
@@ -503,7 +516,9 @@
   }
   function updateDroneFreq() {
     if (!droneNodes) return;
-    const f = [state.saHz, state.saHz / 2, state.saHz * 2 / 3, state.saHz * 2];
+    // The drone must sound in the key you're PRACTISING in — follow the transpose.
+    const sa = state.saHz * Math.pow(2, (state.semitones || 0) / 12);
+    const f = [sa, sa / 2, sa * 2 / 3, sa * 2];
     droneNodes.oscs.forEach((o, i) => o.frequency.setTargetAtTime(f[i], actx.currentTime, 0.04));
   }
 
@@ -539,10 +554,36 @@
       ? RagaId.rankRagas(state.raga, RAGAS).filter((m) => m.score > 0.05).slice(0, 4) : [];
     computeScale();
     computeCentsRange();
+    computeSmoothedCents();
     renderRaga();
-    renderNotation();
     drawCanvas();
     updateStats();
+  }
+
+  // Precompute the smoothed contour cents ONCE per analysis/Sa/threshold change
+  // (drawCanvas runs every animation frame — doing thousands of median sorts
+  // per frame there made playback churn). Median over ±~16 ms: jitter dies,
+  // each fast note's plateau survives. NaN = unvoiced.
+  function computeSmoothedCents() {
+    const { f0, clarity, hopSec, saHz, opts } = state;
+    const n = f0.length;
+    const raw = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      raw[i] = (f0[i] > 0 && clarity[i] >= opts.clarityThresh) ? 1200 * Math.log2(f0[i] / saHz) : NaN;
+    }
+    const half = Math.max(1, Math.round(0.016 / hopSec));
+    const out = new Float32Array(n);
+    const win = [];
+    for (let k = 0; k < n; k++) {
+      if (isNaN(raw[k])) { out[k] = NaN; continue; }
+      win.length = 0;
+      for (let j = Math.max(0, k - half); j <= Math.min(n - 1, k + half); j++) {
+        if (!isNaN(raw[j])) win.push(raw[j]);
+      }
+      win.sort((a, b) => a - b);
+      out[k] = win[win.length >> 1];
+    }
+    state.centsSm = out;
   }
 
   // The song's scale: pitch classes carrying real melodic weight (duration),
@@ -693,129 +734,10 @@
     state.highlightPc = state.highlightPc === pc ? null : pc;
     els.swarPalette.querySelectorAll('.swar-cell').forEach((c) =>
       c.classList.toggle('spot', parseInt(c.dataset.pc, 10) === state.highlightPc));
-    applyPcHighlight();
     drawCanvas();
   });
 
-  function applyPcHighlight() {
-    if (!els.notation) return;   // notation UI removed — contour highlight handled in drawCanvas
-    const pc = state.highlightPc;
-    els.notation.classList.toggle('filtering', pc != null);
-    els.notation.querySelectorAll('.tok').forEach((el) => {
-      el.classList.toggle('pc-hit', pc != null && parseInt(el.dataset.pc, 10) === pc);
-    });
-  }
 
-  function renderNotation() {
-    if (!els.notation) return;   // sargam notation UI removed
-    els.notation.textContent = '';
-    activeLineIdx = -1;
-    activeTokIdx = -1;
-    let flatIdx = 0;
-    state.phrases.forEach((ph, phIdx) => {
-      ph._start = flatIdx;   // global index of this line's first token
-      if (ph.section && phIdx > 0) {
-        const gap = document.createElement('div');
-        gap.className = 'section-gap';
-        gap.textContent = '· · ·';
-        els.notation.appendChild(gap);
-      }
-      const row = document.createElement('div');
-      row.className = 'phrase';
-      row.dataset.p = String(phIdx);
-      const nEl = document.createElement('span');
-      nEl.className = 'lnum';
-      nEl.textContent = String(phIdx + 1);
-      row.appendChild(nEl);
-      const tEl = document.createElement('span');
-      tEl.className = 'ptime';
-      tEl.textContent = fmtTime(ph.t0);
-      row.appendChild(tEl);
-      for (const tk of ph.tokens) {
-        const s = DSP.swaraInfo(tk.k);
-        // A meend glide: render the whole via-path S⌒R⌒G⌒m⌒P as one gesture.
-        if (tk.glide && tk.via && tk.via.length > 1) {
-          const g = document.createElement('span');
-          g.className = 'tok glide';
-          g.dataset.i = String(flatIdx);
-          g.dataset.pc = String(((tk.k % 12) + 12) % 12);
-          g.textContent = viaDisplay(tk.via).map((k) => tokenGlyph(k)).join('⌒');
-          g.title = `meend through ${viaDisplay(tk.via).map((k) => DSP.tokenText(k)).join(' ')} · ${fmtTime(tk.t0, true)}`;
-          row.appendChild(g);
-          flatIdx++;
-          continue;
-        }
-        if (tk.meendFromPrev && row.querySelector('.tok')) {
-          const conn = document.createElement('span');
-          conn.className = 'meend-conn';
-          // Show the swaras the glide passes through, not just an arc.
-          const v = viaDisplay(tk.via);
-          const mid = v.length > 2 ? v.slice(1, -1).map((k) => tokenGlyph(k)).join('⌒') : '';
-          conn.textContent = mid ? '⌒' + mid + '⌒' : '⌒';
-          conn.title = 'meend (glide)';
-          conn.dataset.i = String(flatIdx);
-          row.appendChild(conn);
-        }
-        const span = document.createElement('span');
-        span.className = 'tok' + (s.komal ? ' komal' : '') + (s.tivra ? ' tivra' : '') + (tk.andolan ? ' andolan' : '');
-        span.dataset.pc = String(((tk.k % 12) + 12) % 12);
-        const oct = Math.max(-2, Math.min(2, s.octave));
-        if (oct !== 0) span.dataset.oct = String(oct);
-        const pre = tk.kan || tk.murki;
-        if (pre) {
-          const o = document.createElement('span');
-          o.className = 'orn';
-          o.textContent = '(' + pre.map(k => glyph(DSP.swaraInfo(k).letter)).join('') + ')';
-          o.title = tk.kan ? 'kan (grace note)' : 'murki';
-          span.appendChild(o);
-        }
-        if (tk.meend) {
-          const mm = document.createElement('span');
-          mm.className = 'meend-mark';
-          mm.textContent = '~';
-          mm.title = 'glide within the note';
-          span.appendChild(mm);
-        }
-        span.appendChild(document.createTextNode(glyph(s.letter)));
-        if (tk.andolan && tk.andolanLo != null && (tk.andolanHi > tk.k || tk.andolanLo < tk.k)) {
-          const o = document.createElement('span');
-          o.className = 'orn';
-          o.textContent = '(' + glyph(DSP.swaraInfo(tk.andolanLo).letter) + '–' + glyph(DSP.swaraInfo(tk.andolanHi).letter) + ')';
-          o.title = 'andolan swings between these swaras';
-          span.appendChild(o);
-        }
-        if (tk.graceAfter) {
-          const o = document.createElement('span');
-          o.className = 'orn';
-          o.textContent = '(' + tk.graceAfter.map(k => glyph(DSP.swaraInfo(k).letter)).join('') + ')';
-          o.title = 'grace after the note';
-          span.appendChild(o);
-        }
-        span.dataset.i = String(flatIdx);
-        span.title = `${DSP.tokenFullText(tk, state.scale)} · ${fmtTime(tk.t0, true)}`;
-        row.appendChild(span);
-        const dashes = Math.min(8, Math.max(0, Math.round((tk.t1 - tk.t0 - 0.35) / 0.3)));
-        for (let d = 0; d < dashes; d++) {
-          const su = document.createElement('span');
-          su.className = 'sus';
-          su.textContent = '–';
-          su.dataset.i = String(flatIdx);
-          row.appendChild(su);
-        }
-        flatIdx++;
-      }
-      els.notation.appendChild(row);
-    });
-    applyPcHighlight();
-  }
-
-  if (els.notation) els.notation.addEventListener('click', seekFromTokenEl);
-  function seekFromTokenEl(e) {
-    const t = e.target.closest('[data-i]');
-    if (!t) return;
-    const tk = state.tokens[parseInt(t.dataset.i, 10)];
-    if (tk) seek(tk.t0 + 0.005);
-  }
 
   function updateStats() {
     if (!state.f0) return;
@@ -841,66 +763,6 @@
     els.statsLine.textContent = txt;
   }
 
-  function exportHeader() {
-    return `SwarLekh notation — ${state.fileName}\n` +
-      `Sa = ${noteLabel(state.saHz)} (${state.saHz.toFixed(1)} Hz)\n` +
-      `Legend: capitals shuddh; lowercase komal (r g d n); m = shuddh Ma, M = teevra Ma;\n` +
-      `        X' = taar saptak, .X = mandra saptak; – ≈ 0.3 s held\n` +
-      `        (R)G = kan; (GRG)m = murki; X~Y = meend; ≈X = andolan/gamak; ~X = glide in note\n\n`;
-  }
-
-  if (els.copyBtn) els.copyBtn.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(exportHeader() + DSP.notationText(state.phrases, state.scale));
-      els.copyBtn.textContent = 'Copied ✓';
-      setTimeout(() => { els.copyBtn.textContent = 'Copy'; }, 1500);
-    } catch (e) { toast('Clipboard unavailable — use Download instead.'); }
-  });
-
-  function download(blob, name) {
-    const a = document.createElement('a');
-    const u = URL.createObjectURL(blob);
-    a.href = u;
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(u), 5000);
-  }
-  const baseName = () => state.fileName.replace(/\.[^.]+$/, '') || 'swarlekh';
-
-  if (els.dlTxtBtn) els.dlTxtBtn.addEventListener('click', () =>
-    download(new Blob([exportHeader() + DSP.notationText(state.phrases, state.scale)], { type: 'text/plain' }), baseName() + '.sargam.txt'));
-
-  if (els.dlJsonBtn) els.dlJsonBtn.addEventListener('click', () => {
-    const data = {
-      app: 'SwarLekh', version: 1, file: state.fileName,
-      saHz: +state.saHz.toFixed(2), options: state.opts,
-      phrases: state.phrases.map((ph, i) => ({
-        line: i + 1, section: !!ph.section,
-        t0: +ph.t0.toFixed(3), t1: +ph.t1.toFixed(3),
-        tokens: ph.tokens.map(tk => {
-          const o = {
-            t0: +tk.t0.toFixed(3), t1: +tk.t1.toFixed(3),
-            swara: DSP.tokenText(tk.k, false), display: DSP.tokenFullText(tk, state.scale),
-            k: tk.k, cents: +tk.cents.toFixed(1),
-          };
-          if (tk.kan) o.kan = tk.kan.map(k => DSP.tokenText(k, false));
-          if (tk.murki) o.murki = tk.murki.map(k => DSP.tokenText(k, false));
-          if (tk.graceAfter) o.graceAfter = tk.graceAfter.map(k => DSP.tokenText(k, false));
-          if (tk.meendFromPrev) o.meendFromPrev = true;
-          if (tk.meend) o.glide = true;
-          if (tk.andolan) o.andolan = true;
-          return o;
-        }),
-      })),
-    };
-    download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), baseName() + '.sargam.json');
-  });
-
-  if (els.dlWavBtn) els.dlWavBtn.addEventListener('click', async () => {
-    if (!synthUrl) return;
-    const blob = await (await fetch(synthUrl)).blob();
-    download(blob, baseName() + '.melody.wav');
-  });
 
   function encodeWav(samples, sr) {
     const n = samples.length;
@@ -920,10 +782,28 @@
 
   /* ----------------------------- settings ----------------------------- */
 
+  // Remember the learner's settings across visits (on-device only).
+  function savePrefs() {
+    try {
+      localStorage.setItem('swarlekh.prefs', JSON.stringify({
+        script: scriptSel.value, detail: detailSel.value, octave: octaveSel.value,
+      }));
+    } catch (e) {}
+  }
+  function loadPrefs() {
+    try {
+      const p = JSON.parse(localStorage.getItem('swarlekh.prefs') || '{}');
+      if (p.script) { scriptSel.value = p.script; state.script = p.script; document.body.classList.toggle('deva', p.script === 'devanagari'); }
+      if (p.detail) { detailSel.value = p.detail; detailSel.dispatchEvent(new Event('change')); }
+      if (p.octave) { octaveSel.value = p.octave; state.octaveMode = p.octave; }
+    } catch (e) {}
+  }
+
   const octaveSel = $('octaveSel');
   octaveSel.addEventListener('change', () => {
     state.octaveMode = octaveSel.value;
     applyOctaveMode(true);
+    savePrefs();
   });
 
   // Pitch engine: Fast (YIN DSP) vs Accurate (neural CREPE). Switching re-runs
@@ -943,6 +823,7 @@
     state.script = scriptSel.value;
     document.body.classList.toggle('deva', state.script === 'devanagari');
     if (state.ready) renderRaga();
+    savePrefs();
   });
 
   const detailSel = $('detailSel');
@@ -957,7 +838,10 @@
     els.minNoteSlider.value = state.opts.minNoteMs;
     els.minNoteVal.textContent = `${state.opts.minNoteMs} ms`;
     renotateNow();
+    savePrefs();
   });
+
+  loadPrefs();
 
   els.sensSlider.addEventListener('input', () => {
     state.opts.clarityThresh = parseFloat(els.sensSlider.value);
@@ -973,11 +857,48 @@
   /* ----------------------------- playback ----------------------------- */
 
   function applySpeed() {
+    if (state.ramp.on) return;             // ramp owns the rate while active
     const r = parseFloat(els.speedSel.value);
     origEl.playbackRate = r;
     synthEl.playbackRate = r;
   }
-  els.speedSel.addEventListener('change', applySpeed);
+  els.speedSel.addEventListener('change', () => { stopRamp(); applySpeed(); });
+
+  /* ramp practice: with a loop set, each repeat speeds up 0.65x -> 1x */
+  const RAMP = { from: 0.65, step: 0.05, to: 1 };
+  function setRate(r) { origEl.playbackRate = r; synthEl.playbackRate = r; }
+  function rampUI() {
+    els.rampBtn.classList.toggle('on', state.ramp.on);
+    els.rampDisp.textContent = state.ramp.on ? state.ramp.rate.toFixed(2).replace(/0$/, '') + '\u00d7' : '';
+  }
+  function startRamp() {
+    state.ramp.on = true;
+    state.ramp.rate = RAMP.from;
+    setRate(RAMP.from);
+    rampUI();
+  }
+  function stopRamp() {
+    if (!state.ramp.on) return;
+    state.ramp.on = false;
+    applySpeed();                          // hand the rate back to the Speed select
+    rampUI();
+  }
+  function rampStep() {
+    if (state.ramp.rate >= RAMP.to) return;
+    state.ramp.rate = Math.min(RAMP.to, state.ramp.rate + RAMP.step);
+    setRate(state.ramp.rate);
+    rampUI();
+    if (state.ramp.rate >= RAMP.to) toast('Full speed — keep looping, or \u27e9 for the next line.');
+  }
+  els.rampBtn.addEventListener('click', () => {
+    if (state.ramp.on) { stopRamp(); return; }
+    if (state.loopA == null || state.loopB == null) {
+      toast('Set a loop first (drag the ruler, or \u27e8 \u27e9 for a line) \u2014 Ramp speeds up each repeat.');
+      return;
+    }
+    startRamp();
+    if (!state.playing) { seek(state.loopA); play(); }
+  });
 
   function applySource() {
     const mode = els.sourceSel.value;
@@ -1019,6 +940,7 @@
     els.pitchKey.textContent = '';
     els.pitchDownBtn.disabled = s <= -PITCH_LIMIT;
     els.pitchUpBtn.disabled = s >= PITCH_LIMIT;
+    updateDroneFreq();   // the drone follows the practised key
   }
 
   // One reusable worker; requests are matched by id so rapid shifts don't race.
@@ -1051,21 +973,29 @@
     });
   }
 
-  // Swap the audio sources while keeping the playhead and play/pause state.
+  // Swap the audio sources while keeping the playhead, play/pause state and
+  // playback rate. A single pending restore handle: rapid consecutive swaps
+  // (e.g. clicking pitch − twice) replace it instead of stacking listeners —
+  // stacked listeners used to reset the playhead to 0 and stop playback.
+  let pendingRestore = null;
+  let swapCtx = null;   // {t, wasPlaying} captured at the FIRST of a burst of swaps
   function swapAudioSources(oUrl, sUrl) {
-    const t = Math.min(origEl.currentTime, state.duration - 0.05);
-    const wasPlaying = state.playing;
+    if (!swapCtx) swapCtx = { t: Math.min(origEl.currentTime, state.duration - 0.05), wasPlaying: state.playing };
     pause();
-    let restored = false;
+    if (pendingRestore) origEl.removeEventListener('loadeddata', pendingRestore);
     const restore = () => {
-      if (restored) return;
-      restored = true;
       origEl.removeEventListener('loadeddata', restore);
+      if (pendingRestore !== restore) return;   // superseded by a newer swap
+      pendingRestore = null;
+      const { t, wasPlaying } = swapCtx || { t: 0, wasPlaying: false };
+      swapCtx = null;
       try { origEl.currentTime = t; if (t < state.synthDuration) synthEl.currentTime = t; } catch (e) {}
+      if (state.ramp.on) setRate(state.ramp.rate); else applySpeed();   // load() resets playbackRate
       updateTimeDisp();
       if (!state.playing) drawCanvas();
       if (wasPlaying) play();
     };
+    pendingRestore = restore;
     origEl.addEventListener('loadeddata', restore);
     origEl.src = oUrl;
     synthEl.src = sUrl;
@@ -1110,48 +1040,6 @@
   els.pitchUpBtn.addEventListener('click', () => applyPitch(state.semitones + 1));
   els.pitchSel.addEventListener('change', () => applyPitch(parseInt(els.pitchSel.value, 10)));
 
-  // --- Natural voice transpose (beta) ---
-  // The in-app Pitch control shifts the whole MIX client-side (phase vocoder),
-  // which sounds robotic on big shifts. This asks the local server to isolate
-  // just the singer (Demucs) and shift ONLY the pitch (WORLD vocoder), keeping
-  // the formants — so the voice changes key but still sounds like the singer.
-  let vtUrl = null;
-  if (els.vtBtn) els.vtBtn.addEventListener('click', async () => {
-    if (!state.fileMono) { toast('Load a recording first.'); return; }
-    const semis = state.semitones || -7;
-    const label = (semis > 0 ? '+' : '') + semis;
-    els.vtBtn.disabled = true;
-    const t0 = Date.now();
-    let timer = setInterval(() => {
-      els.vtStatus.textContent = `Separating the voice & shifting ${label} st… ${Math.round((Date.now() - t0) / 1000)}s`;
-    }, 500);
-    try {
-      const wav = encodeWav(state.fileMono, state.fileSr);
-      const ctrl = new AbortController();
-      const to = setTimeout(() => ctrl.abort(), 10 * 60 * 1000);
-      const resp = await fetch(SERVER_URL + '/transpose?semitones=' + semis, {
-        method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' }, signal: ctrl.signal,
-      });
-      clearTimeout(to);
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const blob = await resp.blob();
-      clearInterval(timer); timer = null;
-      if (vtUrl) URL.revokeObjectURL(vtUrl);
-      vtUrl = URL.createObjectURL(blob);
-      els.vtResult.innerHTML = '';
-      const a = document.createElement('audio');
-      a.controls = true; a.autoplay = true; a.src = vtUrl;
-      a.style.width = '100%'; a.style.marginTop = '8px';
-      els.vtResult.appendChild(a);
-      els.vtStatus.textContent = `Voice at ${label} st (${Math.round((Date.now() - t0) / 1000)}s) — does it sound natural?`;
-    } catch (err) {
-      els.vtStatus.textContent = '';
-      toast('Voice transpose failed (' + ((err && err.message) || err) + '). Is the local server running?');
-    } finally {
-      if (timer) clearInterval(timer);
-      els.vtBtn.disabled = false;
-    }
-  });
 
   async function play() {
     if (!state.ready) return;
@@ -1197,23 +1085,178 @@
     els.loopBBtn.classList.toggle('on', state.loopB != null);
     els.loopDisp.textContent = (state.loopA != null && state.loopB != null)
       ? `${fmtTime(state.loopA)}–${fmtTime(state.loopB)}` : '';
+    els.phraseDisp.textContent = state.phraseLoop >= 0
+      ? `line ${state.phraseLoop + 1}/${state.phrases.length}` : '';
+    els.phrasePrevBtn.classList.toggle('on', state.phraseLoop >= 0);
+    els.phraseNextBtn.classList.toggle('on', state.phraseLoop >= 0);
+    els.phrasePrevBtn.disabled = state.phraseLoop === 0;
+    els.phraseNextBtn.disabled = state.phraseLoop >= 0 && state.phraseLoop === state.phrases.length - 1;
   }
   function setLoopA() {
+    state.phraseLoop = -1;
     state.loopA = origEl.currentTime;
     if (state.loopB != null && state.loopB <= state.loopA) state.loopB = null;
     updateLoopUI(); drawCanvas();
   }
   function setLoopB() {
+    state.phraseLoop = -1;
     const t = origEl.currentTime;
     if (state.loopA == null) state.loopA = 0;
     if (t <= state.loopA + 0.1) { toast('Loop end must come after loop start.'); return; }
     state.loopB = t;
     updateLoopUI(); drawCanvas();
   }
-  function clearLoop() { state.loopA = state.loopB = null; updateLoopUI(); drawCanvas(); }
+  function clearLoop() { state.loopA = state.loopB = null; state.phraseLoop = -1; stopRamp(); updateLoopUI(); drawCanvas(); }
   els.loopABtn.addEventListener('click', setLoopA);
   els.loopBBtn.addEventListener('click', setLoopB);
   els.loopClearBtn.addEventListener('click', clearLoop);
+
+  /* phrase looping: ⟨ ⟩ snap the loop to notation lines with a small pad */
+  const PHRASE_PAD = 0.15;
+  function loopPhrase(idx) {
+    const phs = state.phrases;
+    if (!phs.length) return;
+    idx = Math.max(0, Math.min(phs.length - 1, idx));
+    state.phraseLoop = idx;
+    state.loopA = Math.max(0, phs[idx].t0 - PHRASE_PAD);
+    state.loopB = Math.min(state.duration - 0.01, phs[idx].t1 + PHRASE_PAD);
+    if (state.ramp.on) startRamp();       // re-arm the ramp for the new phrase
+    updateLoopUI();
+    seek(state.loopA);
+    if (!state.playing) play();           // one tap = hear the line immediately
+    drawCanvas();
+  }
+  function stepPhrase(dir) {
+    if (!state.phrases.length) return;
+    if (state.phraseLoop >= 0) { loopPhrase(state.phraseLoop + dir); return; }
+    // First press: loop the line under (or just before) the playhead.
+    const t = origEl.currentTime;
+    const phs = state.phrases;
+    let lo = 0, hi = phs.length - 1, idx = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (phs[mid].t0 <= t) { idx = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    loopPhrase(idx);
+  }
+  els.phrasePrevBtn.addEventListener('click', () => stepPhrase(-1));
+  els.phraseNextBtn.addEventListener('click', () => stepPhrase(1));
+
+  /* ------------------------- live mic practice -------------------------
+   * "Sing along": the microphone is pitch-tracked entirely on this device —
+   * audio is analyzed in memory and discarded; nothing is recorded and nothing
+   * leaves the machine. The sung pitch draws as a teal trail over the melody. */
+  const MIC = {
+    RING_SEC: 0.5,        // rolling 16 kHz analysis buffer
+    ANALYZE_SEC: 0.1,     // yin window per tick (1600 samples -> 4 frames)
+    TICK_MS: 60,
+    TRAIL_MS: 4000,       // how long the sung trail lingers on the canvas
+    CLARITY_MIN: 0.6,     // close-mic voice is clean; stricter than file tracking
+    LATENCY_SEC: 0.10,    // input+block latency estimate; trail is back-dated by this
+  };
+  let mic = null;         // { stream, src, node, silent, ring, w, filled, timer } — null = off
+  async function startMic() {
+    if (mic || !state.ready) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('Sing-along needs microphone support (a current Chrome, Edge, Firefox or Safari).');
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+      });
+    } catch (err) {
+      toast(err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')
+        ? 'Mic access was blocked. Allow the microphone for this site to sing along — your voice is analyzed on this device only, never recorded, never uploaded.'
+        : 'No usable microphone was found.');
+      return;
+    }
+    const ctx = ensureCtx();
+    const src = ctx.createMediaStreamSource(stream);
+    const node = ctx.createScriptProcessor(4096, 1, 1);
+    const silent = ctx.createGain();
+    silent.gain.value = 0;                 // ScriptProcessor must reach the destination; keep it inaudible
+    const ring = new Float32Array(Math.round(16000 * MIC.RING_SEC));
+    mic = { stream, src, node, silent, ring, w: 0, filled: 0, timer: 0 };
+    node.onaudioprocess = (e) => {
+      const m = mic; if (!m) return;
+      const inp = e.inputBuffer.getChannelData(0);
+      const ratio = ctx.sampleRate / 16000;   // 44.1k/48k -> 16k, linear interp
+      for (let o = 0; (o * ratio | 0) < inp.length - 1; o++) {
+        const p = o * ratio, i = p | 0, fr = p - i;
+        m.ring[m.w] = inp[i] * (1 - fr) + inp[i + 1] * fr;
+        m.w = (m.w + 1) % m.ring.length;
+        if (m.filled < m.ring.length) m.filled++;
+      }
+    };
+    src.connect(node); node.connect(silent); silent.connect(ctx.destination);
+    mic.timer = setInterval(micTick, MIC.TICK_MS);
+    els.micBtn.classList.add('on');
+    els.micReadout.textContent = 'listening…';
+    toast('Sing along: your voice traces onto the contour in teal. Analyzed live on this device — never recorded, never uploaded. Headphones give the cleanest trace.');
+  }
+  function micTick() {
+    const m = mic;
+    if (!m) return;
+    const need = Math.round(16000 * MIC.ANALYZE_SEC);
+    if (m.filled < need) return;
+    const seg = new Float32Array(need);   // unroll the last ~100 ms from the ring
+    for (let i = 0; i < need; i++) seg[i] = m.ring[(m.w - need + i + m.ring.length) % m.ring.length];
+    const r = DSP.yinTrack(seg, 16000, { fmin: 80, fmax: 1000 });
+    let best = -1;
+    for (let i = 0; i < r.f0.length; i++) {
+      if (r.f0[i] > 0 && r.clarity[i] >= MIC.CLARITY_MIN &&
+          (best < 0 || r.clarity[i] > r.clarity[best])) best = i;
+    }
+    if (best < 0) {
+      state.micCents = null;
+    } else {
+      // Compare against the TRANSPOSED Sa: the user sings in the shifted key,
+      // the contour is plotted rel. the original saHz — dividing the shift out
+      // maps the voice straight into the contour's cents space.
+      const refSa = state.saHz * Math.pow(2, state.semitones / 12);
+      state.micCents = 1200 * Math.log2(r.f0[best] / refSa);
+      if (state.playing) {                 // paused singing feeds the readout only
+        state.micTrail.push({
+          t: Math.max(0, origEl.currentTime - MIC.LATENCY_SEC),
+          cents: state.micCents, wall: performance.now(),
+        });
+      }
+    }
+    const cut = performance.now() - MIC.TRAIL_MS;
+    while (state.micTrail.length && state.micTrail[0].wall < cut) state.micTrail.shift();
+    updateMicReadout();
+    if (!state.playing && !rafId) drawCanvas();   // rAF already repaints while playing
+  }
+  function updateMicReadout() {
+    if (!mic) return;
+    if (state.micCents == null) {
+      els.micReadout.textContent = '\u00b7';
+      els.micReadout.classList.remove('good');
+      return;
+    }
+    const c = state.micCents;
+    const k = Math.round(c / 100), dev = Math.round(c - k * 100);
+    els.micReadout.textContent = `you: ${tokenGlyph(k)} ${dev >= 0 ? '+' : ''}${dev}\u00a2`;
+    els.micReadout.classList.toggle('good', Math.abs(dev) <= 20);
+  }
+  function stopMic() {
+    const m = mic;
+    if (!m) return;
+    mic = null;
+    clearInterval(m.timer);
+    if (m.node) m.node.onaudioprocess = null;
+    try { m.src.disconnect(); m.node.disconnect(); m.silent.disconnect(); } catch (e) {}
+    if (m.stream && m.stream.getTracks) m.stream.getTracks().forEach((tr) => tr.stop());
+    state.micTrail = [];
+    state.micCents = null;
+    els.micBtn.classList.remove('on');
+    els.micReadout.textContent = '';
+    els.micReadout.classList.remove('good');
+    drawCanvas();
+  }
+  els.micBtn.addEventListener('click', () => (mic ? stopMic() : startMic()));
 
   /* Playback-driven updates. timeupdate (media clock, ~4 Hz, fires even in
    * background/throttled tabs) owns correctness: loop, sync, highlight.
@@ -1222,6 +1265,7 @@
     if (!state.ready) return;
     const t = origEl.currentTime;
     if (state.playing && state.loopA != null && state.loopB != null && t >= state.loopB) {
+      if (state.ramp.on) rampStep();      // one loop repetition done -> nudge the speed
       seek(state.loopA);
       return;
     }
@@ -1275,28 +1319,10 @@
     if (tokIdx >= 0 && t > toks[tokIdx].t1 + 0.35 &&
         (tokIdx + 1 >= toks.length || toks[tokIdx + 1].t0 > t)) tokIdx = -1;
 
-    if (els.notation && lineIdx !== activeLineIdx) {
-      els.notation.querySelectorAll('.active-line').forEach(el => el.classList.remove('active-line'));
-      activeLineIdx = lineIdx;
-      if (lineIdx >= 0) {
-        const row = els.notation.querySelector(`.phrase[data-p="${lineIdx}"]`);
-        if (row) {
-          row.classList.add('active-line');
-          const c = els.notation;
-          const top = row.offsetTop - c.offsetTop;
-          if (top < c.scrollTop + 10 || top > c.scrollTop + c.clientHeight - 70) {
-            c.scrollTo({ top: Math.max(0, top - 90), behavior: 'smooth' });
-          }
-        }
-      }
-    }
-    if (els.notation && tokIdx !== activeTokIdx) {
-      els.notation.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
-      activeTokIdx = tokIdx;
-      if (tokIdx >= 0) {
-        els.notation.querySelectorAll(`[data-i="${tokIdx}"]`).forEach(el => el.classList.add('active'));
-      }
-    }
+    // drawCanvas reads these: the current swara gets the accent halo/label and
+    // the phrase index feeds the phrase-loop display.
+    activeLineIdx = lineIdx;
+    activeTokIdx = tokIdx;
   }
 
   /* ------------------------------ canvas ------------------------------ */
@@ -1311,7 +1337,7 @@
       card: v('--card'), grid: v('--grid'), gridStrong: v('--grid-strong'),
       saLine: v('--sa-line'), paLine: v('--pa-line'), muted: v('--muted'),
       accent: v('--accent'), accentSoft: v('--accent-soft'), contour: v('--contour'),
-      komal: v('--komal'), text: v('--text'),
+      komal: v('--komal'), text: v('--text'), mic: v('--mic'),
     };
   }
   refreshColors();
@@ -1320,6 +1346,16 @@
   }
 
   const GUTTER = 46, RULER = 18;
+
+  // Text metrics are layout-engine calls and drawCanvas runs every frame with a
+  // tiny fixed vocabulary of swara glyphs — memoize widths per (text, font).
+  const textWCache = new Map();
+  function textW(text, font) {
+    const key = font + '|' + text;
+    let w = textWCache.get(key);
+    if (w === undefined) { w = cctx.measureText(text).width; textWCache.set(key, w); }
+    return w;
+  }
   function viewWidthSec() { return Math.max(1, (cvs.clientWidth - GUTTER) / state.pxPerSec); }
   function clampScroll(s) { return Math.max(0, Math.min(Math.max(0, state.duration - viewWidthSec() * 0.5), s)); }
 
@@ -1428,10 +1464,25 @@
       if (isLabel) cctx.fillText(fmtTime(t), x, 13);
     }
 
-    // loop region
+    // loop region + draggable grab handles + bold ruler band
     if (state.loopA != null && state.loopB != null) {
+      const xa = tToX(state.loopA), xb = tToX(state.loopB);
       cctx.fillStyle = colors.accentSoft;
-      cctx.fillRect(tToX(state.loopA), RULER, (state.loopB - state.loopA) * pxPerSec, H - RULER);
+      cctx.fillRect(xa, RULER, xb - xa, H - RULER);
+      cctx.fillStyle = colors.accent;
+      cctx.globalAlpha = 0.55;
+      cctx.fillRect(xa, 2, xb - xa, RULER - 4);        // bold band in the ruler strip
+      cctx.globalAlpha = 1;
+      for (const x of [xa, xb]) {                      // edge line + pill handle
+        cctx.fillRect(x - 1, RULER, 2, H - RULER);
+        cctx.beginPath(); cctx.roundRect(x - 4, RULER + 3, 8, 15, 4); cctx.fill();
+      }
+      if (state.phraseLoop >= 0 && xb - xa > 60) {
+        cctx.fillStyle = colors.card;
+        cctx.font = '600 9px -apple-system, sans-serif';
+        cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
+        cctx.fillText('phrase ' + (state.phraseLoop + 1), (xa + xb) / 2, RULER / 2);
+      }
     }
 
     // ---- The melody as ONE flowing curve. This is where the bends read: every
@@ -1457,27 +1508,9 @@
     // unconnected lines" and leave clean lines tracing the melody through the notes.
     const BRIDGE = Math.max(2, Math.round(0.16 / hopSec));   // connect gaps ≤ ~160 ms
     const MINLEN = Math.max(3, Math.round(0.06 / hopSec));   // drop runs shorter than ~60 ms
-    // Smooth the contour line so it reads as the melodic SHAPE — rounding off the
-    // vibrato and micro-jitter you don't sight-read when learning a sargam or a
-    // murki. A MEDIAN over a short window (±~16 ms) kills jitter while
-    // PRESERVING each fast note's plateau — a wide mean flattened 40-80 ms
-    // notes so their dots floated off the line. Unvoiced gaps aren't crossed.
-    const SMOOTH = Math.max(1, Math.round(0.016 / hopSec));   // ±~16 ms window, adapts to the hop
-    const cval = new Float32Array(i1 - i0 + 1);
-    for (let i = i0; i <= i1; i++) {
-      cval[i - i0] = (f0[i] > 0 && clarity[i] >= opts.clarityThresh) ? 1200 * Math.log2(f0[i] / saHz) : NaN;
-    }
-    const csm = new Float32Array(cval.length);
-    const win = [];
-    for (let k = 0; k < cval.length; k++) {
-      if (isNaN(cval[k])) { csm[k] = NaN; continue; }
-      win.length = 0;
-      for (let j = Math.max(0, k - SMOOTH); j <= Math.min(cval.length - 1, k + SMOOTH); j++) {
-        if (!isNaN(cval[j])) win.push(cval[j]);
-      }
-      win.sort((a, b) => a - b);
-      csm[k] = win[win.length >> 1];
-    }
+    // Smoothed contour cents are PRECOMPUTED in computeSmoothedCents() (median,
+    // ±16 ms) — drawCanvas runs every animation frame, so it only reads.
+    const csm = state.centsSm || new Float32Array(0);
     let pts = [], cnt = [], gap = 0;
     const flushRun = () => {
       if (pts.length >= MINLEN) {
@@ -1500,8 +1533,8 @@
       pts = []; cnt = [];
     };
     for (let i = i0; i <= i1; i++) {
-      if (f0[i] > 0 && clarity[i] >= opts.clarityThresh) {
-        const cc = csm[i - i0];
+      const cc = csm[i];
+      if (!isNaN(cc)) {
         const y = cToY(cc);
         if (y < RULER || y > H) { flushRun(); gap = 0; continue; }
         pts.push([tToX(i * hopSec), y]); cnt.push(cc); gap = 0;
@@ -1527,7 +1560,7 @@
       let fs = sizes[sizes.length - 1], ly = cy - 11, box = null;
       for (const s of sizes) {
         cctx.font = (big ? '700 ' : '600 ') + s + 'px Georgia, serif';
-        const w = cctx.measureText(text).width + 3, h = s + 3, base = h / 2 + 3;
+        const w = textW(text, cctx.font) + 3, h = s + 3, base = h / 2 + 3;
         const offs = aboveFirst ? [-base, base, -(base + 13), base + 13] : [base, -base, base + 13, -(base + 13)];
         for (const dy of offs) {
           const b = [cx - w / 2, cy + dy - h / 2, cx + w / 2, cy + dy + h / 2];
@@ -1538,7 +1571,7 @@
       if (!box) {   // no gap even at the smallest size — draw it anyway, just above
         fs = sizes[sizes.length - 1];
         cctx.font = '600 ' + fs + 'px Georgia, serif';
-        const w = cctx.measureText(text).width + 3, h = fs + 3;
+        const w = textW(text, cctx.font) + 3, h = fs + 3;
         ly = cy - (h / 2 + 3); box = [cx - w / 2, ly - h / 2, cx + w / 2, ly + h / 2];
       }
       placed.push(box);
@@ -1557,11 +1590,27 @@
     }
     const isGlide = (tk) => (tk.glide || tk.meendFromPrev) && tk.via && tk.via.length > 1;
     const viaX = (tk, p, n) => tToX(tk.t0 + (tk.t1 - tk.t0) * (n > 1 ? p / (n - 1) : 0));
+    // Palette spotlight: tapping a swara in the raag card dims every other note
+    // so each place it appears jumps out.
+    const spotPc = state.highlightPc;
+    const dimmed = (tk) => spotPc != null && ((tk.k % 12) + 12) % 12 !== spotPc;
 
     // Pass 1 — dots & gesture bands: every note is marked, even where its name won't fit.
     for (const ti of vis) {
       const tk = state.tokens[ti];
       const isActive = ti === activeTokIdx;
+      if (dimmed(tk)) {   // spotlight mode: non-matching notes become faint specks
+        cctx.fillStyle = colors.muted; cctx.globalAlpha = 0.25;
+        cctx.beginPath();
+        cctx.arc(tToX((tk.t0 + tk.t1) / 2), cToY(tk.cents != null ? tk.cents : tk.k * 100), 2, 0, 2 * Math.PI);
+        cctx.fill(); cctx.globalAlpha = 1;
+        continue;
+      }
+      if (spotPc != null && !isActive) {   // a match while spotlighting: make it pop
+        const cx0 = tToX((tk.t0 + tk.t1) / 2), cy0 = cToY(tk.cents != null ? tk.cents : tk.k * 100);
+        cctx.strokeStyle = colors.accent; cctx.lineWidth = 2; cctx.globalAlpha = 0.9;
+        cctx.beginPath(); cctx.arc(cx0, cy0, 7, 0, 2 * Math.PI); cctx.stroke(); cctx.globalAlpha = 1;
+      }
       if (isGlide(tk)) {
         const vv = viaDisplay(tk.via);
         cctx.fillStyle = colors.contour; cctx.globalAlpha = isActive ? 1 : 0.85;
@@ -1594,6 +1643,7 @@
     for (const ti of vis.slice().sort((a, b) => prio(b) - prio(a) || state.tokens[a].t0 - state.tokens[b].t0)) {
       const tk = state.tokens[ti];
       const isActive = ti === activeTokIdx;
+      if (dimmed(tk)) continue;   // spotlight mode: no labels on non-matching notes
       if (isGlide(tk)) {
         const vv = viaDisplay(tk.via);
         for (let p = 0; p < vv.length; p++) labelAt(tokenGlyph(vv[p]), viaX(tk, p, vv.length), cToY(vv[p] * 100), false, colors.contour);
@@ -1605,6 +1655,37 @@
       labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);
     }
     cctx.globalAlpha = 1;
+
+    // ---- Sing-along trail: the last ~4 s of the user's voice over the melody,
+    // in the mic colour, fading with age. Drawn above the melody & labels,
+    // below the playhead. ----
+    if (state.micTrail.length) {
+      const now = performance.now();
+      cctx.strokeStyle = colors.mic;
+      cctx.lineCap = 'round'; cctx.lineJoin = 'round';
+      let prevP = null;
+      for (const p of state.micTrail) {
+        // connect only near-consecutive readings: >200 ms wall gap = unvoiced
+        // break; >0.3 s media-time gap = a seek/loop jump — never bridge those.
+        if (prevP && p.wall - prevP.wall < 200 && Math.abs(p.t - prevP.t) < 0.3) {
+          cctx.globalAlpha = Math.max(0.05, 1 - (now - p.wall) / MIC.TRAIL_MS) * 0.9;
+          cctx.lineWidth = 2.6;
+          cctx.beginPath();
+          cctx.moveTo(tToX(prevP.t), cToY(prevP.cents));
+          cctx.lineTo(tToX(p.t), cToY(p.cents));
+          cctx.stroke();
+        }
+        prevP = p;
+      }
+      cctx.globalAlpha = 1;
+    }
+    if (mic && state.micCents != null) {   // live dot riding the playhead
+      const yMic = cToY(state.micCents);
+      if (yMic > RULER && yMic < H) {
+        cctx.fillStyle = colors.mic;
+        cctx.beginPath(); cctx.arc(tToX(origEl.currentTime), yMic, 4.5, 0, 2 * Math.PI); cctx.fill();
+      }
+    }
 
     // playhead
     const pt = origEl.currentTime;
@@ -1625,34 +1706,108 @@
     }
   }
 
-  // canvas interactions: click to seek, drag to pan, wheel to scroll
+  // canvas interactions: click to seek, body-drag to pan, RULER-drag to set
+  // the loop, loop-edge handles to resize it, wheel to scroll/zoom.
   let dragInfo = null;
+  const xToT = (clientX) => {
+    const rect = cvs.getBoundingClientRect();
+    return state.scrollSec + (clientX - rect.left - GUTTER) / state.pxPerSec;
+  };
+  // Hit-test the loop-edge grab handles (±6 px, any height).
+  function loopEdgeAt(clientX) {
+    if (state.loopA == null || state.loopB == null) return null;
+    const rect = cvs.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const xa = GUTTER + (state.loopA - state.scrollSec) * state.pxPerSec;
+    const xb = GUTTER + (state.loopB - state.scrollSec) * state.pxPerSec;
+    if (Math.abs(x - xb) <= 6) return 'b';     // B first: wins when the loop is tiny
+    if (Math.abs(x - xa) <= 6) return 'a';
+    return null;
+  }
   cvs.addEventListener('pointerdown', (e) => {
-    dragInfo = { x: e.clientX, scroll0: state.scrollSec, moved: false };
+    const rect = cvs.getBoundingClientRect();
+    const y = e.clientY - rect.top, x = e.clientX - rect.left;
+    const edge = loopEdgeAt(e.clientX);
+    if (edge) {
+      dragInfo = { mode: 'edge', edge, moved: false };
+    } else if (y < RULER && x > GUTTER) {
+      dragInfo = { mode: 'loop', t0: Math.max(0, Math.min(state.duration, xToT(e.clientX))),
+                   prevA: state.loopA, prevB: state.loopB, moved: false };
+    } else {
+      dragInfo = { mode: 'pan', x: e.clientX, scroll0: state.scrollSec, moved: false };
+    }
     cvs.setPointerCapture(e.pointerId);
   });
   cvs.addEventListener('pointermove', (e) => {
-    if (!dragInfo) return;
-    const dx = e.clientX - dragInfo.x;
-    if (Math.abs(dx) > 4) dragInfo.moved = true;
-    if (dragInfo.moved) {
-      state.scrollSec = clampScroll(dragInfo.scroll0 - dx / state.pxPerSec);
-      drawCanvas();
+    if (!dragInfo) {   // idle: cursor affordances so the ruler invites the drag
+      const y = e.clientY - cvs.getBoundingClientRect().top;
+      cvs.style.cursor = loopEdgeAt(e.clientX) ? 'ew-resize' : (y < RULER ? 'crosshair' : '');
+      return;
     }
+    if (dragInfo.mode === 'pan') {
+      const dx = e.clientX - dragInfo.x;
+      if (Math.abs(dx) > 4) dragInfo.moved = true;
+      if (dragInfo.moved) {
+        state.scrollSec = clampScroll(dragInfo.scroll0 - dx / state.pxPerSec);
+        drawCanvas();
+      }
+      return;
+    }
+    dragInfo.moved = true;
+    const t = Math.max(0, Math.min(state.duration, xToT(e.clientX)));
+    if (dragInfo.mode === 'loop') {
+      state.loopA = Math.min(dragInfo.t0, t);
+      state.loopB = Math.max(dragInfo.t0, t);
+    } else if (dragInfo.edge === 'a') {
+      state.loopA = Math.min(t, state.loopB - 0.1);
+    } else {
+      state.loopB = Math.max(t, state.loopA + 0.1);
+    }
+    state.phraseLoop = -1;          // a hand-set loop is no longer a phrase loop
+    updateLoopUI(); drawCanvas();
   });
   cvs.addEventListener('pointerup', (e) => {
-    if (dragInfo && !dragInfo.moved) {
-      const rect = cvs.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      if (x > GUTTER) seek(state.scrollSec + (x - GUTTER) / state.pxPerSec);
+    if (dragInfo) {
+      if (dragInfo.mode === 'loop') {
+        // A sub-150 ms "loop" is just a click: restore what was there and seek.
+        if (dragInfo.moved && state.loopB - state.loopA < 0.15) {
+          state.loopA = dragInfo.prevA; state.loopB = dragInfo.prevB;
+          updateLoopUI();
+        }
+        if (!dragInfo.moved || state.loopB == null || state.loopB - state.loopA < 0.15) {
+          seek(dragInfo.t0);
+        } else {
+          seek(state.loopA);        // a fresh loop starts playing from its start
+        }
+        drawCanvas();
+      } else if (!dragInfo.moved && dragInfo.mode === 'pan') {
+        const rect = cvs.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        if (x > GUTTER) seek(state.scrollSec + (x - GUTTER) / state.pxPerSec);
+      }
     }
     dragInfo = null;
   });
+  cvs.addEventListener('dblclick', (e) => {
+    if (e.clientY - cvs.getBoundingClientRect().top < RULER) clearLoop();
+  });
   cvs.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    state.scrollSec = clampScroll(state.scrollSec + d / state.pxPerSec);
-    drawCanvas();
+    // ⌘/Ctrl+wheel (and trackpad pinch, which browsers report as ctrl+wheel)
+    // zooms around the cursor; horizontal wheel pans; a plain vertical wheel
+    // is left alone so the page still scrolls past the contour.
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const rect = cvs.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const tAt = state.scrollSec + Math.max(0, x - GUTTER) / state.pxPerSec;
+      state.pxPerSec = Math.max(15, Math.min(400, state.pxPerSec * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      state.scrollSec = clampScroll(tAt - Math.max(0, x - GUTTER) / state.pxPerSec);
+      drawCanvas();
+    } else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault();
+      state.scrollSec = clampScroll(state.scrollSec + e.deltaX / state.pxPerSec);
+      drawCanvas();
+    }
   }, { passive: false });
 
   function zoom(factor) {
@@ -1678,10 +1833,29 @@
     else if (e.key === '[') setLoopA();
     else if (e.key === ']') setLoopB();
     else if (e.key === 'l' || e.key === 'L') clearLoop();
+    else if (e.key === ',') stepPhrase(-1);
+    else if (e.key === '.') stepPhrase(1);
   });
 
   /* test/debug hook */
   window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive,
+    _loopPhrase: loopPhrase, _stepPhrase: stepPhrase, _startRamp: startRamp, _rampStep: rampStep,
+    _mic: {
+      start: startMic, stop: stopMic, tick: micTick,
+      inject(hz, sec) {              // feed a sine straight into the ring buffer (dev/testing)
+        if (!mic) {
+          mic = { ring: new Float32Array(8000), w: 0, filled: 0, timer: setInterval(micTick, MIC.TICK_MS),
+                  stream: { getTracks: () => [] }, node: null, src: { disconnect() {} }, silent: { disconnect() {} } };
+          els.micBtn.classList.add('on');
+        }
+        const n = Math.round(16000 * (sec || 0.2));
+        for (let i = 0; i < n; i++) {
+          mic.ring[mic.w] = 0.5 * Math.sin(2 * Math.PI * hz * i / 16000);
+          mic.w = (mic.w + 1) % mic.ring.length;
+          if (mic.filled < mic.ring.length) mic.filled++;
+        }
+      },
+    },
     _ali: () => activeLineIdx, _renderTonic: renderTonicChips, _syncTonic: syncTonicControls,
     _applyPitch: applyPitch, _audio: { orig: origEl, synth: synthEl } };
 })();
