@@ -95,22 +95,71 @@ def separate_stems(mix):
     return voc / wsum, drm / wsum
 
 
+# --- BS-RoFormer separation (state of the art for vocals: ~12.1 SDR vs
+# Demucs htdemucs's ~9 on real music). Runs the pip package `audio-separator`
+# from its own isolated venv via subprocess, so this env stays untouched.
+# Slower than Demucs on CPU — used because the user chose quality over speed;
+# any failure falls back to Demucs automatically. ---
+SEPARATOR = os.environ.get('SWARLEKH_SEP', 'roformer')     # 'roformer' | 'demucs'
+ROFORMER_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.venv-sep', 'bin', 'audio-separator')
+ROFORMER_MODEL = 'model_bs_roformer_ep_368_sdr_12.9628.ckpt'
+ROFORMER_TIMEOUT = 60 * 60
+
+
+def separate_vocals_roformer(x):
+    """x: torch [2, n] @44.1k -> mono vocal [1, n] via BS-RoFormer (subprocess)."""
+    import tempfile, subprocess, glob as _glob
+    with tempfile.TemporaryDirectory() as td:
+        mix_path = os.path.join(td, 'mix.wav')
+        sf.write(mix_path, x.T.cpu().numpy(), DEMUCS_SR)
+        print('[swarlekh] separating with BS-RoFormer (best quality; slower)…', flush=True)
+        subprocess.run([ROFORMER_BIN, mix_path, '--model_filename', ROFORMER_MODEL,
+                        '--output_dir', td, '--output_format', 'WAV'],
+                       check=True, timeout=ROFORMER_TIMEOUT,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        voc_path = [p for p in _glob.glob(os.path.join(td, '*.wav')) if '(Vocals)' in p][0]
+        v, vsr = sf.read(voc_path, dtype='float32', always_2d=True)      # [n, ch]
+        voc = torch.tensor(v.T).mean(0, keepdim=True)                    # [1, n]
+        if vsr != DEMUCS_SR:
+            voc = torchaudio.functional.resample(voc, vsr, DEMUCS_SR)
+        n = x.shape[1]
+        if voc.shape[1] < n: voc = torch.nn.functional.pad(voc, (0, n - voc.shape[1]))
+        return voc[:, :n]
+
+
 # Cache the most recently separated stems so /transpose can reuse the separation
 # /analyze just did (the "Best" engine separates the same bytes first). Keyed by a
 # hash of the posted audio; the client sends identical WAV to both endpoints, so
-# the normal analyze->transpose flow is a cache hit and skips the slow Demucs.
+# the normal analyze->transpose flow is a cache hit and skips the slow separation.
 _stem_cache = {'key': None, 'voc44': None, 'drm44': None}
 
 
 def separated_stems_44k(raw, x):
     """(vocal, drums) mono [1, n] @44.1k, reusing the cached separation when the
-    posted audio matches the last separated (skips the ~minutes-long Demucs pass)."""
+    posted audio matches the last separated. Vocal comes from BS-RoFormer when
+    enabled (drums None — only the dormant /transpose wants them and it copes);
+    Demucs is the fallback and the drum source."""
     key = hashlib.md5(raw).hexdigest()
     if _stem_cache['key'] == key and _stem_cache['voc44'] is not None:
-        print('[swarlekh] reusing cached separation (skipping Demucs)', flush=True)
+        print('[swarlekh] reusing cached separation', flush=True)
         return _stem_cache['voc44'], _stem_cache['drm44']
-    voc, drm = separate_stems(x)
-    voc = voc.mean(0, keepdim=True); drm = drm.mean(0, keepdim=True)   # [1, n] @44.1k
+    voc = drm = None
+    if SEPARATOR == 'roformer' and os.path.exists(ROFORMER_BIN):
+        try:
+            voc = separate_vocals_roformer(x)
+            # Sanity: a near-silent stem means the model found no voice at all
+            # (degenerate input) — better to fall back than return an empty track.
+            mix_rms = float(x.pow(2).mean().sqrt())
+            voc_rms = float(voc.pow(2).mean().sqrt())
+            if mix_rms > 0 and voc_rms < 0.005 * mix_rms:
+                print('[swarlekh] RoFormer stem is near-silent (%.5f vs %.5f) — falling back to Demucs'
+                      % (voc_rms, mix_rms), flush=True)
+                voc = None
+        except Exception as e:
+            print('[swarlekh] RoFormer failed (%s) — falling back to Demucs' % e, flush=True)
+    if voc is None:
+        v2, d2 = separate_stems(x)
+        voc = v2.mean(0, keepdim=True); drm = d2.mean(0, keepdim=True)   # [1, n] @44.1k
     _stem_cache.update(key=key, voc44=voc, drm44=drm)
     return voc, drm
 
@@ -228,6 +277,8 @@ def transpose():
     if in_sr != DEMUCS_SR:
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
     voc, drm = separated_stems_44k(raw, x)             # [1, n] each @44.1k (reuses /analyze's separation)
+    if drm is None:                                    # RoFormer path separates vocals only
+        drm = torch.zeros_like(voc)
     rest = x.mean(0, keepdim=True) - voc - drm         # pitched accompaniment (bass + harmonium…)
     print('[swarlekh] separated in %.1fs — CREPE f0 → WORLD voice + shift music %.1f st…'
           % (time.time() - t0, semis), flush=True)
