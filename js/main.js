@@ -47,7 +47,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=40';
+  const WORKER_URL = 'js/worker.js?v=41';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -249,7 +249,7 @@
 
       const ab = await file.arrayBuffer();
       if (stale()) return;
-      const hash = await fileHash(ab.slice(0));   // digest before decode detaches anything
+      const hash = 'v2:' + await fileHash(ab.slice(0));   // v2: server clarity = real Praat strength
       const ctx = ensureCtx();
       let buf;
       try {
@@ -826,6 +826,11 @@
     savePrefs();
   });
 
+  const detailMirror = $('detailMirror');
+  if (detailMirror) detailMirror.addEventListener('change', () => {
+    detailSel.value = detailMirror.value;
+    detailSel.dispatchEvent(new Event('change'));
+  });
   const detailSel = $('detailSel');
   detailSel.addEventListener('change', () => {
     const v = detailSel.value;
@@ -837,6 +842,7 @@
     else Object.assign(state.opts, { ornaments: false, clean: true, ornMinMs: 45, minNoteMs: 170 });
     els.minNoteSlider.value = state.opts.minNoteMs;
     els.minNoteVal.textContent = `${state.opts.minNoteMs} ms`;
+    if (detailMirror) detailMirror.value = v;
     renotateNow();
     savePrefs();
   });

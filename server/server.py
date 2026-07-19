@@ -199,9 +199,13 @@ def analyze():
     hop_sec = 0.004
     p2 = snd.to_pitch_cc(time_step=hop_sec, pitch_floor=floor, pitch_ceiling=1200.0, very_accurate=True)
     f0 = np.nan_to_num(p2.selected_array['frequency'])
-    # Praat's voicing decision is baked into f0>0; give voiced frames a flat
-    # clarity the client's 0.5 threshold passes (bench-validated encoding).
-    pd = np.where(f0 > 0, 0.9, 0.0)
+    # Per-frame confidence = Praat's real correlation strength, so the client's
+    # noise filters (and the Voicing-strictness slider) can tell a solidly sung
+    # note from a breathy flicker or separation artifact. (A flat 0.9 encoding
+    # made every frame look equally confident — fine on clean synthetic audio,
+    # but on real singing it let junk through as notes.)
+    strength = np.nan_to_num(p2.selected_array['strength'])
+    pd = np.where(f0 > 0, np.clip(strength, 0.0, 1.0), 0.0)
 
     # VOCAL-ENERGY GATE: separation isn't perfect -- instrumental-only stretches
     # leave a faint residual that would read as spurious notes; silence frames
