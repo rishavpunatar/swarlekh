@@ -164,6 +164,74 @@ def separated_stems_44k(raw, x):
     return voc, drm
 
 
+# Common taal cycles. Several taals share a beat count — the primary name is
+# shown with an honest "likely/possibly", the alternative kept alongside.
+TAALS = {16: ('Teentaal', None), 14: ('Deepchandi', 'Dhamar/Jhoomra'), 12: ('Ektaal', 'Chautaal'),
+         10: ('Jhaptaal', None), 8: ('Keherwa', 'Bhajani theka'), 7: ('Rupak', None), 6: ('Dadra', None)}
+
+
+def detect_rhythm(x, voc):
+    """BPM + dominant taal cycle. Tempo/beats come from the ACCOMPANIMENT\'s
+    onset envelope (mix minus voice). The cycle length is scored by folding
+    per-beat BASS energy (the bayan — present in bhari, silent in khali, the
+    structural cue of a theka) onto the tracked beat grid and asking which
+    cycle length explains its variance best (adjusted, with a parsimony rule
+    so a repeated half-cycle isn\'t reported doubled). Tracked beats follow the
+    actual strokes, so tempo drift cancels. Returns None when there is no
+    clear, steady pulse; taal fields are None when the cycle is inconclusive
+    (the dominant BPM is still reported)."""
+    try:
+        from scipy.signal import butter, sosfilt
+        acc = (x.mean(0) - voc[0]).cpu().numpy()
+        RSR = 22050
+        acc = librosa.resample(acc.astype(np.float32), orig_sr=DEMUCS_SR, target_sr=RSR)
+        oenv = librosa.onset.onset_strength(y=acc, sr=RSR)
+        tempo, beats = librosa.beat.beat_track(onset_envelope=oenv, sr=RSR, trim=False)
+        tempo = float(np.atleast_1d(tempo)[0])
+        if tempo <= 0 or len(beats) < 16:
+            return None
+        bt = librosa.frames_to_time(beats, sr=RSR)
+        iv = np.diff(bt)
+        if iv.size == 0 or np.std(iv) / max(np.mean(iv), 1e-6) > 0.35:
+            return None                                    # too unsteady to call
+        base = {'bpm': round(tempo, 1), 'beats': [round(float(t), 3) for t in bt],
+                'cycle': None, 'taal': None, 'alt': None, 'conf': None, 'sam': None}
+        # Per-beat bass energy (stroke lands in the first half-beat window).
+        sos = butter(4, 200, 'low', fs=RSR, output='sos')
+        bass2 = sosfilt(sos, acc); bass2 = bass2 * bass2
+        Tb = 60.0 / tempo
+        e = np.array([float(bass2[int(t * RSR):int((t + 0.5 * Tb) * RSR)].sum()) for t in bt[:-1]])
+        if e.std() <= 0:
+            return base
+        e = (e - e.mean()) / e.std()
+        n = len(e); sst = float(((e - e.mean()) ** 2).sum())
+        scores = {}
+        for L in TAALS:
+            if n < 2 * L: continue
+            ssw = 0.0
+            for r in range(L):
+                g = e[r::L]
+                if len(g) > 1: ssw += float(((g - g.mean()) ** 2).sum())
+            scores[L] = 1.0 - (ssw / max(n - L, 1)) / (sst / max(n - 1, 1))
+        if not scores:
+            return base
+        best = max(scores.values())
+        if best < 0.15:
+            return base                                    # no repeating accent cycle
+        good = [L for L, sc in scores.items() if sc >= 0.9 * best and sc > 0]
+        L = min(good) if good else max(scores, key=scores.get)
+        # Sam phase = the rotation with the strongest mean bass (the dagga on sam).
+        phase = int(np.argmax([np.mean(e[r::L]) for r in range(L)]))
+        name, alt = TAALS[L]
+        base.update(cycle=int(L), taal=name, alt=alt,
+                    conf=('likely' if best >= 0.35 else 'possibly'),
+                    sam=[round(float(t), 3) for t in bt[phase::L]])
+        return base
+    except Exception as e:
+        print('[swarlekh] rhythm detection failed: %s' % e, flush=True)
+        return None
+
+
 @app.get('/')
 def health():
     return jsonify(ok=True, device=DEVICE, hopSec=HOP / SR, sr=SR)
@@ -232,12 +300,14 @@ def analyze():
     except Exception as e:
         print('[swarlekh] onset detect failed: %s' % e, flush=True)
         onsets = []
-    print('[swarlekh] %.1fs sep + %.1fs total · %d frames @ %.0fms hop · %d voiced · %d onsets'
-          % (t_sep, time.time() - t0, n_frames, hop_sec * 1000, int(keep.sum()), len(onsets)), flush=True)
+    rhythm = detect_rhythm(x, voc)
+    print('[swarlekh] %.1fs sep + %.1fs total · %d frames @ %.0fms hop · %d voiced · %d onsets · rhythm=%s'
+          % (t_sep, time.time() - t0, n_frames, hop_sec * 1000, int(keep.sum()), len(onsets),
+             ('%s %s %sbpm' % (rhythm['conf'], rhythm['taal'], rhythm['bpm'])) if rhythm else 'none'), flush=True)
     return jsonify(f0=[round(float(x), 2) for x in f0],
                    periodicity=[round(float(x), 3) for x in pd],
                    rms=[round(float(x), 5) for x in rms],
-                   onsets=onsets,
+                   onsets=onsets, rhythm=rhythm,
                    hopSec=hop_sec, sr=SR)
 
 

@@ -39,7 +39,7 @@
     playing: false,
     semitones: 0, fileMono: null, fileSr: 16000,
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
-    raga: null, highlightPc: null, ragaMatches: [], script: 'latin',
+    raga: null, highlightPc: null, ragaMatches: [], script: 'latin', rhythm: null,
     engine: 'yin', file: null,
     opts: { clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45, clean: true, onsets: [] },
   };
@@ -47,7 +47,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=41';
+  const WORKER_URL = 'js/worker.js?v=42';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -249,7 +249,7 @@
 
       const ab = await file.arrayBuffer();
       if (stale()) return;
-      const hash = 'v2:' + await fileHash(ab.slice(0));   // v2: server clarity = real Praat strength
+      const hash = 'v3:' + await fileHash(ab.slice(0));   // v3: adds rhythm (BPM/taal) to the analysis
       const ctx = ensureCtx();
       let buf;
       try {
@@ -285,6 +285,7 @@
       if (stale()) return;
 
       let workerOpts = {};
+      state.rhythm = null;
       if (state.engine === 'neural') {
         workerOpts = { neural: true };
       } else if (state.engine === 'server') {
@@ -294,6 +295,7 @@
         if (stale()) return;
         if (cached && cached.f0 && cached.f0.length) {
           workerOpts = { providedF0: cached.f0, providedClarity: cached.periodicity, providedRms: cached.rms, providedHopSec: cached.hopSec, providedOnsets: cached.onsets };
+          state.rhythm = cached.rhythm || null;
           toast('Analyzed this recording before — restored instantly.');
         } else if (!(await serverUp())) {
           if (stale()) return;
@@ -328,7 +330,8 @@
           if (stale()) return;
           if (data) {
             workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedRms: data.rms, providedHopSec: data.hopSec, providedOnsets: data.onsets };
-            idbPut(hash, { f0: data.f0, periodicity: data.periodicity, rms: data.rms, onsets: data.onsets, hopSec: data.hopSec, ts: Date.now() });
+            state.rhythm = data.rhythm || null;
+            idbPut(hash, { f0: data.f0, periodicity: data.periodicity, rms: data.rms, onsets: data.onsets, rhythm: data.rhythm, hopSec: data.hopSec, ts: Date.now() });
           }
         }
       }
@@ -354,6 +357,7 @@
       synthEl.src = synthUrl;
 
       state.saHz = result.tonic[0].hz;
+      renderRhythm();
       renderTonicChips();
       syncTonicControls();
       state.scrollSec = 0;
@@ -413,6 +417,22 @@
     opt.value = m;
     opt.textContent = NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
     els.tonicNote.appendChild(opt);
+  }
+
+  // Taal & tempo line in the Raag card — shown only when the accompaniment has
+  // a clear, steady pulse (the dominant one; rhythm sections may vary).
+  function renderRhythm() {
+    const el = $('taalLine');
+    if (!el) return;
+    const r = state.rhythm;
+    if (!r) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    if (!r.taal) {
+      el.innerHTML = `\u2669 \u2248 <b>${Math.round(r.bpm)} BPM</b> \u00b7 no single repeating cycle stood out. Beats tick along the contour ruler.`;
+    } else {
+      const alt = r.alt ? ` (or ${r.alt})` : '';
+      el.innerHTML = `\u2669 \u2248 <b>${Math.round(r.bpm)} BPM</b> \u00b7 ${r.cycle}-beat cycle \u2014 ${r.conf} <b>${r.taal}</b>${alt}. Beats tick along the contour ruler; the heavier ticks are the estimated sam.`;
+    }
   }
 
   function renderTonicChips() {
@@ -1468,6 +1488,30 @@
       cctx.lineTo(x, isLabel ? 8 : 4);
       cctx.stroke();
       if (isLabel) cctx.fillText(fmtTime(t), x, 13);
+    }
+
+    // Taal beat grid: thin ticks at each detected beat in the ruler strip;
+    // heavier saffron ticks mark the estimated sam (cycle start).
+    if (state.rhythm && state.rhythm.beats) {
+      const rb = state.rhythm;
+      cctx.strokeStyle = colors.gridStrong;
+      cctx.lineWidth = 1;
+      for (const t of rb.beats) {
+        if (t < scrollSec || t > tEnd) continue;
+        const x = tToX(t);
+        cctx.globalAlpha = 0.7;
+        cctx.beginPath(); cctx.moveTo(x, RULER - 6); cctx.lineTo(x, RULER); cctx.stroke();
+      }
+      cctx.globalAlpha = 1;
+      if (rb.sam) {
+        cctx.strokeStyle = colors.accent;
+        cctx.lineWidth = 2;
+        for (const t of rb.sam) {
+          if (t < scrollSec || t > tEnd) continue;
+          const x = tToX(t);
+          cctx.beginPath(); cctx.moveTo(x, RULER - 9); cctx.lineTo(x, RULER); cctx.stroke();
+        }
+      }
     }
 
     // loop region + draggable grab handles + bold ruler band

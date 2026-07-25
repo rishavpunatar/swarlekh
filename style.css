@@ -759,3 +759,5 @@ input[type="range"]::-moz-range-thumb {
 #phraseNextBtn.on, #phrasePrevBtn.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 #micReadout.good { color: var(--mic); font-weight: 600; }
 #phraseDisp, #loopDisp, #rampDisp { font-variant-numeric: tabular-nums; }
+.taal-line { margin: 10px 0 0; font-size: 13.5px; }
+.taal-line b { color: var(--accent); }
