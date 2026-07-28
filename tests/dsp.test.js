@@ -353,6 +353,72 @@ test('notateRegions: clean preserves a fast G R G murki', () => {
   assert.deepStrictEqual(tokens.map((token) => token.k), [4, 2, 4]);
 });
 
+test('notateRegions: restores stable turning notes inside broad neural regions', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.2, frequency: st(4) },
+    { onset: 0.2, offset: 0.45, frequency: st(9) },
+    { onset: 0.45, offset: 0.65, frequency: st(11) },
+    { onset: 0.65, offset: 0.9, frequency: st(9) },
+  ];
+  const f0 = new Float32Array(90);
+  const clarity = new Float32Array(90).fill(0.95);
+  const put = (start, end, k) => {
+    for (let i = start; i < end; i++) f0[i] = st(k);
+  };
+  put(0, 11, 4);
+  for (let i = 11; i < 17; i++) {
+    // A fast trough can land close to the R/g midpoint; retain the turn even
+    // when tonic fine-tuning leaves it about 45 cents below komal ga.
+    f0[i] = SA * Math.pow(2, 255 / 1200);
+  }
+  put(17, 35, 9);
+  put(35, 42, 7);
+  put(42, 55, 11);
+  put(55, 90, 9);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(
+    tokens.map((token) => token.k),
+    [4, 3, 9, 7, 11, 9]
+  );
+  assert.ok(tokens.every((token) => token.hybridOrnament));
+});
+
+test('notateRegions: monotonic neural meend does not gain passing-note labels', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(0) },
+    { onset: 0.3, offset: 0.7, frequency: st(7) },
+  ];
+  const f0 = new Float32Array(70);
+  const clarity = new Float32Array(70).fill(0.95);
+  for (let i = 0; i < 30; i++) f0[i] = st(0);
+  for (let i = 30; i < 70; i++) {
+    f0[i] = SA * Math.pow(2, (700 * (i - 29) / 40) / 1200);
+  }
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [0, 7]);
+  assert.ok(tokens.every((token) => !token.hybridOrnament));
+});
+
 test('practice contour: vibrato becomes a flat target hold', () => {
   const hopSec = 0.01;
   const cents = Float32Array.from(

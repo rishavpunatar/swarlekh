@@ -1518,10 +1518,96 @@
   }
 
   /**
+   * Restore short, clearly landed turning notes that sit inside a broader GAME
+   * region. The frame segmenter is only allowed to replace a connected gesture
+   * when it finds a missing local reversal; monotonic passing tones therefore
+   * remain one visual bend.
+   */
+  function fuseTurningOrnaments(neuralTokens, frameTokens, suppressedTurns) {
+    if (neuralTokens.length < 1 || frameTokens.length < 3) {
+      return neuralTokens;
+    }
+    const missingTurns = [];
+    const maxTurnSec = 0.16;
+    const maxNeighborGapSec = 0.06;
+    const wasSuppressed = (candidate) => (suppressedTurns || []).some((turn) => {
+      if (turn.k !== candidate.k) return false;
+      return Math.min(turn.t1, candidate.t1) -
+        Math.max(turn.t0, candidate.t0) >= 0.02;
+    });
+    const existingHit = (candidate) => neuralTokens.some((token) => {
+      if (token.k !== candidate.k) return false;
+      const overlap = Math.min(token.t1, candidate.t1) -
+        Math.max(token.t0, candidate.t0);
+      return overlap >= Math.min(0.025, (candidate.t1 - candidate.t0) * 0.4);
+    });
+
+    for (let i = 1; i + 1 < frameTokens.length; i++) {
+      const previous = frameTokens[i - 1];
+      const token = frameTokens[i];
+      const next = frameTokens[i + 1];
+      const duration = token.t1 - token.t0;
+      const leftGap = token.t0 - previous.t1;
+      const rightGap = next.t0 - token.t1;
+      const reverses = (token.k - previous.k) * (next.k - token.k) < 0;
+      if (duration >= 0.025 && duration <= maxTurnSec &&
+          leftGap <= maxNeighborGapSec && rightGap <= maxNeighborGapSec &&
+          reverses && !existingHit(token) && !wasSuppressed(token)) {
+        missingTurns.push(i);
+      }
+    }
+    if (!missingTurns.length) return neuralTokens;
+
+    // Expand each missing turn to its connected frame-level gesture. Replacing
+    // the whole gesture avoids overlapping coarse and fine tokens on the canvas.
+    const components = [];
+    const componentGapSec = 0.08;
+    for (const index of missingTurns) {
+      let first = index;
+      let last = index;
+      while (first > 0 &&
+          frameTokens[first].t0 - frameTokens[first - 1].t1 <= componentGapSec) {
+        first--;
+      }
+      while (last + 1 < frameTokens.length &&
+          frameTokens[last + 1].t0 - frameTokens[last].t1 <= componentGapSec) {
+        last++;
+      }
+      const previous = components[components.length - 1];
+      if (previous && first <= previous.last + 1) {
+        previous.last = Math.max(previous.last, last);
+      } else {
+        components.push({ first, last });
+      }
+    }
+
+    let result = neuralTokens.slice();
+    for (const component of components) {
+      const replacements = frameTokens
+        .slice(component.first, component.last + 1)
+        .map((token) => Object.assign({}, token, { hybridOrnament: true }));
+      const start = replacements[0].t0;
+      const end = replacements[replacements.length - 1].t1;
+      result = result.filter((token) => {
+        const midpoint = (token.t0 + token.t1) / 2;
+        const overlap = Math.max(
+          0,
+          Math.min(token.t1, end) - Math.max(token.t0, start)
+        );
+        const duration = token.t1 - token.t0;
+        return !(midpoint >= start && midpoint <= end ||
+          overlap >= duration * 0.45);
+      });
+      result.push(...replacements);
+    }
+    result.sort((a, b) => a.t0 - b.t0);
+    return result;
+  }
+
+  /**
    * Convert singing-specific neural note regions to swara tokens. GAME already
-   * decides where discrete notes start and end, so do not re-segment its output
-   * with frame heuristics. The robust f0 contour is still used to describe
-   * within-note meend and andolan.
+   * supplies the primary boundaries. A conservative frame-level fusion restores
+   * only stable turning notes that GAME hid inside a broad ornament region.
    */
   function notateRegions(regions, f0, clarity, hopSec, saHz, opts) {
     opts = opts || {};
@@ -1530,7 +1616,8 @@
     const thresh = opts.clarityThresh != null ? opts.clarityThresh : 0.5;
     const lineGapSec = opts.lineGapSec != null ? opts.lineGapSec : (clean ? 1.0 : 0.6);
     const rms = opts.rms;
-    const tokens = [];
+    let tokens = [];
+    const suppressedTurns = [];
 
     for (const region of regions || []) {
       const t0 = Number(region.onset != null ? region.onset : region.t0);
@@ -1624,11 +1711,36 @@
         if (extremeIndex > 0 && extremeIndex < path.length - 2 &&
             entered >= 70 && recovered >= 35 &&
             excursion >= requiredExcursion) {
+          suppressedTurns.push({
+            t0: token.t0,
+            t1: token.t1,
+            k: token.k,
+          });
           next.t0 = token.t0;
           tokens.splice(i, 1);
           i--;
         }
       }
+    }
+    if (ornaments && f0 && clarity && hopSec > 0) {
+      const frameOpts = Object.assign({}, opts, {
+        ornaments: true,
+        ornMinMs: Math.min(
+          opts.ornMinMs != null ? opts.ornMinMs : 30,
+          25
+        ),
+        landingCenterCents: opts.landingCenterCents != null
+          ? opts.landingCenterCents
+          : 45,
+      });
+      const frameTokens = notate(
+        f0,
+        clarity,
+        hopSec,
+        saHz,
+        frameOpts
+      ).tokens;
+      tokens = fuseTurningOrnaments(tokens, frameTokens, suppressedTurns);
     }
     for (const token of tokens) delete token._contour;
     return { tokens, phrases: groupPhrases(tokens, lineGapSec, clean) };
