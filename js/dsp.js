@@ -1648,14 +1648,48 @@
         t1 = midpoint;
       }
       const path = glidePath(token);
-      segments.push({
-        kind: path.length > 1 ? 'slide' : 'hold',
-        t0,
-        t1,
-        c0: entryCents(token),
-        c1: exitCents(token),
-        tokenIndex: index,
-      });
+      const continuousPath = path.length > 1 && path.every((k, pathIndex) =>
+        pathIndex === 0 || Math.abs(k - path[pathIndex - 1]) <= 1);
+      if (path.length > 1 && !continuousPath) {
+        // A collapsed "glide" that skips directly between swaras is usually a
+        // scale or articulated run whose vibrato confused the glide detector.
+        // Restore its targets as a readable staircase instead of drawing one
+        // broad diagonal across several notes.
+        const slot = (t1 - t0) / path.length;
+        for (let pathIndex = 0; pathIndex < path.length; pathIndex++) {
+          const target = Math.round(path[pathIndex]) * 100;
+          const holdStart = t0 + slot * pathIndex;
+          const holdEnd = t0 + slot * (pathIndex + 1);
+          segments.push({
+            kind: 'hold',
+            t0: holdStart,
+            t1: holdEnd,
+            c0: target,
+            c1: target,
+            tokenIndex: index,
+          });
+          if (pathIndex + 1 < path.length) {
+            const nextTarget = Math.round(path[pathIndex + 1]) * 100;
+            segments.push({
+              kind: 'step',
+              t0: holdEnd,
+              t1: holdEnd,
+              c0: target,
+              c1: nextTarget,
+              tokenIndex: index,
+            });
+          }
+        }
+      } else {
+        segments.push({
+          kind: path.length > 1 ? 'slide' : 'hold',
+          t0,
+          t1,
+          c0: entryCents(token),
+          c1: exitCents(token),
+          tokenIndex: index,
+        });
+      }
       if (next) segments.push({ ...next, tokenIndex: index });
     }
     return segments;

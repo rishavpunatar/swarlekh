@@ -337,13 +337,30 @@ test('practice contour: a sustained pitch traversal is a simplified slide', () =
 
 test('practice contour: a collapsed meend token remains one intentional slide', () => {
   const segments = DSP.buildPracticeContour(
-    [{ t0: 0, t1: 1.4, k: 7, glide: true, via: [0, 2, 4, 5, 7] }],
+    [{ t0: 0, t1: 1.4, k: 7, glide: true, via: [0, 1, 2, 3, 4, 5, 6, 7] }],
     new Float32Array(140),
     0.01
   );
   assert.deepStrictEqual(segments, [
     { kind: 'slide', t0: 0, t1: 1.4, c0: 0, c1: 700, tokenIndex: 0 },
   ]);
+});
+
+test('practice contour: a sparse glide path is restored as note steps', () => {
+  const segments = DSP.buildPracticeContour(
+    [{ t0: 0, t1: 2.4, k: 5, glide: true, via: [1, 3, 5] }],
+    new Float32Array(240),
+    0.01
+  );
+  assert.deepStrictEqual(
+    segments.filter((segment) => segment.kind === 'hold').map((segment) => segment.c0),
+    [100, 300, 500]
+  );
+  assert.strictEqual(
+    segments.filter((segment) => segment.kind === 'step').length,
+    2
+  );
+  assert.ok(!segments.some((segment) => segment.kind === 'slide'));
 });
 
 test('practice contour: a vocal pause never bridges two notes', () => {

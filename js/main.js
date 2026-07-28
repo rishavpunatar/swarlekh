@@ -51,7 +51,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=45';
+  const WORKER_URL = 'js/worker.js?v=46';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -719,6 +719,9 @@
   function viaDisplay(via) {
     const sc = state.scale;
     if (!sc || !via || via.length <= 2) return via || [];
+    // Skipped semitones indicate articulated swaras, not intermediate pitches
+    // swept through by a continuous meend. Name every one of those targets.
+    if (via.some((k, index) => index > 0 && Math.abs(k - via[index - 1]) > 1)) return via;
     return via.filter((k, i) => i === 0 || i === via.length - 1 || sc.has(((k % 12) + 12) % 12));
   }
 
@@ -1581,10 +1584,8 @@
 
     // ---- Singer-facing practice contour. Stable notes are horizontal target
     // holds, fast changes are clean steps, and a continuous pitch traversal is
-    // one eased slide. The detailed analysis contour remains available to the
+    // one straight slide. The detailed analysis contour remains available to the
     // notation engine, but vibrato and tracker jitter are not drawing commands.
-    const { f0, hopSec } = state;
-    const csm = state.centsSm || new Float32Array(0);
     const practice = state.practiceContour || [];
     cctx.lineJoin = 'round';
     cctx.lineCap = 'round';
@@ -1600,15 +1601,10 @@
       cctx.beginPath();
       cctx.moveTo(x0, y0);
       if (segment.kind === 'slide') {
-        const dx = x1 - x0;
         cctx.strokeStyle = colors.accent;
         cctx.lineWidth = 3.4;
         cctx.globalAlpha = 0.9;
-        cctx.bezierCurveTo(
-          x0 + dx * 0.35, y0,
-          x1 - dx * 0.35, y1,
-          x1, y1
-        );
+        cctx.lineTo(x1, y1);
       } else if (segment.kind === 'step') {
         cctx.strokeStyle = colors.accent;
         cctx.lineWidth = 1.6;
@@ -1619,35 +1615,6 @@
         cctx.lineWidth = 3;
         cctx.globalAlpha = 0.88;
         cctx.lineTo(Math.max(x0 + 1, x1), y1);
-      }
-      cctx.stroke();
-    }
-
-    // Very short or uncertain clips can produce no notation tokens. Keep a
-    // subdued fallback contour so the canvas is not blank, but never bridge a
-    // vocal pause and never spline through frame-level wobble.
-    if (!practice.length) {
-      const i0 = Math.max(0, Math.floor(scrollSec / hopSec));
-      const i1 = Math.min(f0.length - 1, Math.ceil(tEnd / hopSec));
-      let drawing = false;
-      cctx.strokeStyle = colors.contour;
-      cctx.lineWidth = 2;
-      cctx.globalAlpha = 0.55;
-      cctx.beginPath();
-      for (let index = i0; index <= i1; index++) {
-        const value = csm[index];
-        if (!Number.isFinite(value)) {
-          drawing = false;
-          continue;
-        }
-        const x = tToX(index * hopSec);
-        const y = cToY(value);
-        if (!drawing) {
-          cctx.moveTo(x, y);
-          drawing = true;
-        } else {
-          cctx.lineTo(x, y);
-        }
       }
       cctx.stroke();
     }
