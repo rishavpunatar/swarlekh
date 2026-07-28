@@ -1090,6 +1090,47 @@
     return out;
   }
 
+  function groupPhrases(tokens, lineGapSec, clean) {
+    const phrases = [];
+    let cur = null;
+    for (const tk of tokens) {
+      if (!cur || tk.t0 - cur.t1 >= lineGapSec) {
+        cur = { t0: tk.t0, t1: tk.t1, tokens: [tk] };
+        phrases.push(cur);
+      } else {
+        cur.tokens.push(tk);
+        cur.t1 = tk.t1;
+      }
+    }
+    // Fold fragments (a split breath, a stray syllable) into the closer line.
+    if (clean) {
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = phrases.length - 1; i >= 0; i--) {
+          const ph = phrases[i];
+          if (ph.t1 - ph.t0 >= 0.7 || ph.tokens.length > 2) continue;
+          const prev = phrases[i - 1], next = phrases[i + 1];
+          const gp = prev ? ph.t0 - prev.t1 : Infinity;
+          const gn = next ? next.t0 - ph.t1 : Infinity;
+          if (Math.min(gp, gn) > 2.2) continue;
+          if (gp <= gn) {
+            prev.tokens.push(...ph.tokens);
+            prev.t1 = ph.t1;
+          } else {
+            next.tokens.unshift(...ph.tokens);
+            next.t0 = ph.t0;
+          }
+          phrases.splice(i, 1);
+        }
+      }
+    }
+    let prevEnd = 0;
+    for (const ph of phrases) {
+      ph.section = ph.t0 - prevEnd >= 4;
+      prevEnd = ph.t1;
+    }
+    return phrases;
+  }
+
   /**
    * Quantize an f0 track to swara tokens relative to saHz.
    *
@@ -1381,46 +1422,71 @@
       tokens = split;
     }
 
-    // Lines: split where the singer pauses >= lineGapSec.
-    const phrases = [];
-    let cur = null;
-    for (const tk of tokens) {
-      if (!cur || tk.t0 - cur.t1 >= lineGapSec) {
-        cur = { t0: tk.t0, t1: tk.t1, tokens: [tk] };
-        phrases.push(cur);
-      } else {
-        cur.tokens.push(tk);
-        cur.t1 = tk.t1;
-      }
-    }
-    // Fold fragments (a split breath, a stray syllable) into the closer line.
-    if (clean) {
-      for (let pass = 0; pass < 2; pass++) {
-        for (let i = phrases.length - 1; i >= 0; i--) {
-          const ph = phrases[i];
-          if (ph.t1 - ph.t0 >= 0.7 || ph.tokens.length > 2) continue;
-          const prev = phrases[i - 1], next = phrases[i + 1];
-          const gp = prev ? ph.t0 - prev.t1 : Infinity;
-          const gn = next ? next.t0 - ph.t1 : Infinity;
-          if (Math.min(gp, gn) > 2.2) continue;
-          if (gp <= gn) {
-            prev.tokens.push(...ph.tokens);
-            prev.t1 = ph.t1;
-          } else {
-            next.tokens.unshift(...ph.tokens);
-            next.t0 = ph.t0;
-          }
-          phrases.splice(i, 1);
+    return { tokens, phrases: groupPhrases(tokens, lineGapSec, clean) };
+  }
+
+  /**
+   * Convert singing-specific neural note regions to swara tokens. GAME already
+   * decides where discrete notes start and end, so do not re-segment its output
+   * with frame heuristics. The robust f0 contour is still used to describe
+   * within-note meend and andolan.
+   */
+  function notateRegions(regions, f0, clarity, hopSec, saHz, opts) {
+    opts = opts || {};
+    const clean = opts.clean === true;
+    const ornaments = opts.ornaments !== false;
+    const thresh = opts.clarityThresh != null ? opts.clarityThresh : 0.5;
+    const lineGapSec = opts.lineGapSec != null ? opts.lineGapSec : (clean ? 1.0 : 0.6);
+    const rms = opts.rms;
+    const tokens = [];
+
+    for (const region of regions || []) {
+      const t0 = Number(region.onset != null ? region.onset : region.t0);
+      const t1 = Number(region.offset != null ? region.offset : region.t1);
+      const frequency = region.frequency > 0
+        ? Number(region.frequency)
+        : 440 * Math.pow(2, (Number(region.midi) - 69) / 12);
+      if (!(t0 >= 0) || !(t1 > t0) || !(frequency > 0)) continue;
+
+      const noteCents = 1200 * Math.log2(frequency / saHz);
+      const contour = [];
+      let confidenceSum = 0, loudnessSum = 0, frameCount = 0;
+      const i0 = Math.max(0, Math.floor(t0 / hopSec));
+      const i1 = Math.min(f0 ? f0.length : 0, Math.ceil(t1 / hopSec));
+      for (let i = i0; i < i1; i++) {
+        if (f0[i] > 0 && (!clarity || clarity[i] >= thresh)) {
+          contour.push(1200 * Math.log2(f0[i] / saHz));
         }
+        if (clarity) confidenceSum += clarity[i] || 0;
+        if (rms) loudnessSum += rms[i] || 0;
+        frameCount++;
       }
+
+      const character = ornaments && contour.length >= 2
+        ? analyzeToken(contour, 0, contour.length, hopSec)
+        : { mean: noteCents, meend: false, andolan: false };
+      const token = {
+        t0,
+        t1,
+        k: Math.round(noteCents / 100),
+        cents: contour.length ? character.mean : noteCents,
+        meend: !!character.meend,
+        andolan: !!character.andolan,
+        neural: true,
+      };
+      if (character.andolan) {
+        token.andolanLo = character.andolanLo;
+        token.andolanHi = character.andolanHi;
+      }
+      if (frameCount) {
+        token.conf = confidenceSum / frameCount;
+        token.loud = loudnessSum / frameCount;
+      }
+      tokens.push(token);
     }
-    // Section breaks at long gaps (interludes, verse boundaries).
-    let prevEnd = 0;
-    for (const ph of phrases) {
-      ph.section = ph.t0 - prevEnd >= 4;
-      prevEnd = ph.t1;
-    }
-    return { tokens, phrases };
+
+    tokens.sort((a, b) => a.t0 - b.t0);
+    return { tokens, phrases: groupPhrases(tokens, lineGapSec, clean) };
   }
 
   /** Keep a glide's endpoints plus the in-scale swaras it passes through, so a
@@ -1822,7 +1888,7 @@
   }
 
   return {
-    preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notationText, analyzeRaga,
+    preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notateRegions, notationText, analyzeRaga,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     pitchShift, timeStretch, resampleLinear, formantCorrect,
     SWARA_LETTERS,

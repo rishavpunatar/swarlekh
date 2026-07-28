@@ -229,6 +229,53 @@ test('notate: clean three-note track gives three tokens', () => {
   assert.deepStrictEqual(tokens.map(t => t.k), [0, 4, 7]);
 });
 
+test('notateRegions: neural boundaries preserve every short murki note', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(0) },
+    { onset: 0.3, offset: 0.335, frequency: st(4) },
+    { onset: 0.335, offset: 0.37, frequency: st(2) },
+    { onset: 0.37, offset: 0.405, frequency: st(4) },
+    { onset: 0.405, offset: 0.8, frequency: st(5) },
+  ];
+  const f0 = new Float32Array(80);
+  const clarity = new Float32Array(80).fill(0.9);
+  for (const region of regions) {
+    for (let i = Math.floor(region.onset / hopSec);
+         i < Math.ceil(region.offset / hopSec); i++) {
+      f0[i] = region.frequency;
+    }
+  }
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true }
+  );
+  assert.deepStrictEqual(tokens.map((token) => token.k), [0, 4, 2, 4, 5]);
+  assert.ok(tokens.slice(1, 4).every((token) => token.t1 - token.t0 <= 0.036));
+});
+
+test('notateRegions: repeated same pitch remains one token per articulation', () => {
+  const regions = [
+    { onset: 0, offset: 0.2, frequency: st(7) },
+    { onset: 0.2, offset: 0.4, frequency: st(7) },
+    { onset: 0.4, offset: 0.6, frequency: st(7) },
+  ];
+  const { tokens } = DSP.notateRegions(
+    regions,
+    new Float32Array(60).fill(st(7)),
+    new Float32Array(60).fill(0.9),
+    0.01,
+    SA,
+    { clean: true }
+  );
+  assert.strictEqual(tokens.length, 3);
+  assert.deepStrictEqual(tokens.map((token) => token.k), [7, 7, 7]);
+});
+
 test('notationText: renders timestamps and sustain dashes', () => {
   const phrases = [{
     t0: 62.2, t1: 64,

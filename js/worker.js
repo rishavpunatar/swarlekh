@@ -5,7 +5,7 @@
  *   • default — DSP.yinTrack (fast, dependency-free DSP).
  *   • neural  — CREPE-tiny via TensorFlow.js (WASM backend), loaded lazily ONLY
  *     when requested, all self-hosted (no third-party fetch, no audio egress).
- *   • external — voice separation + Praat-CC from the optional local server.
+ *   • external — separated voice + RMVPE/Praat/GAME from the local server.
  * Everything downstream (stabilizeOctave → detectTonic → notate) is identical,
  * so the engine only changes how the f0 track is produced. */
 'use strict';
@@ -123,6 +123,7 @@ self.onmessage = async function (e) {
       hopSec: track.hopSec,
       tonic,
       onsets,
+      noteRegions: e.data.providedNoteRegions || [],
       synth,
       sr,
     }, [stab.f0.buffer, f0raw.buffer, track.clarity.buffer, track.rms.buffer, synth.buffer]);

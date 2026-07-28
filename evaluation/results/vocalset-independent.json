@@ -1,0 +1,2242 @@
+{
+  "dataset": "Annotated VocalSet (corrected annotations)",
+  "protocol": {
+    "frozenBeforeScoring": true,
+    "samplePolicy": "One scale and one arpeggio per singer, lowest SHA-256 rank over matching annotated filenames.",
+    "sampleSalt": "swarlekh:vocalset-independent:v1",
+    "annotationTree": "Annotated VocalSet/extended 1/with file header",
+    "singers": 20,
+    "tracks": 40
+  },
+  "baselineConfig": {
+    "clarityThresh": 0.5,
+    "minNoteMs": 130,
+    "ornMinMs": 25,
+    "onsetMinMs": 100,
+    "gateCentsPerSec": 900,
+    "quantizeHysteresisCents": 12
+  },
+  "game": {
+    "model": "GAME-1.0.3-small-onnx",
+    "modelFingerprint": "c3705bce51ce224df38f0a4737a560b97a30a3159e7c3250149be7f746d2f9f2",
+    "parameters": {
+      "steps": 2,
+      "boundaryThreshold": 0.2,
+      "presenceThreshold": 0.2,
+      "radius": 2,
+      "seed": 20260728
+    }
+  },
+  "results": {
+    "baseline": {
+      "onsetPitch": {
+        "precision": 0.096051227321238,
+        "recall": 0.1875,
+        "f1": 0.12702893436838392
+      },
+      "onsetOffsetPitch": {
+        "precision": 0.03628601921024546,
+        "recall": 0.07083333333333333,
+        "f1": 0.04798870853916725
+      },
+      "counts": {
+        "onset": {
+          "matches": 90,
+          "reference": 480,
+          "estimated": 937
+        },
+        "strict": {
+          "matches": 34,
+          "reference": 480,
+          "estimated": 937
+        }
+      }
+    },
+    "game": {
+      "onsetPitch": {
+        "precision": 0.17660044150110377,
+        "recall": 0.16666666666666666,
+        "f1": 0.1714898177920686
+      },
+      "onsetOffsetPitch": {
+        "precision": 0.13024282560706402,
+        "recall": 0.12291666666666666,
+        "f1": 0.1264737406216506
+      },
+      "counts": {
+        "onset": {
+          "matches": 80,
+          "reference": 480,
+          "estimated": 453
+        },
+        "strict": {
+          "matches": 59,
+          "reference": 480,
+          "estimated": 453
+        }
+      }
+    }
+  },
+  "tracks": [
+    {
+      "basename": "f1_scales_c_slow_piano_e",
+      "singer": "female1",
+      "kind": "scales",
+      "sampleRank": "095fbacb893199e3804a891f7554dbde9d28e3c518f5853e0be66c1f4c1cee15",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/f1_scales_c_slow_piano_e.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 28,
+        "onsetPitch": {
+          "precision": 0.07142857142857142,
+          "recall": 0.11764705882352941,
+          "f1": 0.08888888888888889,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 28
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 28
+          }
+        }
+      },
+      "game": {
+        "notes": 13,
+        "onsetPitch": {
+          "precision": 0.15384615384615385,
+          "recall": 0.11764705882352941,
+          "f1": 0.13333333333333333,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 13
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.07692307692307693,
+          "recall": 0.058823529411764705,
+          "f1": 0.06666666666666667,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 13
+          }
+        }
+      }
+    },
+    {
+      "basename": "f1_arpeggios_lip_trill_i",
+      "singer": "female1",
+      "kind": "arpeggios",
+      "sampleRank": "0b9b9b8500e28a634a85cffe433f24f51d56cf76663951469c3cf11fbe557257",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/lip_trill/f1_arpeggios_lip_trill_i.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 20,
+        "onsetPitch": {
+          "precision": 0.05,
+          "recall": 0.14285714285714285,
+          "f1": 0.07407407407407408,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 20
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 20
+          }
+        }
+      },
+      "game": {
+        "notes": 4,
+        "onsetPitch": {
+          "precision": 0.25,
+          "recall": 0.14285714285714285,
+          "f1": 0.18181818181818182,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 4
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.25,
+          "recall": 0.14285714285714285,
+          "f1": 0.18181818181818182,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 4
+          }
+        }
+      }
+    },
+    {
+      "basename": "f2_scales_belt_a",
+      "singer": "female2",
+      "kind": "scales",
+      "sampleRank": "090b77de5b853498a53d81fef3b4b581971b664d913a2a09186d175d5c5484e4",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/belt/f2_scales_belt_a.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 13,
+        "onsetPitch": {
+          "precision": 0.07692307692307693,
+          "recall": 0.058823529411764705,
+          "f1": 0.06666666666666667,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 13
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 13
+          }
+        }
+      },
+      "game": {
+        "notes": 16,
+        "onsetPitch": {
+          "precision": 0.1875,
+          "recall": 0.17647058823529413,
+          "f1": 0.1818181818181818,
+          "counts": {
+            "matches": 3,
+            "reference": 17,
+            "estimated": 16
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.125,
+          "recall": 0.11764705882352941,
+          "f1": 0.12121212121212122,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 16
+          }
+        }
+      }
+    },
+    {
+      "basename": "f2_arpeggios_f_slow_piano_e",
+      "singer": "female2",
+      "kind": "arpeggios",
+      "sampleRank": "09c0c1a2ad100f1927db7b21e62f55762de0fa64888913a677119a19850a2fed",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/f2_arpeggios_f_slow_piano_e.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 33,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 33
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 33
+          }
+        }
+      },
+      "game": {
+        "notes": 6,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 6
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 6
+          }
+        }
+      }
+    },
+    {
+      "basename": "f3_scales_vibrato_e",
+      "singer": "female3",
+      "kind": "scales",
+      "sampleRank": "00c7d5299c898e7b369c8759406c157fa375830c8aa56fe37620446a716c4fd5",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/vibrato/f3_scales_vibrato_e.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 27,
+        "onsetPitch": {
+          "precision": 0.07407407407407407,
+          "recall": 0.11764705882352941,
+          "f1": 0.0909090909090909,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 27
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 27
+          }
+        }
+      },
+      "game": {
+        "notes": 15,
+        "onsetPitch": {
+          "precision": 0.13333333333333333,
+          "recall": 0.11764705882352941,
+          "f1": 0.125,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 15
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.06666666666666667,
+          "recall": 0.058823529411764705,
+          "f1": 0.0625,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 15
+          }
+        }
+      }
+    },
+    {
+      "basename": "f3_arpeggios_f_fast_forte_o",
+      "singer": "female3",
+      "kind": "arpeggios",
+      "sampleRank": "01341ebf4e56671d10927a7a8c692beb50ddedef00f00ca488f0493535c3cf55",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_forte/f3_arpeggios_f_fast_forte_o.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 17,
+        "onsetPitch": {
+          "precision": 0.29411764705882354,
+          "recall": 0.7142857142857143,
+          "f1": 0.4166666666666667,
+          "counts": {
+            "matches": 5,
+            "reference": 7,
+            "estimated": 17
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.11764705882352941,
+          "recall": 0.2857142857142857,
+          "f1": 0.16666666666666666,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 17
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0.2857142857142857,
+          "recall": 0.2857142857142857,
+          "f1": 0.2857142857142857,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.14285714285714285,
+          "recall": 0.14285714285714285,
+          "f1": 0.14285714285714285,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "f4_scales_c_fast_piano_o",
+      "singer": "female4",
+      "kind": "scales",
+      "sampleRank": "08aafa7d9e1d4cba8346966f3581ef9445f99ff3c511ce483ac67132c511b460",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_piano/f4_scales_c_fast_piano_o.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 11,
+        "onsetPitch": {
+          "precision": 0.09090909090909091,
+          "recall": 0.058823529411764705,
+          "f1": 0.07142857142857142,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 11
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.09090909090909091,
+          "recall": 0.058823529411764705,
+          "f1": 0.07142857142857142,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 11
+          }
+        }
+      },
+      "game": {
+        "notes": 17,
+        "onsetPitch": {
+          "precision": 0.4117647058823529,
+          "recall": 0.4117647058823529,
+          "f1": 0.4117647058823529,
+          "counts": {
+            "matches": 7,
+            "reference": 17,
+            "estimated": 17
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.23529411764705882,
+          "recall": 0.23529411764705882,
+          "f1": 0.23529411764705882,
+          "counts": {
+            "matches": 4,
+            "reference": 17,
+            "estimated": 17
+          }
+        }
+      }
+    },
+    {
+      "basename": "f4_arpeggios_vibrato_e",
+      "singer": "female4",
+      "kind": "arpeggios",
+      "sampleRank": "0146a91bed1c9c801b3cf9ef8c47211700100d3cdc535f1f1dafe66edc78fb47",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/vibrato/f4_arpeggios_vibrato_e.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 30,
+        "onsetPitch": {
+          "precision": 0.13333333333333333,
+          "recall": 0.5714285714285714,
+          "f1": 0.21621621621621623,
+          "counts": {
+            "matches": 4,
+            "reference": 7,
+            "estimated": 30
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 30
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0.5714285714285714,
+          "recall": 0.5714285714285714,
+          "f1": 0.5714285714285714,
+          "counts": {
+            "matches": 4,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.5714285714285714,
+          "recall": 0.5714285714285714,
+          "f1": 0.5714285714285714,
+          "counts": {
+            "matches": 4,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "f5_scales_f_fast_piano_i",
+      "singer": "female5",
+      "kind": "scales",
+      "sampleRank": "01120320178fe9b5b108acd3d426b4d68026ad8b23e37ee3898852d5a4e04454",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_piano/f5_scales_f_fast_piano_i.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 21,
+        "onsetPitch": {
+          "precision": 0.047619047619047616,
+          "recall": 0.058823529411764705,
+          "f1": 0.05263157894736842,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 21
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.047619047619047616,
+          "recall": 0.058823529411764705,
+          "f1": 0.05263157894736842,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 21
+          }
+        }
+      },
+      "game": {
+        "notes": 10,
+        "onsetPitch": {
+          "precision": 0.2,
+          "recall": 0.11764705882352941,
+          "f1": 0.14814814814814817,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 10
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.2,
+          "recall": 0.11764705882352941,
+          "f1": 0.14814814814814817,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 10
+          }
+        }
+      }
+    },
+    {
+      "basename": "f5_arpeggios_lip_trill_e",
+      "singer": "female5",
+      "kind": "arpeggios",
+      "sampleRank": "0d673748f23c61298d97f0eebef24dfbd04ea93e917b248277fdd7688b9d4131",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/lip_trill/f5_arpeggios_lip_trill_e.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 24,
+        "onsetPitch": {
+          "precision": 0.125,
+          "recall": 0.42857142857142855,
+          "f1": 0.19354838709677416,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 24
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.041666666666666664,
+          "recall": 0.14285714285714285,
+          "f1": 0.06451612903225806,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 24
+          }
+        }
+      },
+      "game": {
+        "notes": 6,
+        "onsetPitch": {
+          "precision": 0.3333333333333333,
+          "recall": 0.2857142857142857,
+          "f1": 0.30769230769230765,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 6
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.3333333333333333,
+          "recall": 0.2857142857142857,
+          "f1": 0.30769230769230765,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 6
+          }
+        }
+      }
+    },
+    {
+      "basename": "f6_scales_straight_i",
+      "singer": "female6",
+      "kind": "scales",
+      "sampleRank": "0539967922570e533b3ecbfd3a0918540ae0d07d70f869be2528b6e174665f79",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/straight/f6_scales_straight_i.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 2,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 2
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 2
+          }
+        }
+      },
+      "game": {
+        "notes": 17,
+        "onsetPitch": {
+          "precision": 0.17647058823529413,
+          "recall": 0.17647058823529413,
+          "f1": 0.17647058823529413,
+          "counts": {
+            "matches": 3,
+            "reference": 17,
+            "estimated": 17
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.11764705882352941,
+          "recall": 0.11764705882352941,
+          "f1": 0.11764705882352941,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 17
+          }
+        }
+      }
+    },
+    {
+      "basename": "f6_arpeggios_f_fast_piano_o",
+      "singer": "female6",
+      "kind": "arpeggios",
+      "sampleRank": "0047efff9195ce7633f50a350610b0a8a369f5d54547770223e11c74e0312167",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_piano/f6_arpeggios_f_fast_piano_o.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 9,
+        "onsetPitch": {
+          "precision": 0.3333333333333333,
+          "recall": 0.42857142857142855,
+          "f1": 0.375,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 9
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.3333333333333333,
+          "recall": 0.42857142857142855,
+          "f1": 0.375,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 9
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0.42857142857142855,
+          "recall": 0.42857142857142855,
+          "f1": 0.42857142857142855,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.2857142857142857,
+          "recall": 0.2857142857142857,
+          "f1": 0.2857142857142857,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "f7_scales_vibrato_i",
+      "singer": "female7",
+      "kind": "scales",
+      "sampleRank": "06149030864c42d4021bcd06a2b1f23a8504939b04c388d55f519f915aacf7e2",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/vibrato/f7_scales_vibrato_i.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 20,
+        "onsetPitch": {
+          "precision": 0.1,
+          "recall": 0.11764705882352941,
+          "f1": 0.1081081081081081,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 20
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 20
+          }
+        }
+      },
+      "game": {
+        "notes": 15,
+        "onsetPitch": {
+          "precision": 0.06666666666666667,
+          "recall": 0.058823529411764705,
+          "f1": 0.0625,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 15
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 15
+          }
+        }
+      }
+    },
+    {
+      "basename": "f7_arpeggios_f_slow_piano_o",
+      "singer": "female7",
+      "kind": "arpeggios",
+      "sampleRank": "029a4a8d2e2dcd78b97ffe4df3f97e9c0f9d0080016c448a6b8318275b08b20c",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/f7_arpeggios_f_slow_piano_o.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 38,
+        "onsetPitch": {
+          "precision": 0.05263157894736842,
+          "recall": 0.2857142857142857,
+          "f1": 0.08888888888888889,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 38
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 38
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0.42857142857142855,
+          "recall": 0.42857142857142855,
+          "f1": 0.42857142857142855,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.42857142857142855,
+          "recall": 0.42857142857142855,
+          "f1": 0.42857142857142855,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "f8_scales_straight_e",
+      "singer": "female8",
+      "kind": "scales",
+      "sampleRank": "04db4596b7c3310e2cb74a5db414d64873358c008f46e75cb06381956d211c51",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/straight/f8_scales_straight_e.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 15,
+        "onsetPitch": {
+          "precision": 0.26666666666666666,
+          "recall": 0.23529411764705882,
+          "f1": 0.25,
+          "counts": {
+            "matches": 4,
+            "reference": 17,
+            "estimated": 15
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.26666666666666666,
+          "recall": 0.23529411764705882,
+          "f1": 0.25,
+          "counts": {
+            "matches": 4,
+            "reference": 17,
+            "estimated": 15
+          }
+        }
+      },
+      "game": {
+        "notes": 18,
+        "onsetPitch": {
+          "precision": 0.5,
+          "recall": 0.5294117647058824,
+          "f1": 0.5142857142857143,
+          "counts": {
+            "matches": 9,
+            "reference": 17,
+            "estimated": 18
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.3888888888888889,
+          "recall": 0.4117647058823529,
+          "f1": 0.39999999999999997,
+          "counts": {
+            "matches": 7,
+            "reference": 17,
+            "estimated": 18
+          }
+        }
+      }
+    },
+    {
+      "basename": "f8_arpeggios_vibrato_i",
+      "singer": "female8",
+      "kind": "arpeggios",
+      "sampleRank": "05b0c608081aed646575665afc28796c47c2274a1be8a16fb88f0ebee0d2c228",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/vibrato/f8_arpeggios_vibrato_i.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 32,
+        "onsetPitch": {
+          "precision": 0.0625,
+          "recall": 0.2857142857142857,
+          "f1": 0.10256410256410256,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 32
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.03125,
+          "recall": 0.14285714285714285,
+          "f1": 0.05128205128205128,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 32
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0.42857142857142855,
+          "recall": 0.42857142857142855,
+          "f1": 0.42857142857142855,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.42857142857142855,
+          "recall": 0.42857142857142855,
+          "f1": 0.42857142857142855,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "f9_scales_f_fast_forte_u",
+      "singer": "female9",
+      "kind": "scales",
+      "sampleRank": "0058528bf782545c84f989602685ca82d1ebd3d4b6e6463f2bf3b6904d6277fb",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_forte/f9_scales_f_fast_forte_u.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 15,
+        "onsetPitch": {
+          "precision": 0.06666666666666667,
+          "recall": 0.058823529411764705,
+          "f1": 0.0625,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 15
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 15
+          }
+        }
+      },
+      "game": {
+        "notes": 17,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 17
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 17
+          }
+        }
+      }
+    },
+    {
+      "basename": "f9_arpeggios_breathy_a",
+      "singer": "female9",
+      "kind": "arpeggios",
+      "sampleRank": "021d723df29991060773c1a71e1d26713c18468a1123fcf4690840d4294f003a",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/breathy/f9_arpeggios_breathy_a.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 20,
+        "onsetPitch": {
+          "precision": 0.1,
+          "recall": 0.2857142857142857,
+          "f1": 0.14814814814814817,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 20
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.05,
+          "recall": 0.14285714285714285,
+          "f1": 0.07407407407407408,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 20
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0.14285714285714285,
+          "recall": 0.14285714285714285,
+          "f1": 0.14285714285714285,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.14285714285714285,
+          "recall": 0.14285714285714285,
+          "f1": 0.14285714285714285,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "m1_scales_c_slow_piano_o",
+      "singer": "male1",
+      "kind": "scales",
+      "sampleRank": "10f260565c322514c8249c66240c2aaf15199721c7b4c4cb97513c01bc276b23",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/m1_scales_c_slow_piano_o.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 40,
+        "onsetPitch": {
+          "precision": 0.05,
+          "recall": 0.11764705882352941,
+          "f1": 0.07017543859649122,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 40
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 40
+          }
+        }
+      },
+      "game": {
+        "notes": 14,
+        "onsetPitch": {
+          "precision": 0.14285714285714285,
+          "recall": 0.11764705882352941,
+          "f1": 0.12903225806451615,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 14
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.07142857142857142,
+          "recall": 0.058823529411764705,
+          "f1": 0.06451612903225808,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 14
+          }
+        }
+      }
+    },
+    {
+      "basename": "m1_arpeggios_f_slow_piano_e",
+      "singer": "male1",
+      "kind": "arpeggios",
+      "sampleRank": "00eb49fc3bbc3dbc57f49b0f88b1678c90b597ab125689e6ac8ba6127416d839",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/m1_arpeggios_f_slow_piano_e.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 42,
+        "onsetPitch": {
+          "precision": 0.047619047619047616,
+          "recall": 0.2857142857142857,
+          "f1": 0.08163265306122448,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 42
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.023809523809523808,
+          "recall": 0.14285714285714285,
+          "f1": 0.04081632653061224,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 42
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "m2_scales_straight_a",
+      "singer": "male2",
+      "kind": "scales",
+      "sampleRank": "152c1dd5a7ec70618df9ddd087e462ab8e7f67420bd6aad8bd0b6ccd2b001007",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/straight/m2_scales_straight_a.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 20,
+        "onsetPitch": {
+          "precision": 0.1,
+          "recall": 0.11764705882352941,
+          "f1": 0.1081081081081081,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 20
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 20
+          }
+        }
+      },
+      "game": {
+        "notes": 16,
+        "onsetPitch": {
+          "precision": 0.0625,
+          "recall": 0.058823529411764705,
+          "f1": 0.06060606060606061,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 16
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.0625,
+          "recall": 0.058823529411764705,
+          "f1": 0.06060606060606061,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 16
+          }
+        }
+      }
+    },
+    {
+      "basename": "m2_arpeggios_c_fast_forte_e",
+      "singer": "male2",
+      "kind": "arpeggios",
+      "sampleRank": "02d28cc387a5c240efe416757e39e24ef1009fba17822b04a12b15f3fdde3bef",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_forte/m2_arpeggios_c_fast_forte_e.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 12,
+        "onsetPitch": {
+          "precision": 0.3333333333333333,
+          "recall": 0.5714285714285714,
+          "f1": 0.4210526315789474,
+          "counts": {
+            "matches": 4,
+            "reference": 7,
+            "estimated": 12
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.3333333333333333,
+          "recall": 0.5714285714285714,
+          "f1": 0.4210526315789474,
+          "counts": {
+            "matches": 4,
+            "reference": 7,
+            "estimated": 12
+          }
+        }
+      },
+      "game": {
+        "notes": 6,
+        "onsetPitch": {
+          "precision": 0.5,
+          "recall": 0.42857142857142855,
+          "f1": 0.4615384615384615,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 6
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.3333333333333333,
+          "recall": 0.2857142857142857,
+          "f1": 0.30769230769230765,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 6
+          }
+        }
+      }
+    },
+    {
+      "basename": "m3_scales_belt_u",
+      "singer": "male3",
+      "kind": "scales",
+      "sampleRank": "01cb101ecf0f9fa35687b82b9d4351915e83448043c8f9f99465366cc6ecec3f",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/belt/m3_scales_belt_u.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 29,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 29
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 29
+          }
+        }
+      },
+      "game": {
+        "notes": 17,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 17
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 17
+          }
+        }
+      }
+    },
+    {
+      "basename": "m3_arpeggios_lip_trill_a",
+      "singer": "male3",
+      "kind": "arpeggios",
+      "sampleRank": "005a569bda15b6e7c440f5a44aa5fbb15b1bea5cdfb5a400b2a575a19a5afebb",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/lip_trill/m3_arpeggios_lip_trill_a.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 15,
+        "onsetPitch": {
+          "precision": 0.06666666666666667,
+          "recall": 0.14285714285714285,
+          "f1": 0.09090909090909091,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 15
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.06666666666666667,
+          "recall": 0.14285714285714285,
+          "f1": 0.09090909090909091,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 15
+          }
+        }
+      },
+      "game": {
+        "notes": 3,
+        "onsetPitch": {
+          "precision": 0.3333333333333333,
+          "recall": 0.14285714285714285,
+          "f1": 0.2,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 3
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.3333333333333333,
+          "recall": 0.14285714285714285,
+          "f1": 0.2,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 3
+          }
+        }
+      }
+    },
+    {
+      "basename": "m4_scales_f_slow_piano_e",
+      "singer": "male4",
+      "kind": "scales",
+      "sampleRank": "17cd02de084831146809b9d6245098966ad04da776c388878afbc41908181a0a",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/m4_scales_f_slow_piano_e.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 14,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 14
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 14
+          }
+        }
+      },
+      "game": {
+        "notes": 15,
+        "onsetPitch": {
+          "precision": 0.26666666666666666,
+          "recall": 0.23529411764705882,
+          "f1": 0.25,
+          "counts": {
+            "matches": 4,
+            "reference": 17,
+            "estimated": 15
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.2,
+          "recall": 0.17647058823529413,
+          "f1": 0.18750000000000003,
+          "counts": {
+            "matches": 3,
+            "reference": 17,
+            "estimated": 15
+          }
+        }
+      }
+    },
+    {
+      "basename": "m4_arpeggios_c_fast_piano_i",
+      "singer": "male4",
+      "kind": "arpeggios",
+      "sampleRank": "00d8bdb4b18b786a5964860ca73156d9af49b556802e2110eb630a5af425ff20",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_piano/m4_arpeggios_c_fast_piano_i.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 13,
+        "onsetPitch": {
+          "precision": 0.07692307692307693,
+          "recall": 0.14285714285714285,
+          "f1": 0.1,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 13
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.07692307692307693,
+          "recall": 0.14285714285714285,
+          "f1": 0.1,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 13
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "m5_scales_straight_e",
+      "singer": "male5",
+      "kind": "scales",
+      "sampleRank": "00db61ecccd5507283bbd0987c7d00f40dd426024fa89ef5e2e7c452b578ea72",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/straight/m5_scales_straight_e.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 24,
+        "onsetPitch": {
+          "precision": 0.16666666666666666,
+          "recall": 0.23529411764705882,
+          "f1": 0.19512195121951217,
+          "counts": {
+            "matches": 4,
+            "reference": 17,
+            "estimated": 24
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.125,
+          "recall": 0.17647058823529413,
+          "f1": 0.14634146341463414,
+          "counts": {
+            "matches": 3,
+            "reference": 17,
+            "estimated": 24
+          }
+        }
+      },
+      "game": {
+        "notes": 16,
+        "onsetPitch": {
+          "precision": 0.125,
+          "recall": 0.11764705882352941,
+          "f1": 0.12121212121212122,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 16
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.0625,
+          "recall": 0.058823529411764705,
+          "f1": 0.06060606060606061,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 16
+          }
+        }
+      }
+    },
+    {
+      "basename": "m5_arpeggios_c_fast_piano_a",
+      "singer": "male5",
+      "kind": "arpeggios",
+      "sampleRank": "035cf8e46feab44b2fa5b5ef5fc5548225c8505d83b2b215cb785f7b8e682693",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_piano/m5_arpeggios_c_fast_piano_a.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 14,
+        "onsetPitch": {
+          "precision": 0.07142857142857142,
+          "recall": 0.14285714285714285,
+          "f1": 0.09523809523809523,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 14
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 14
+          }
+        }
+      },
+      "game": {
+        "notes": 8,
+        "onsetPitch": {
+          "precision": 0.375,
+          "recall": 0.42857142857142855,
+          "f1": 0.39999999999999997,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 8
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.375,
+          "recall": 0.42857142857142855,
+          "f1": 0.39999999999999997,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 8
+          }
+        }
+      }
+    },
+    {
+      "basename": "m6_scales_belt_i",
+      "singer": "male6",
+      "kind": "scales",
+      "sampleRank": "01800e6478e956ce478a66ce686f4ba7cf5e71b163a036a7ebe5f6bdd419d70e",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/belt/m6_scales_belt_i.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 23,
+        "onsetPitch": {
+          "precision": 0.043478260869565216,
+          "recall": 0.058823529411764705,
+          "f1": 0.049999999999999996,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 23
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 23
+          }
+        }
+      },
+      "game": {
+        "notes": 18,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 18
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 18
+          }
+        }
+      }
+    },
+    {
+      "basename": "m6_arpeggios_c_fast_piano_o",
+      "singer": "male6",
+      "kind": "arpeggios",
+      "sampleRank": "042d196773c728eb04ce2e67e83ae9b9fe75c3842cd0e3917c2451d6420e4e72",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_piano/m6_arpeggios_c_fast_piano_o.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 14,
+        "onsetPitch": {
+          "precision": 0.21428571428571427,
+          "recall": 0.42857142857142855,
+          "f1": 0.2857142857142857,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 14
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 14
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0.14285714285714285,
+          "recall": 0.14285714285714285,
+          "f1": 0.14285714285714285,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.14285714285714285,
+          "recall": 0.14285714285714285,
+          "f1": 0.14285714285714285,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "m7_scales_f_fast_forte_a",
+      "singer": "male7",
+      "kind": "scales",
+      "sampleRank": "00652af554a5553e1329b1bea91bf1ca2ad1fd2b3ba321ba7ae6ea4f2cbd8635",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/fast_forte/m7_scales_f_fast_forte_a.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 27,
+        "onsetPitch": {
+          "precision": 0.18518518518518517,
+          "recall": 0.29411764705882354,
+          "f1": 0.22727272727272727,
+          "counts": {
+            "matches": 5,
+            "reference": 17,
+            "estimated": 27
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.18518518518518517,
+          "recall": 0.29411764705882354,
+          "f1": 0.22727272727272727,
+          "counts": {
+            "matches": 5,
+            "reference": 17,
+            "estimated": 27
+          }
+        }
+      },
+      "game": {
+        "notes": 16,
+        "onsetPitch": {
+          "precision": 0.125,
+          "recall": 0.11764705882352941,
+          "f1": 0.12121212121212122,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 16
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 16
+          }
+        }
+      }
+    },
+    {
+      "basename": "m7_arpeggios_c_slow_piano_a",
+      "singer": "male7",
+      "kind": "arpeggios",
+      "sampleRank": "0c7a39601e2951c06e62c140f2e2b8fb2fa6d7a14395465bec936ed7a92e8ffe",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/m7_arpeggios_c_slow_piano_a.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 37,
+        "onsetPitch": {
+          "precision": 0.02702702702702703,
+          "recall": 0.14285714285714285,
+          "f1": 0.045454545454545456,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 37
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 37
+          }
+        }
+      },
+      "game": {
+        "notes": 7,
+        "onsetPitch": {
+          "precision": 0.42857142857142855,
+          "recall": 0.42857142857142855,
+          "f1": 0.42857142857142855,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 7
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.42857142857142855,
+          "recall": 0.42857142857142855,
+          "f1": 0.42857142857142855,
+          "counts": {
+            "matches": 3,
+            "reference": 7,
+            "estimated": 7
+          }
+        }
+      }
+    },
+    {
+      "basename": "m8_scales_vibrato_e",
+      "singer": "male8",
+      "kind": "scales",
+      "sampleRank": "038c388856ce2a281c0a7c977cf6ac010f59a93939e66a4d669999be0d0c8b20",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/vibrato/m8_scales_vibrato_e.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 31,
+        "onsetPitch": {
+          "precision": 0.16129032258064516,
+          "recall": 0.29411764705882354,
+          "f1": 0.20833333333333331,
+          "counts": {
+            "matches": 5,
+            "reference": 17,
+            "estimated": 31
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 31
+          }
+        }
+      },
+      "game": {
+        "notes": 16,
+        "onsetPitch": {
+          "precision": 0.25,
+          "recall": 0.23529411764705882,
+          "f1": 0.24242424242424243,
+          "counts": {
+            "matches": 4,
+            "reference": 17,
+            "estimated": 16
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.1875,
+          "recall": 0.17647058823529413,
+          "f1": 0.1818181818181818,
+          "counts": {
+            "matches": 3,
+            "reference": 17,
+            "estimated": 16
+          }
+        }
+      }
+    },
+    {
+      "basename": "m8_arpeggios_f_slow_piano_i",
+      "singer": "male8",
+      "kind": "arpeggios",
+      "sampleRank": "05e216c766b8f0da9a5625f8f7cf11aadc122945dda08e339c8e7aabde575a53",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/m8_arpeggios_f_slow_piano_i.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 23,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 23
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 23
+          }
+        }
+      },
+      "game": {
+        "notes": 9,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 9
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 9
+          }
+        }
+      }
+    },
+    {
+      "basename": "m9_scales_belt_a",
+      "singer": "male9",
+      "kind": "scales",
+      "sampleRank": "0271b5420e286ed01f66e42a01815df3e75db788761a2b4e44e3014fc9fd96f2",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/belt/m9_scales_belt_a.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 16,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 16
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 16
+          }
+        }
+      },
+      "game": {
+        "notes": 17,
+        "onsetPitch": {
+          "precision": 0.058823529411764705,
+          "recall": 0.058823529411764705,
+          "f1": 0.058823529411764705,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 17
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 17
+          }
+        }
+      }
+    },
+    {
+      "basename": "m9_arpeggios_f_slow_piano_a",
+      "singer": "male9",
+      "kind": "arpeggios",
+      "sampleRank": "00b2635bce5032af8973b526e4d6a278134d38e9771eabdc53b812723a5b7095",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/m9_arpeggios_f_slow_piano_a.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 27,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 27
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 27
+          }
+        }
+      },
+      "game": {
+        "notes": 6,
+        "onsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 6
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 6
+          }
+        }
+      }
+    },
+    {
+      "basename": "m10_scales_breathy_u",
+      "singer": "male10",
+      "kind": "scales",
+      "sampleRank": "01eb43ba44c05a7d1abf6197960fa2ed8ad873876a4a9d1799a9a81466f24788",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/breathy/m10_scales_breathy_u.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 25,
+        "onsetPitch": {
+          "precision": 0.16,
+          "recall": 0.23529411764705882,
+          "f1": 0.19047619047619052,
+          "counts": {
+            "matches": 4,
+            "reference": 17,
+            "estimated": 25
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.08,
+          "recall": 0.11764705882352941,
+          "f1": 0.09523809523809526,
+          "counts": {
+            "matches": 2,
+            "reference": 17,
+            "estimated": 25
+          }
+        }
+      },
+      "game": {
+        "notes": 17,
+        "onsetPitch": {
+          "precision": 0.058823529411764705,
+          "recall": 0.058823529411764705,
+          "f1": 0.058823529411764705,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 17
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.058823529411764705,
+          "recall": 0.058823529411764705,
+          "f1": 0.058823529411764705,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 17
+          }
+        }
+      }
+    },
+    {
+      "basename": "m10_arpeggios_straight_i",
+      "singer": "male10",
+      "kind": "arpeggios",
+      "sampleRank": "059e35379a6fa35aa7cc97792d92e5a9b88db09a2307cbd01a1441f1f74bc802",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/straight/m10_arpeggios_straight_i.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 42,
+        "onsetPitch": {
+          "precision": 0.11904761904761904,
+          "recall": 0.7142857142857143,
+          "f1": 0.2040816326530612,
+          "counts": {
+            "matches": 5,
+            "reference": 7,
+            "estimated": 42
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 42
+          }
+        }
+      },
+      "game": {
+        "notes": 9,
+        "onsetPitch": {
+          "precision": 0.1111111111111111,
+          "recall": 0.14285714285714285,
+          "f1": 0.125,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 9
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.1111111111111111,
+          "recall": 0.14285714285714285,
+          "f1": 0.125,
+          "counts": {
+            "matches": 1,
+            "reference": 7,
+            "estimated": 9
+          }
+        }
+      }
+    },
+    {
+      "basename": "m11_scales_c_slow_piano_e",
+      "singer": "male11",
+      "kind": "scales",
+      "sampleRank": "00d12072232044e373aa83882b4c78718d33860dccd6303e8ddd0db98661453b",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/slow_piano/m11_scales_c_slow_piano_e.csv",
+      "referenceNotes": 17,
+      "baseline": {
+        "notes": 51,
+        "onsetPitch": {
+          "precision": 0.21568627450980393,
+          "recall": 0.6470588235294118,
+          "f1": 0.3235294117647059,
+          "counts": {
+            "matches": 11,
+            "reference": 17,
+            "estimated": 51
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.058823529411764705,
+          "recall": 0.17647058823529413,
+          "f1": 0.08823529411764706,
+          "counts": {
+            "matches": 3,
+            "reference": 17,
+            "estimated": 51
+          }
+        }
+      },
+      "game": {
+        "notes": 18,
+        "onsetPitch": {
+          "precision": 0.05555555555555555,
+          "recall": 0.058823529411764705,
+          "f1": 0.05714285714285714,
+          "counts": {
+            "matches": 1,
+            "reference": 17,
+            "estimated": 18
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 17,
+            "estimated": 18
+          }
+        }
+      }
+    },
+    {
+      "basename": "m11_arpeggios_straight_o",
+      "singer": "male11",
+      "kind": "arpeggios",
+      "sampleRank": "0df9e248d035c5690d146ddd1ab534d408db20cd8cc8c4c1023ce6a4782384c0",
+      "annotationEntry": "Annotated VocalSet/extended 1/with file header/straight/m11_arpeggios_straight_o.csv",
+      "referenceNotes": 7,
+      "baseline": {
+        "notes": 23,
+        "onsetPitch": {
+          "precision": 0.08695652173913043,
+          "recall": 0.2857142857142857,
+          "f1": 0.13333333333333333,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 23
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "counts": {
+            "matches": 0,
+            "reference": 7,
+            "estimated": 23
+          }
+        }
+      },
+      "game": {
+        "notes": 8,
+        "onsetPitch": {
+          "precision": 0.25,
+          "recall": 0.2857142857142857,
+          "f1": 0.26666666666666666,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 8
+          }
+        },
+        "onsetOffsetPitch": {
+          "precision": 0.25,
+          "recall": 0.2857142857142857,
+          "f1": 0.26666666666666666,
+          "counts": {
+            "matches": 2,
+            "reference": 7,
+            "estimated": 8
+          }
+        }
+      }
+    }
+  ]
+}

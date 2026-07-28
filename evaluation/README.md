@@ -34,11 +34,45 @@ Metrics:
 - strict note F1: also requires offset within 50 ms or 20% of note duration
 - annotator agreement: the same note metrics between the two human labels
 
-The evaluator mirrors the production local-vocal path: adaptive-floor Praat
-cross-correlation at 4 ms, the server energy gate, gentle octave stabilization,
-onset splitting, and the app's default Clean notation settings. Vocadito has no
-Indian tonic labels, so its note score tests pitch and segmentation rather than
-the spelling of `S r R ...`.
+The baseline evaluator freezes the previous local-vocal path: adaptive-floor
+Praat cross-correlation at 4 ms, the server energy gate, gentle octave
+stabilization, onset splitting, and the app's default Clean notation settings.
+Vocadito has no Indian tonic labels, so its note score tests pitch and
+segmentation rather than the spelling of `S r R ...`.
+
+## Neural benchmarks
+
+Install the local models, then extract RMVPE predictions once:
+
+```sh
+server/install-models.sh
+server/.venv/bin/python evaluation/extract_rmvpe_features.py \
+  evaluation/data/vocadito evaluation/cache/rmvpe-vocadito.json
+```
+
+Evaluate the frozen RMVPE/Praat fusion and GAME note model:
+
+```sh
+npm run benchmark:pitch -- \
+  --predictions evaluation/cache/rmvpe-vocadito.json \
+  --praat-cache evaluation/cache/vocadito \
+  --baseline evaluation/results/vocadito-tuning.json \
+  --split development
+
+SWARLEKH_GAME_PYTHON=server/.venv/bin/python \
+  npm run benchmark:game -- --split development
+```
+
+The independent VocalSet script requires the official 2.5 GB VocalSet archive
+and corrected annotation archive. It selects one scale and one arpeggio per
+singer by a fixed filename hash and pins the `extended 1` annotation tree:
+
+```sh
+SWARLEKH_PYTHON=server/.venv/bin/python \
+  npm run benchmark:vocalset -- \
+  --audio-zip /path/to/VocalSet.zip \
+  --annotations-zip /path/to/Annotated-VocalSet.zip
+```
 
 ## Dataset stack
 
@@ -86,7 +120,16 @@ the spelling of `S r R ...`.
 - 58.5 MB, CC BY 4.0
 - source: https://zenodo.org/records/5578807
 
-### 5. TONAS: ornamented-vocal boundary stress test
+### 5. Annotated VocalSet: independent singer generalization
+
+- 20 professional singers spanning male and female voices
+- corrected note boundaries and nominal pitches for scales and arpeggios
+- useful for cross-corpus testing across straight, breathy, belt, vibrato,
+  lip-trill, fast, slow, loud, and quiet singing
+- audio: https://zenodo.org/records/10200775
+- corrected annotations: https://zenodo.org/records/7061507
+
+### 6. TONAS: ornamented-vocal boundary stress test
 
 - 72 a cappella flamenco excerpts with corrected F0 and note
   onset/duration/pitch envelopes

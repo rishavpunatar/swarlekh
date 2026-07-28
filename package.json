@@ -8,6 +8,9 @@
     "benchmark:download:vocadito": "bash evaluation/download-vocadito.sh",
     "benchmark:vocadito": "node evaluation/evaluate-vocadito.js",
     "benchmark:tune:vocadito": "node evaluation/evaluate-vocadito.js --tune",
+    "benchmark:game": "node evaluation/evaluate-game.js",
+    "benchmark:pitch": "node evaluation/evaluate-pitch-model.js",
+    "benchmark:vocalset": "node evaluation/evaluate-vocalset.js",
     "serve": "python3 -m http.server 4173"
   },
   "license": "MIT"

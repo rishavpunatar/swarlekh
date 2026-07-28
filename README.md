@@ -4,14 +4,20 @@
 
 **Live: <https://rishavpunatar.github.io/swarlekh/>**
 
-Everything runs in your browser. The audio is decoded, analyzed and notated entirely on your device — nothing is uploaded, there are no third-party assets, no analytics, and a strict Content-Security-Policy enforces it.
+The standard engine runs entirely in your browser. The Best engine sends audio
+only to the optional server on `127.0.0.1`, where local vocal separation and
+neural singing models run on your Mac. No recording or analysis leaves your
+device, and there are no analytics.
 
 ## What it does
 
 - **Upload** an MP3 (or WAV/M4A/OGG/FLAC) by drag-and-drop.
-- **Isolates the melody** — percussion is suppressed by band-limiting + spectral-flatness gating, and a Viterbi-smoothed pitch tracker follows the single predominant melodic line (the voice) rather than the accompaniment.
+- **Isolates the voice** — the Best local engine uses BS-RoFormer or Demucs,
+  then combines RMVPE with independent Praat voicing support.
 - **Finds Sa** automatically using the perfect-fifth structure plus a phrase-cadence prior (Sa is where phrases begin and resolve), which avoids the classic Sa/Pa confusion; offers the top 3 candidates and flags low-confidence calls so you can verify. You can override with any note + fine-tune in cents, and check it by ear against a built-in Sa–Pa drone.
-- **Writes sargam, ornaments included** — quantized swaras with octave dots and komal/teevra marks, plus kan (grace notes), murki clusters, **meend glides written as the full path of swaras they touch (`P⌒d⌒N⌒S'`)**, **andolan/gamak with the swaras it swings between (`≈g(R–g)`)**, and fast taans note-for-note. Each sung syllable becomes its own note (onset detection). Three detail levels.
+- **Writes sargam, ornaments included** — GAME's singing-specific neural
+  segmenter separates discrete notes, repeated articulations and fast murkis;
+  the continuous RMVPE contour retains meend and andolan character.
 - **Analyses the raag** — distils the learner's worksheet from the recording: the swar-set (which swaras, sized by how much they're sung), the **thaat** (scale family), **aaroh/avaroh**, **vadi/samvadi**, **nyas** (resting notes), **jati**, and the **intonation** of each komal/teevra swara in cents (how it's actually pitched, not a prescriptive shruti). Tap any swara to spotlight every place it appears.
 - **Names the raag** — suggests likely ragas from a built-in, fact-checked knowledge base of 36 common ragas, scoring the recording's scale, vadi/samvadi, aaroh/avaroh direction and **pakad** (catch-phrase) matches. Always a ranked shortlist with a plain rationale and honest confidence — never a single verdict (allied ragas that share a scale are flagged as such).
 - **Suppresses percussion** — a harmonic/percussive separation pass (HPSS) attenuates tabla and transients before pitch tracking, so the voice is followed more cleanly on busy recordings.
@@ -54,6 +60,10 @@ mp3 → decode (Web Audio) → mono 16 kHz
 ```
 
 All DSP is hand-rolled JavaScript (~no dependencies) running in a Web Worker; a 5-minute song takes roughly 5–10 s on a laptop.
+
+The optional Best path instead runs local vocal separation, an RMVPE/Praat
+pitch ensemble, and GAME singing-to-MIDI inference. See
+[`server/README.md`](server/README.md) for its checksum-verified setup.
 
 ## Honest limitations
 

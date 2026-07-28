@@ -6,7 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-test('worker: external Praat track, not mix YIN, is used to detect Sa', async () => {
+test('worker: external pitch and neural note regions are used without mix YIN', async () => {
   const calls = { tonicF0: null, yin: 0, posted: null };
   const DSP = {
     preFilter: (x) => x,
@@ -47,6 +47,9 @@ test('worker: external Praat track, not mix YIN, is used to detect Sa', async ()
       providedRms: [0.2, 0.21, 0.22],
       providedHopSec: 0.004,
       providedOnsets: [],
+      providedNoteRegions: [
+        { onset: 0, offset: 0.1, frequency: 220 },
+      ],
     },
   });
 
@@ -54,4 +57,7 @@ test('worker: external Praat track, not mix YIN, is used to detect Sa', async ()
   assert.deepStrictEqual(calls.tonicF0, [220, 222, 224]);
   assert.strictEqual(calls.posted.type, 'result');
   assert.strictEqual(calls.posted.hopSec, 0.004);
+  assert.deepStrictEqual(calls.posted.noteRegions, [
+    { onset: 0, offset: 0.1, frequency: 220 },
+  ]);
 });

@@ -29,7 +29,7 @@
     ready: false, fileName: '',
     f0: null, clarity: null, hopSec: 0.016, sr: 16000,
     tonicCands: [], saHz: 146.83,
-    tokens: [], phrases: [],
+    tokens: [], phrases: [], noteRegions: [],
     duration: 0, synthDuration: 0,
     loopA: null, loopB: null,
     phraseLoop: -1,                 // index into state.phrases; -1 = no phrase loop
@@ -51,7 +51,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=43';
+  const WORKER_URL = 'js/worker.js?v=44';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -161,6 +161,7 @@
         providedRms: opts.providedRms || null,
         providedHopSec: opts.providedHopSec || 0,
         providedOnsets: opts.providedOnsets || null,
+        providedNoteRegions: opts.providedNoteRegions || null,
       }, [samples.buffer]);
     });
   }
@@ -180,7 +181,7 @@
         method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' }, signal: ctrl.signal,
       });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return await resp.json();   // { f0, periodicity, rms, onsets, hopSec, sr }
+      return await resp.json();   // { f0, periodicity, rms, noteRegions, hopSec, sr }
     } finally {
       clearTimeout(to);
       if (analyzeAbort === ctrl) analyzeAbort = null;
@@ -253,7 +254,7 @@
 
       const ab = await file.arrayBuffer();
       if (stale()) return;
-      const hash = 'v3:' + await fileHash(ab.slice(0));   // v3: adds rhythm (BPM/taal) to the analysis
+      const hash = 'v4:' + await fileHash(ab.slice(0));   // v4: neural pitch + note regions
       const ctx = ensureCtx();
       let buf;
       try {
@@ -298,7 +299,14 @@
         const cached = await idbGet(hash);
         if (stale()) return;
         if (cached && cached.f0 && cached.f0.length) {
-          workerOpts = { providedF0: cached.f0, providedClarity: cached.periodicity, providedRms: cached.rms, providedHopSec: cached.hopSec, providedOnsets: cached.onsets };
+          workerOpts = {
+            providedF0: cached.f0,
+            providedClarity: cached.periodicity,
+            providedRms: cached.rms,
+            providedHopSec: cached.hopSec,
+            providedOnsets: cached.onsets,
+            providedNoteRegions: cached.noteRegions,
+          };
           state.rhythm = cached.rhythm || null;
           toast('Analyzed this recording before — restored instantly.');
         } else if (!(await serverUp())) {
@@ -333,9 +341,25 @@
           }
           if (stale()) return;
           if (data) {
-            workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedRms: data.rms, providedHopSec: data.hopSec, providedOnsets: data.onsets };
+            workerOpts = {
+              providedF0: data.f0,
+              providedClarity: data.periodicity,
+              providedRms: data.rms,
+              providedHopSec: data.hopSec,
+              providedOnsets: data.onsets,
+              providedNoteRegions: data.noteRegions,
+            };
             state.rhythm = data.rhythm || null;
-            idbPut(hash, { f0: data.f0, periodicity: data.periodicity, rms: data.rms, onsets: data.onsets, rhythm: data.rhythm, hopSec: data.hopSec, ts: Date.now() });
+            idbPut(hash, {
+              f0: data.f0,
+              periodicity: data.periodicity,
+              rms: data.rms,
+              onsets: data.onsets,
+              noteRegions: data.noteRegions,
+              rhythm: data.rhythm,
+              hopSec: data.hopSec,
+              ts: Date.now(),
+            });
           }
         }
       }
@@ -352,6 +376,7 @@
       state.tonicCands = result.tonic;
       state.opts.onsets = result.onsets || [];
       state.opts.rms = result.rms;
+      state.noteRegions = result.noteRegions || [];
       applyOctaveMode(false);
       state.synthDuration = result.synth.length / targetSr;
 
@@ -590,12 +615,20 @@
 
   function renotateNow() {
     if (!state.f0) return;
-    // A fine-hop track (the server's 4 ms Praat-CC) resolves 30-40 ms sargam
-    // notes, so lower the ornament floor to keep them; coarser tracks (16 ms
-    // YIN/CREPE) keep the safer floor — a lower one only surfaces their blur.
+    // Fine-hop contour tracks can resolve short notes directly. The local
+    // neural path uses GAME's learned note regions instead of this heuristic.
     const opts = Object.assign({}, state.opts);
     if (state.hopSec <= 0.006 && opts.ornaments && opts.ornMinMs > 25) opts.ornMinMs = 25;
-    const res = DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
+    const res = state.noteRegions.length
+      ? DSP.notateRegions(
+        state.noteRegions,
+        state.f0,
+        state.clarity,
+        state.hopSec,
+        state.saHz,
+        opts
+      )
+      : DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
     state.tokens = res.tokens;
     state.phrases = res.phrases;
     state.raga = DSP.analyzeRaga(res.tokens, res.phrases);
