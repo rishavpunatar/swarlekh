@@ -331,8 +331,32 @@ test('practice contour: a sustained pitch traversal is a simplified slide', () =
   const slide = segments.find((segment) => segment.kind === 'slide');
   assert.ok(slide, 'continuous traversal should render as a slide');
   assert.ok(slide.t1 - slide.t0 >= 0.08);
+  assert.strictEqual(slide.curve, 'meend');
   assert.strictEqual(slide.c0, 0);
   assert.strictEqual(slide.c1, 700);
+});
+
+test('practice contour: a short traversal becomes a compact bend', () => {
+  const hopSec = 0.01;
+  const cents = new Float32Array(100);
+  for (let index = 0; index < cents.length; index++) {
+    if (index < 44) cents[index] = 0;
+    else if (index <= 56) cents[index] = (index - 44) / 12 * 400;
+    else cents[index] = 400;
+  }
+  const segments = DSP.buildPracticeContour(
+    [
+      { t0: 0, t1: 0.5, k: 0 },
+      { t0: 0.5, t1: 1, k: 4 },
+    ],
+    cents,
+    hopSec
+  );
+  const bend = segments.find((segment) => segment.kind === 'slide');
+  assert.ok(bend, 'short continuous traversal should remain curved');
+  assert.strictEqual(bend.curve, 'bend');
+  assert.ok(bend.t1 - bend.t0 >= 0.08);
+  assert.ok(bend.t1 - bend.t0 < 0.15);
 });
 
 test('practice contour: a collapsed meend token remains one intentional slide', () => {
@@ -342,7 +366,7 @@ test('practice contour: a collapsed meend token remains one intentional slide', 
     0.01
   );
   assert.deepStrictEqual(segments, [
-    { kind: 'slide', t0: 0, t1: 1.4, c0: 0, c1: 700, tokenIndex: 0 },
+    { kind: 'slide', curve: 'meend', t0: 0, t1: 1.4, c0: 0, c1: 700, tokenIndex: 0 },
   ]);
 });
 

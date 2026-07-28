@@ -51,7 +51,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=46';
+  const WORKER_URL = 'js/worker.js?v=47';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -1583,9 +1583,9 @@
     }
 
     // ---- Singer-facing practice contour. Stable notes are horizontal target
-    // holds, fast changes are clean steps, and a continuous pitch traversal is
-    // one straight slide. The detailed analysis contour remains available to the
-    // notation engine, but vibrato and tracker jitter are not drawing commands.
+    // holds, articulated changes are clean steps, quick bends are compact
+    // hooks, and sustained meend uses one broad curve. These are the only three
+    // transition geometries; vibrato and tracker jitter are not drawing commands.
     const practice = state.practiceContour || [];
     cctx.lineJoin = 'round';
     cctx.lineCap = 'round';
@@ -1601,10 +1601,27 @@
       cctx.beginPath();
       cctx.moveTo(x0, y0);
       if (segment.kind === 'slide') {
+        const dx = x1 - x0;
         cctx.strokeStyle = colors.accent;
-        cctx.lineWidth = 3.4;
+        cctx.lineWidth = segment.curve === 'bend' ? 2.4 : 3.4;
         cctx.globalAlpha = 0.9;
-        cctx.lineTo(x1, y1);
+        if (segment.curve === 'bend') {
+          // A compact hook: stay on the source briefly, then turn cleanly into
+          // the target. Duration distinguishes it from the broad meend below.
+          cctx.bezierCurveTo(
+            x0 + dx * 0.62, y0,
+            x1 - dx * 0.08, y1,
+            x1, y1
+          );
+        } else {
+          // Sustained meend: one balanced S-curve with horizontal tangents at
+          // both swaras, so the singer can see the departure and arrival.
+          cctx.bezierCurveTo(
+            x0 + dx * 0.34, y0,
+            x1 - dx * 0.34, y1,
+            x1, y1
+          );
+        }
       } else if (segment.kind === 'step') {
         cctx.strokeStyle = colors.accent;
         cctx.lineWidth = 1.6;

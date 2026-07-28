@@ -1499,6 +1499,7 @@
     opts = opts || {};
     const maxGapSec = opts.maxGapSec != null ? opts.maxGapSec : 0.04;
     const minSlideSec = opts.minSlideSec != null ? opts.minSlideSec : 0.08;
+    const meendSec = opts.meendSec != null ? opts.meendSec : 0.15;
     const source = Array.from(tokens || [])
       .filter((token) => Number.isFinite(token.t0) && token.t1 > token.t0 &&
         Number.isFinite(token.k))
@@ -1615,7 +1616,14 @@
           t0 = Math.max(left.t0, boundary - half);
           t1 = Math.min(right.t1, boundary + half);
         }
-        transitions[index] = { kind: 'slide', t0, t1, c0, c1 };
+        transitions[index] = {
+          kind: 'slide',
+          curve: explicitSlide || t1 - t0 >= meendSec ? 'meend' : 'bend',
+          t0,
+          t1,
+          c0,
+          c1,
+        };
       } else {
         transitions[index] = {
           kind: 'step',
@@ -1683,6 +1691,7 @@
       } else {
         segments.push({
           kind: path.length > 1 ? 'slide' : 'hold',
+          ...(path.length > 1 ? { curve: 'meend' } : {}),
           t0,
           t1,
           c0: entryCents(token),
