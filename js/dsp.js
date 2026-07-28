@@ -704,6 +704,7 @@
     // first/last stable note of every voiced run (phrase).
     const cad = new Float64Array(BINS);
     const minRun = Math.max(3, Math.round(0.18 / hopSec));
+    const phraseGap = Math.max(3, Math.round(0.32 / hopSec));
     const edge = Math.max(2, Math.round(0.12 / hopSec));
     const medPc = (i0, i1) => {
       const a = [];
@@ -717,18 +718,23 @@
       const b = Math.round(pc / 5) % BINS;
       for (let k = -2; k <= 2; k++) cad[(b + k + BINS) % BINS] += w * Math.exp(-(k * k) / 4);
     };
-    let runStart = -1, nPhrases = 0;
+    let runStart = -1, lastVoiced = -1, nPhrases = 0;
     const N = f0.length;
     for (let i = 0; i <= N; i++) {
       const v = i < N && f0[i] > 0 && clarity[i] >= 0.5;
-      if (v && runStart < 0) runStart = i;
-      if (!v && runStart >= 0) {
-        if (i - runStart >= minRun) {
-          addCad(medPc(runStart, Math.min(i, runStart + edge)), 1.0);          // phrase onset
-          addCad(medPc(Math.max(runStart, i - edge), i), 1.4);                 // phrase resolution
+      if (v) {
+        if (runStart < 0) runStart = i;
+        lastVoiced = i;
+      }
+      if (runStart >= 0 && (i === N || i - lastVoiced >= phraseGap)) {
+        const runEnd = lastVoiced + 1;
+        if (runEnd - runStart >= minRun) {
+          addCad(medPc(runStart, Math.min(runEnd, runStart + edge)), 1.0);      // phrase onset
+          addCad(medPc(Math.max(runStart, runEnd - edge), runEnd), 1.4);       // phrase resolution
           nPhrases++;
         }
         runStart = -1;
+        lastVoiced = -1;
       }
     }
     // Cadence is most reliable across many phrases, but even one phrase's
@@ -743,17 +749,89 @@
       return cad[b] / cadMax;
     };
 
+    // A long instrumental introduction can make a prominent accompaniment
+    // swara look like Sa. When a clearly higher melodic register enters later
+    // and persists, use its first stable note as additional tonic evidence.
+    // This stays inactive for short clips and songs without a strong register
+    // change, so it does not turn every opening note into Sa.
+    let delayedEntryPc = null;
+    const durationSec = N * hopSec;
+    if (durationSec >= 55) {
+      const medianCents = (t0, t1) => {
+        const values = [];
+        const i0 = Math.max(0, Math.round(t0 / hopSec));
+        const i1 = Math.min(N, Math.round(t1 / hopSec));
+        for (let i = i0; i < i1; i++) {
+          if (f0[i] > 0 && clarity[i] >= 0.5) values.push(1200 * Math.log2(f0[i] / 55));
+        }
+        if (values.length < Math.max(20, Math.round(0.5 / hopSec))) return null;
+        values.sort((a, b) => a - b);
+        return values[values.length >> 1];
+      };
+      let entrySearchSec = null;
+      let entryBaselineCents = null;
+      const searchEnd = Math.min(120, durationSec - 32);
+      for (let t = 20; t <= searchEnd; t += 2) {
+        const before = medianCents(t - 12, t);
+        const after = medianCents(t, t + 12);
+        const sustained = medianCents(t + 12, t + 32);
+        if (before != null && after != null && sustained != null &&
+            Math.min(after - before, sustained - before) >= 350) {
+          entrySearchSec = t;
+          entryBaselineCents = before;
+          break;
+        }
+      }
+      if (entrySearchSec != null) {
+        const i0 = Math.max(0, Math.round(entrySearchSec / hopSec));
+        const i1 = Math.min(N, Math.round((entrySearchSec + 14) / hopSec));
+        const minStable = Math.max(3, Math.round(0.75 / hopSec));
+        let runK = null, runStart = i0;
+        for (let i = i0; i <= i1; i++) {
+          const k = i < i1 && f0[i] > 0 && clarity[i] >= 0.5
+            ? Math.round(12 * Math.log2(f0[i] / 55))
+            : null;
+          if (k === runK) continue;
+          const enteredHigherRegister = runK != null &&
+            runK * 100 >= entryBaselineCents + 300;
+          if (enteredHigherRegister && i - runStart >= minStable) {
+            let loudEnough = true;
+            if (rms && rmsRef > 0) {
+              const levels = [];
+              for (let j = runStart; j < i; j++) levels.push(rms[j]);
+              levels.sort((a, b) => a - b);
+              loudEnough = levels[levels.length >> 1] >= 0.45 * rmsRef;
+            }
+            if (loudEnough) {
+              delayedEntryPc = ((runK * 100 % 1200) + 1200) % 1200;
+              break;
+            }
+          }
+          runK = k;
+          runStart = i;
+        }
+      }
+    }
+    const entryAt = (cents) => {
+      if (delayedEntryPc == null) return 0;
+      let distance = Math.abs((((cents - delayedEntryPc) % 1200) + 1200) % 1200);
+      distance = Math.min(distance, 1200 - distance);
+      return Math.exp(-(distance * distance) / (2 * 30 * 30));
+    };
+
     // Score each candidate Sa. Terms (all normalized to [0,1]):
     //   + self      : the tonic is itself prominent (drone + dwelling)
     //   + fifth     : a strong Pa sits +702c above a true Sa
     //   + cadence   : phrases start/resolve here  (breaks Sa/Pa symmetry)
+    //   + entry     : first stable vocal-register note after a long intro
     //   - asPa      : a strong note +498c above means *we* are likely its Pa
     // No credit for the fourth-above (the old bug: it let Pa borrow Sa).
     for (const p of peaks) {
       const self = at(p.pc) / maxH;
       const fifth = at(p.pc + 702) / maxH;
       const asPa = at(p.pc + 498) / maxH;
-      p.score = 0.50 * self + 0.42 * fifth + 1.30 * cadConf * cadAt(p.pc) - 0.30 * Math.min(asPa, 1.2 * self);
+      p.score = 0.50 * self + 0.42 * fifth + 1.30 * cadConf * cadAt(p.pc) +
+        1.70 * entryAt(p.pc) - 0.30 * Math.min(asPa, 1.2 * self);
     }
     peaks.sort((a, b) => b.score - a.score);
 

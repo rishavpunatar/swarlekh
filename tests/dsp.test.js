@@ -699,6 +699,32 @@ test('detectTonic: multi-phrase Pa-prominent song still resolves to Sa', () => {
     `expected Sa~${SA}, got ${c[0].hz.toFixed(1)} [${c.map(x => x.hz.toFixed(1)).join(',')}]`);
 });
 
+test('detectTonic: brief tracking dropouts do not invent false cadences', () => {
+  const noisyIntro = [];
+  for (let i = 0; i < 12; i++) noisyIntro.push([8, 30], [null, 2]);
+  noisyIntro.push([null, 45]);
+  const phrase = [[0,45],[3,35],[5,35],[8,70],[5,35],[3,35],[0,70],[null,45]];
+  const { f0, clarity } = tonicTrack(
+    SA,
+    noisyIntro.concat(phrase, phrase, phrase, phrase)
+  );
+  const c = DSP.detectTonic(f0, clarity, 0.016);
+  assert.ok(tonicErrCents(c[0].hz, SA) < 35,
+    `dropouts promoted a non-Sa pitch: ${c.map(x => x.hz.toFixed(1)).join(',')}`);
+});
+
+test('detectTonic: delayed higher-register vocal entry can establish Sa', () => {
+  const intro = [[-4, 2250], [null, 50]]; // 36 s low-register accompaniment
+  const vocal = [
+    [0,90],[3,45],[5,45],[8,80],[10,45],[12,70],
+    [8,50],[5,45],[3,45],[0,80],
+  ];
+  const { f0, clarity } = tonicTrack(SA, intro.concat(vocal, vocal, vocal));
+  const c = DSP.detectTonic(f0, clarity, 0.016);
+  assert.ok(tonicErrCents(c[0].hz, SA) < 35,
+    `delayed vocal Sa lost to the intro: ${c.map(x => x.hz.toFixed(1)).join(',')}`);
+});
+
 test('detectTonic: mandra-register melody keeps Sa in the right octave', () => {
   const { f0, clarity } = tonicTrack(SA, [[-5,60],[-3,60],[-1,60],[0,80],[2,40],[0,40],[-3,60],[-5,80]]);
   const c = DSP.detectTonic(f0, clarity, 0.016);
