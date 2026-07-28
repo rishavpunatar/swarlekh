@@ -51,7 +51,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=49';
+  const WORKER_URL = 'js/worker.js?v=50';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -170,7 +170,9 @@
   // local Demucs+Praat server (127.0.0.1), which returns the pitch track of the
   // separated voice. Audio only ever goes to your own machine.
   const SERVER_URL = 'http://127.0.0.1:8765';
+  const REQUIRED_SERVER_ANALYSIS_VERSION = 2;
   let analyzeAbort = null;   // lets the Cancel button stop a long separation
+  let serverIssue = '';
   async function analyzeViaServer() {
     const wav = encodeWav(state.fileMono, state.fileSr);
     analyzeAbort = new AbortController();
@@ -197,8 +199,19 @@
       const t = setTimeout(() => c.abort(), 1500);
       const r = await fetch(SERVER_URL + '/', { signal: c.signal });
       clearTimeout(t);
-      return r.ok;
-    } catch (e) { return false; }
+      if (!r.ok) { serverIssue = 'offline'; return false; }
+      const info = await r.json();
+      if (Number(info.analysisVersion) < REQUIRED_SERVER_ANALYSIS_VERSION ||
+          info.neuralModelsInstalled !== true) {
+        serverIssue = 'outdated';
+        return false;
+      }
+      serverIssue = '';
+      return true;
+    } catch (e) {
+      serverIssue = 'offline';
+      return false;
+    }
   }
 
   /* Per-file analysis cache (IndexedDB, on-device): re-uploading the same
@@ -254,7 +267,9 @@
 
       const ab = await file.arrayBuffer();
       if (stale()) return;
-      const hash = 'v4:' + await fileHash(ab.slice(0));   // v4: neural pitch + note regions
+      // v5 invalidates Praat-only cache entries created before RMVPE + GAME
+      // became a required part of the separated-vocal analysis contract.
+      const hash = 'v5:' + await fileHash(ab.slice(0));
       const ctx = ensureCtx();
       let buf;
       try {
@@ -314,7 +329,9 @@
           // No local server: never dead-end — analyze in the browser instead.
           state.engine = 'yin';
           const eSel = $('engineSel'); if (eSel) eSel.value = 'yin';
-          toast('Local analysis server not running — using the in-browser engine. Start the server (server/README.md) and re-upload for the highest quality.');
+          toast(serverIssue === 'outdated'
+            ? 'Local analysis helper is outdated — update and restart it to use RMVPE + GAME. Using the in-browser engine for now.'
+            : 'Local analysis server not running — using the in-browser engine. Start the server (server/README.md) and re-upload for the highest quality.');
         } else {
           if (stale()) return;
           // The server doesn't stream sub-progress, so show a live elapsed

@@ -38,6 +38,7 @@ from demucs.pretrained import get_model
 from demucs.apply import apply_model
 
 PORT = 8765
+ANALYSIS_VERSION = 2  # RMVPE pitch + GAME note regions are required.
 CREPE_HOP = 256      # 16 ms at 16 kHz; used only by the /transpose voice resynthesis
 PRAAT_HOP_SEC = 0.004
 SR = 16000
@@ -285,6 +286,7 @@ def health():
     return jsonify(
         ok=True,
         device=DEVICE,
+        analysisVersion=ANALYSIS_VERSION,
         analyzer='rmvpe+praat+game',
         neuralModelsInstalled=(
             importlib.util.find_spec('rmvpe_onnx') is not None
