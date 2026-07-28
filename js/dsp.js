@@ -1310,16 +1310,30 @@
     const ornOf = (r, type) => ({ k: r.k, t0: r.start * hopSec, t1: r.end * hopSec, type });
 
     // Passing-tone gate: a short run is a REAL sung note only if the pitch
-    // LEVELS OFF inside it — at least one frame step below gateCps cents/sec.
-    // A fragment whose every frame is still moving is just a glide passing
-    // through that semitone, not a note the singer hit. (gateCentsPerSec: 0
-    // disables the gate and reproduces the pre-gate behaviour exactly.)
-    const gateCps = opts.gateCentsPerSec != null ? opts.gateCentsPerSec : 900;
-    const maxStepCents = gateCps * hopSec;
+    // briefly settles near that swara. Requiring a small centered window keeps
+    // genuine fast murki notes, but a duplicate/noisy tracker frame inside a
+    // continuous glide can no longer invent a landing.
+    const gateDisabled = opts.gateCentsPerSec === 0;
+    const landingFrames = Math.max(2, Math.min(
+      ornFrames,
+      Math.max(3, Math.round(0.024 / hopSec))
+    ));
+    const landingRange = opts.landingRangeCents != null ? opts.landingRangeCents : 24;
+    const landingCenter = opts.landingCenterCents != null ? opts.landingCenterCents : 38;
     const hasPlateau = (r) => {
-      if (gateCps <= 0) return true;
-      for (let j = r.start; j < r.end - 1; j++) {
-        if (Math.abs(cents[j + 1] - cents[j]) < maxStepCents) return true;
+      if (gateDisabled) return true;
+      if (r.end - r.start < landingFrames) return false;
+      const target = r.k * 100;
+      for (let j = r.start; j + landingFrames <= r.end; j++) {
+        let lo = Infinity, hi = -Infinity, sum = 0;
+        for (let q = j; q < j + landingFrames; q++) {
+          const c = cents[q];
+          if (c < lo) lo = c;
+          if (c > hi) hi = c;
+          sum += c;
+        }
+        const mean = sum / landingFrames;
+        if (hi - lo <= landingRange && Math.abs(mean - target) <= landingCenter) return true;
       }
       return false;
     };
