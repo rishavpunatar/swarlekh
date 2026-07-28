@@ -64,10 +64,20 @@ def fuse_rmvpe_with_praat(
 class RobustPitchTracker:
     """RMVPE pitch with independent Praat confirmation for uncertain frames."""
 
-    def __init__(self, model_path=None, device=None):
+    def __init__(
+        self,
+        model_path=None,
+        device=None,
+        chunk_seconds=30.0,
+        context_seconds=1.0,
+    ):
         from rmvpe_onnx import RMVPE
 
-        self.model = RMVPE(model_path=model_path, device=device)
+        # Core ML can fail with "Error in building plan" after a successful
+        # inference on the same model. CPU is deterministic and reliable here.
+        self.model = RMVPE(model_path=model_path, device=device or "cpu")
+        self.chunk_seconds = float(chunk_seconds)
+        self.context_seconds = float(context_seconds)
 
     def predict(
         self,
@@ -77,9 +87,44 @@ class RobustPitchTracker:
         praat_strength,
         praat_hop_sec,
     ):
-        times, frequency, confidence, _ = self.model.predict(
-            audio=np.asarray(audio, dtype=np.float32),
-            sr=sample_rate,
+        waveform = np.asarray(audio, dtype=np.float32)
+        if waveform.ndim > 1:
+            waveform = waveform.mean(axis=0)
+        waveform = waveform.reshape(-1)
+        duration = len(waveform) / sample_rate
+        times_parts = []
+        frequency_parts = []
+        confidence_parts = []
+
+        for core_start in np.arange(0.0, duration, self.chunk_seconds):
+            core_end = min(duration, core_start + self.chunk_seconds)
+            input_start = max(0.0, core_start - self.context_seconds)
+            input_end = min(duration, core_end + self.context_seconds)
+            sample_start = int(round(input_start * sample_rate))
+            sample_end = int(round(input_end * sample_rate))
+            actual_start = sample_start / sample_rate
+            local_times, frequency, confidence, _ = self.model.predict(
+                audio=waveform[sample_start:sample_end],
+                sr=sample_rate,
+            )
+            global_times = np.asarray(local_times, dtype=np.float64) + actual_start
+            frequency = np.asarray(frequency, dtype=np.float64)
+            confidence = np.asarray(confidence, dtype=np.float64)
+            keep = global_times >= core_start - 1e-7
+            if core_end < duration:
+                keep &= global_times < core_end - 1e-7
+            else:
+                keep &= global_times <= core_end + 1e-7
+            times_parts.append(global_times[keep])
+            frequency_parts.append(frequency[keep])
+            confidence_parts.append(confidence[keep])
+
+        times = np.concatenate(times_parts) if times_parts else np.array([])
+        frequency = (
+            np.concatenate(frequency_parts) if frequency_parts else np.array([])
+        )
+        confidence = (
+            np.concatenate(confidence_parts) if confidence_parts else np.array([])
         )
         fused_frequency, fused_confidence = fuse_rmvpe_with_praat(
             times,
@@ -89,7 +134,9 @@ class RobustPitchTracker:
             praat_strength,
             praat_hop_sec,
         )
-        hop_sec = float(times[1] - times[0]) if len(times) > 1 else 0.01
+        hop_sec = (
+            float(np.median(np.diff(times))) if len(times) > 1 else 0.01
+        )
         return {
             "times": times,
             "f0": fused_frequency,
@@ -110,6 +157,8 @@ class GameTranscriber:
         presence_threshold=0.2,
         radius=2,
         seed=20260728,
+        chunk_seconds=30.0,
+        context_seconds=2.0,
     ):
         import onnxruntime as ort
 
@@ -123,6 +172,8 @@ class GameTranscriber:
         self.presence_threshold = presence_threshold
         self.radius = radius
         self.seed = seed
+        self.chunk_seconds = float(chunk_seconds)
+        self.context_seconds = float(context_seconds)
 
         # GAME's dynamic segmenter partitions poorly under Core ML (measured
         # at 105 s vs about 4 s on CPU for the same 33 s clip).
@@ -158,7 +209,38 @@ class GameTranscriber:
                 orig_sr=sample_rate,
                 target_sr=self.sample_rate,
             )
-        waveform = waveform.astype(np.float32)[None, :]
+        waveform = waveform.astype(np.float32).reshape(-1)
+        audio_duration = len(waveform) / self.sample_rate
+        notes = []
+
+        for core_start in np.arange(0.0, audio_duration, self.chunk_seconds):
+            core_end = min(audio_duration, core_start + self.chunk_seconds)
+            input_start = max(0.0, core_start - self.context_seconds)
+            input_end = min(
+                audio_duration, core_end + self.context_seconds
+            )
+            sample_start = int(round(input_start * self.sample_rate))
+            sample_end = int(round(input_end * self.sample_rate))
+            actual_start = sample_start / self.sample_rate
+            for note in self._transcribe_waveform(
+                waveform[sample_start:sample_end]
+            ):
+                shifted = dict(note)
+                shifted["onset"] = round(note["onset"] + actual_start, 6)
+                shifted["offset"] = round(note["offset"] + actual_start, 6)
+                midpoint = (shifted["onset"] + shifted["offset"]) / 2
+                if midpoint < core_start - 1e-7:
+                    continue
+                if core_end < audio_duration and midpoint >= core_end - 1e-7:
+                    continue
+                if midpoint <= core_end + 1e-7:
+                    notes.append(shifted)
+
+        notes.sort(key=lambda note: (note["onset"], note["offset"]))
+        return notes
+
+    def _transcribe_waveform(self, waveform):
+        waveform = np.asarray(waveform, dtype=np.float32).reshape(1, -1)
         audio_duration = waveform.shape[1] / self.sample_rate
         duration = np.array([audio_duration], dtype=np.float32)
 

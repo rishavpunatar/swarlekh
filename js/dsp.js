@@ -1565,6 +1565,7 @@
         meend: !!character.meend,
         andolan: !!character.andolan,
         neural: true,
+        _contour: contour,
       };
       if (character.andolan) {
         token.andolanLo = character.andolanLo;
@@ -1578,6 +1579,58 @@
     }
 
     tokens.sort((a, b) => a.t0 - b.t0);
+    if (clean) {
+      // GAME can split the bottom of one continuous rebound into a separate
+      // note (for example G -> [dip to S] -> R). In Clean mode, fold that
+      // overshoot into the target only when the robust contour enters from the
+      // target side, turns inside the short region, and leaves the extreme
+      // again. A flat short note and a G-R-G murki do not match this geometry.
+      for (let i = 1; i + 1 < tokens.length; i++) {
+        const previous = tokens[i - 1];
+        const token = tokens[i];
+        const next = tokens[i + 1];
+        const path = token._contour || [];
+        const nextStrictlyBetween = (
+          token.k < next.k && next.k < previous.k
+        ) || (
+          previous.k < next.k && next.k < token.k
+        );
+        const connected = token.t0 - previous.t1 <= 0.035 &&
+          next.t0 - token.t1 <= 0.035;
+        if (!nextStrictlyBetween || !connected ||
+            token.t1 - token.t0 > 0.18 || path.length < 5) {
+          continue;
+        }
+
+        let extreme = path[0], extremeIndex = 0;
+        let pathMin = path[0], pathMax = path[0];
+        const lowOvershoot = token.k < next.k;
+        for (let p = 1; p < path.length; p++) {
+          pathMin = Math.min(pathMin, path[p]);
+          pathMax = Math.max(pathMax, path[p]);
+          if ((lowOvershoot && path[p] < extreme) ||
+              (!lowOvershoot && path[p] > extreme)) {
+            extreme = path[p];
+            extremeIndex = p;
+          }
+        }
+        const entered = Math.abs(path[0] - extreme);
+        const recovered = Math.abs(path[path.length - 1] - extreme);
+        const excursion = pathMax - pathMin;
+        const requiredExcursion = Math.max(
+          90,
+          Math.abs(next.k - token.k) * 55
+        );
+        if (extremeIndex > 0 && extremeIndex < path.length - 2 &&
+            entered >= 70 && recovered >= 35 &&
+            excursion >= requiredExcursion) {
+          next.t0 = token.t0;
+          tokens.splice(i, 1);
+          i--;
+        }
+      }
+    }
+    for (const token of tokens) delete token._contour;
     return { tokens, phrases: groupPhrases(tokens, lineGapSec, clean) };
   }
 

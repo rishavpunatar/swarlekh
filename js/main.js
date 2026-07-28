@@ -38,7 +38,7 @@
     micCents: null,                 // latest voiced mic reading (cents rel. original Sa space)
     pxPerSec: 120, scrollSec: 0, centsLo: -700, centsHi: 1900,
     playing: false,
-    semitones: 0, fileMono: null, fileSr: 16000,
+    semitones: 0, fileBytes: null, fileMono: null, fileSr: 16000,
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
     raga: null, highlightPc: null, ragaMatches: [], script: 'latin', rhythm: null,
     engine: 'yin', file: null,
@@ -51,7 +51,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=50';
+  const WORKER_URL = 'js/worker.js?v=51';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -166,21 +166,26 @@
     });
   }
 
-  // "Best (local server)" engine: POST the original-rate mono as a WAV to the
-  // local Demucs+Praat server (127.0.0.1), which returns the pitch track of the
-  // separated voice. Audio only ever goes to your own machine.
+  // "Best (local server)" engine: POST the original recording to the local
+  // BS-RoFormer + RMVPE/Praat/GAME server, which returns the separated-voice
+  // pitch and note regions. Audio only ever goes to your own machine.
   const SERVER_URL = 'http://127.0.0.1:8765';
-  const REQUIRED_SERVER_ANALYSIS_VERSION = 2;
+  const REQUIRED_SERVER_ANALYSIS_VERSION = 3;
   let analyzeAbort = null;   // lets the Cancel button stop a long separation
   let serverIssue = '';
   async function analyzeViaServer() {
-    const wav = encodeWav(state.fileMono, state.fileSr);
+    // Preserve the uploaded channels for vocal separation. Downmixing here can
+    // cancel or smear centre-panned vocals and makes GAME invent note boundaries.
+    const audio = state.fileBytes || encodeWav(state.fileMono, state.fileSr);
     analyzeAbort = new AbortController();
     const ctrl = analyzeAbort;
     const to = setTimeout(() => ctrl.abort(), 30 * 60 * 1000);   // safety net, 30 min
     try {
       const resp = await fetch(SERVER_URL + '/analyze', {
-        method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' }, signal: ctrl.signal,
+        method: 'POST',
+        body: audio,
+        headers: { 'Content-Type': (state.file && state.file.type) || 'application/octet-stream' },
+        signal: ctrl.signal,
       });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       return await resp.json();   // { f0, periodicity, rms, noteRegions, hopSec, sr }
@@ -267,9 +272,12 @@
 
       const ab = await file.arrayBuffer();
       if (stale()) return;
-      // v5 invalidates Praat-only cache entries created before RMVPE + GAME
-      // became a required part of the separated-vocal analysis contract.
-      const hash = 'v5:' + await fileHash(ab.slice(0));
+      // Keep the original channels for the separated-vocal server. The decoded
+      // mono copy below remains useful for Fast mode and pitch transposition.
+      state.fileBytes = ab.slice(0);
+      // v6 invalidates analyses made after the browser downmixed stereo uploads
+      // before vocal separation.
+      const hash = 'v6:' + await fileHash(ab.slice(0));
       const ctx = ensureCtx();
       let buf;
       try {

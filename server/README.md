@@ -9,6 +9,8 @@ It analyzes the clean voice with three independent singing systems:
 - **Praat cross-correlation** confirms borderline voiced frames.
 - **GAME** predicts discrete sung-note boundaries and continuous note pitches,
   including short murkis and repeated notes at the same pitch.
+- Long recordings use overlapping 30-second neural chunks, keeping full-song
+  memory bounded without cutting musical transitions at chunk edges.
 
 **Privacy:** audio is sent only to `127.0.0.1` (this computer). Nothing leaves
 your machine — same on‑device guarantee as the rest of the app.
