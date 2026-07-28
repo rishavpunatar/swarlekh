@@ -148,8 +148,8 @@
           <summary>How to read &amp; use the contour ▾</summary>
           <p class="hint">Click to seek · drag to pan · <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+scroll or&nbsp;± to zoom ·
           drag along the <b>ruler at the top</b> to loop a passage (double-click it to clear).
-          The line is the melody: <b style="color:var(--indigo)">indigo</b> where a note is steady,
-          <b style="color:var(--accent)">saffron where it bends</b> — thick saffron is a slow meend, thin is a quick bend.
+          The line is the melody: <b style="color:var(--indigo)">indigo plateaus</b> are notes to hold,
+          while <b style="color:var(--accent)">saffron connectors</b> show whether to step or slide to the next note.
           Each <b>dot</b> is a note the voice hits, named with its swara; solid grid lines are the song’s scale.
           With <b>Sing along</b> on, your voice draws as a <b style="color:var(--mic, #2a8f7a)">teal</b> trail over the melody.</p>
         </details>
@@ -158,7 +158,7 @@
       <section id="settingsCard" class="card">
         <div class="settings-row">
           <label class="ctl">Pitch engine
-            <select id="engineSel" title="Fast = built-in DSP. Accurate = CREPE in your browser. Best = the local server, which separates the voice and tracks it at 4 ms with Praat-CC; needs server/README.md set up and running.">
+            <select id="engineSel" title="Fast = built-in DSP. Accurate = CREPE in your browser. Best = the local server, which separates the voice and uses RMVPE, Praat and GAME; needs server/README.md set up and running.">
               <option value="yin" selected>Fast (built-in)</option>
               <option value="neural">Accurate (neural) — slower</option>
               <option value="server">Best (local server) — separates voice</option>
@@ -209,10 +209,10 @@
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=44"></script>
-  <script src="js/dsp.js?v=44"></script>
-  <script src="js/ragas.js?v=44"></script>
-  <script src="js/ragaId.js?v=44"></script>
-  <script src="js/main.js?v=44"></script>
+  <script src="js/fft.js?v=45"></script>
+  <script src="js/dsp.js?v=45"></script>
+  <script src="js/ragas.js?v=45"></script>
+  <script src="js/ragaId.js?v=45"></script>
+  <script src="js/main.js?v=45"></script>
 </body>
 </html>

@@ -1489,6 +1489,178 @@
     return { tokens, phrases: groupPhrases(tokens, lineGapSec, clean) };
   }
 
+  /**
+   * Build a singer-facing contour from notation tokens. Stable notes sit
+   * exactly on their swara targets; only a sustained, continuous traversal of
+   * the interval becomes a slide. Analysis keeps the full pitch contour, but
+   * the visual guide should not turn vibrato or tracker jitter into instructions.
+   */
+  function buildPracticeContour(tokens, cents, hopSec, opts) {
+    opts = opts || {};
+    const maxGapSec = opts.maxGapSec != null ? opts.maxGapSec : 0.04;
+    const minSlideSec = opts.minSlideSec != null ? opts.minSlideSec : 0.08;
+    const source = Array.from(tokens || [])
+      .filter((token) => Number.isFinite(token.t0) && token.t1 > token.t0 &&
+        Number.isFinite(token.k))
+      .sort((a, b) => a.t0 - b.t0);
+    if (!source.length) return [];
+
+    const transitions = new Array(Math.max(0, source.length - 1)).fill(null);
+    const contour = cents || [];
+    const validHop = hopSec > 0 ? hopSec : 0.01;
+    const glidePath = (token) => token.glide && Array.isArray(token.via) &&
+      token.via.length > 1 ? token.via.filter(Number.isFinite) : [];
+    const entryCents = (token) => {
+      const path = glidePath(token);
+      return Math.round(path.length ? path[0] : token.k) * 100;
+    };
+    const exitCents = (token) => {
+      const path = glidePath(token);
+      return Math.round(path.length ? path[path.length - 1] : token.k) * 100;
+    };
+
+    for (let index = 0; index + 1 < source.length; index++) {
+      const left = source[index];
+      const right = source[index + 1];
+      const gap = right.t0 - left.t1;
+      if (gap > maxGapSec) continue;
+
+      const c0 = exitCents(left);
+      const c1 = entryCents(right);
+      const boundary = (left.t1 + right.t0) / 2;
+      const delta = Math.abs(c1 - c0);
+      if (delta < 50) {
+        if (gap > 0) {
+          transitions[index] = {
+            kind: 'hold',
+            t0: left.t1,
+            t1: right.t0,
+            c0,
+            c1,
+          };
+        }
+        continue;
+      }
+
+      const leftArm = Math.min(0.28, (left.t1 - left.t0) * 0.42);
+      const rightArm = Math.min(0.28, (right.t1 - right.t0) * 0.42);
+      const searchStart = Math.max(left.t0, boundary - leftArm);
+      const searchEnd = Math.min(right.t1, boundary + rightArm);
+      const frameStart = Math.max(0, Math.floor(searchStart / validHop));
+      const frameEnd = Math.min(contour.length - 1, Math.ceil(searchEnd / validHop));
+      const tolerance = Math.min(45, Math.max(25, delta * 0.16));
+      const explicitSlide = !!right.meendFromPrev;
+
+      let firstTarget = -1;
+      for (let frame = frameStart; frame <= frameEnd; frame++) {
+        const value = contour[frame];
+        if (!Number.isFinite(value) || Math.abs(value - c1) > tolerance) continue;
+        const next = contour[Math.min(frameEnd, frame + 1)];
+        if (frame === frameEnd || (Number.isFinite(next) &&
+            Math.abs(next - c1) <= tolerance * 1.35)) {
+          firstTarget = frame;
+          break;
+        }
+      }
+
+      let lastSource = -1;
+      if (firstTarget >= 0) {
+        for (let frame = frameStart; frame < firstTarget; frame++) {
+          const value = contour[frame];
+          if (Number.isFinite(value) && Math.abs(value - c0) <= tolerance) {
+            lastSource = frame;
+          }
+        }
+      }
+
+      let detectedSlide = false;
+      if (lastSource >= 0 && firstTarget > lastSource) {
+        const duration = (firstTarget - lastSource) * validHop;
+        let intermediate = 0;
+        let ordered = 0;
+        let comparisons = 0;
+        let maxMissing = 0;
+        let missing = 0;
+        let previous = null;
+        const direction = Math.sign(c1 - c0);
+        for (let frame = lastSource; frame <= firstTarget; frame++) {
+          const value = contour[frame];
+          if (!Number.isFinite(value)) {
+            missing++;
+            maxMissing = Math.max(maxMissing, missing);
+            continue;
+          }
+          missing = 0;
+          const progress = (value - c0) / (c1 - c0);
+          if (progress > 0.12 && progress < 0.88) intermediate++;
+          if (previous != null) {
+            comparisons++;
+            if (direction * (value - previous) >= -20) ordered++;
+          }
+          previous = value;
+        }
+        detectedSlide = duration >= minSlideSec &&
+          intermediate >= Math.max(2, Math.round((firstTarget - lastSource) * 0.2)) &&
+          maxMissing * validHop <= 0.05 &&
+          (!comparisons || ordered / comparisons >= 0.65);
+      }
+
+      if (explicitSlide || detectedSlide) {
+        let t0 = lastSource >= 0 ? lastSource * validHop : boundary - Math.min(0.12, leftArm);
+        let t1 = firstTarget >= 0 ? firstTarget * validHop : boundary + Math.min(0.12, rightArm);
+        t0 = Math.max(left.t0, Math.min(boundary, t0));
+        t1 = Math.min(right.t1, Math.max(boundary, t1));
+        if (t1 - t0 < minSlideSec) {
+          const half = Math.min(0.12, leftArm, rightArm);
+          t0 = Math.max(left.t0, boundary - half);
+          t1 = Math.min(right.t1, boundary + half);
+        }
+        transitions[index] = { kind: 'slide', t0, t1, c0, c1 };
+      } else {
+        transitions[index] = {
+          kind: 'step',
+          t0: boundary,
+          t1: boundary,
+          c0,
+          c1,
+        };
+      }
+    }
+
+    const segments = [];
+    for (let index = 0; index < source.length; index++) {
+      const token = source[index];
+      const previous = transitions[index - 1];
+      const next = transitions[index];
+      let t0 = token.t0;
+      let t1 = token.t1;
+      if (previous) {
+        if (previous.kind === 'slide') t0 = Math.max(t0, previous.t1);
+        else if (previous.kind === 'step') t0 = Math.max(t0, previous.t0);
+      }
+      if (next) {
+        if (next.kind === 'slide') t1 = Math.min(t1, next.t0);
+        else if (next.kind === 'step') t1 = Math.min(t1, next.t0);
+      }
+      if (t1 < t0) {
+        const midpoint = (t0 + t1) / 2;
+        t0 = midpoint;
+        t1 = midpoint;
+      }
+      const path = glidePath(token);
+      segments.push({
+        kind: path.length > 1 ? 'slide' : 'hold',
+        t0,
+        t1,
+        c0: entryCents(token),
+        c1: exitCents(token),
+        tokenIndex: index,
+      });
+      if (next) segments.push({ ...next, tokenIndex: index });
+    }
+    return segments;
+  }
+
   /** Keep a glide's endpoints plus the in-scale swaras it passes through, so a
    *  smooth meend reads as its raga notes, not every chromatic step. */
   function viaPath(via, scaleSet) {
@@ -1888,7 +2060,7 @@
   }
 
   return {
-    preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notateRegions, notationText, analyzeRaga,
+    preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notateRegions, buildPracticeContour, notationText, analyzeRaga,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     pitchShift, timeStretch, resampleLinear, formantCorrect,
     SWARA_LETTERS,

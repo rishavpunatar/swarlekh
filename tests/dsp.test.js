@@ -276,6 +276,112 @@ test('notateRegions: repeated same pitch remains one token per articulation', ()
   assert.deepStrictEqual(tokens.map((token) => token.k), [7, 7, 7]);
 });
 
+test('practice contour: vibrato becomes a flat target hold', () => {
+  const hopSec = 0.01;
+  const cents = Float32Array.from(
+    { length: 80 },
+    (_, index) => 28 * Math.sin(2 * Math.PI * index / 9)
+  );
+  const segments = DSP.buildPracticeContour(
+    [{ t0: 0, t1: 0.8, k: 0 }],
+    cents,
+    hopSec
+  );
+  assert.deepStrictEqual(segments, [
+    { kind: 'hold', t0: 0, t1: 0.8, c0: 0, c1: 0, tokenIndex: 0 },
+  ]);
+});
+
+test('practice contour: an abrupt note change is a clear step', () => {
+  const hopSec = 0.01;
+  const cents = new Float32Array(100);
+  cents.fill(0, 0, 50);
+  cents.fill(400, 50);
+  const segments = DSP.buildPracticeContour(
+    [
+      { t0: 0, t1: 0.5, k: 0 },
+      { t0: 0.5, t1: 1, k: 4 },
+    ],
+    cents,
+    hopSec
+  );
+  assert.strictEqual(segments[1].kind, 'step');
+  assert.deepStrictEqual(
+    segments.filter((segment) => segment.kind === 'hold').map((segment) => segment.c0),
+    [0, 400]
+  );
+});
+
+test('practice contour: a sustained pitch traversal is a simplified slide', () => {
+  const hopSec = 0.01;
+  const cents = new Float32Array(100);
+  for (let index = 0; index < cents.length; index++) {
+    if (index < 40) cents[index] = 0;
+    else if (index <= 60) cents[index] = (index - 40) / 20 * 700;
+    else cents[index] = 700;
+  }
+  const segments = DSP.buildPracticeContour(
+    [
+      { t0: 0, t1: 0.5, k: 0 },
+      { t0: 0.5, t1: 1, k: 7 },
+    ],
+    cents,
+    hopSec
+  );
+  const slide = segments.find((segment) => segment.kind === 'slide');
+  assert.ok(slide, 'continuous traversal should render as a slide');
+  assert.ok(slide.t1 - slide.t0 >= 0.08);
+  assert.strictEqual(slide.c0, 0);
+  assert.strictEqual(slide.c1, 700);
+});
+
+test('practice contour: a collapsed meend token remains one intentional slide', () => {
+  const segments = DSP.buildPracticeContour(
+    [{ t0: 0, t1: 1.4, k: 7, glide: true, via: [0, 2, 4, 5, 7] }],
+    new Float32Array(140),
+    0.01
+  );
+  assert.deepStrictEqual(segments, [
+    { kind: 'slide', t0: 0, t1: 1.4, c0: 0, c1: 700, tokenIndex: 0 },
+  ]);
+});
+
+test('practice contour: a vocal pause never bridges two notes', () => {
+  const segments = DSP.buildPracticeContour(
+    [
+      { t0: 0, t1: 0.4, k: 0 },
+      { t0: 0.55, t1: 1, k: 4 },
+    ],
+    new Float32Array(100),
+    0.01
+  );
+  assert.strictEqual(segments.length, 2);
+  assert.ok(segments.every((segment) => segment.kind === 'hold'));
+});
+
+test('practice contour: a fast murki stays as distinct note targets', () => {
+  const tokens = [0, 4, 2, 4, 5].map((k, index) => ({
+    t0: index * 0.04,
+    t1: (index + 1) * 0.04,
+    k,
+    murki: true,
+  }));
+  const cents = new Float32Array(24);
+  tokens.forEach((token, index) => {
+    cents.fill(token.k * 100, index * 4, (index + 1) * 4);
+  });
+  const segments = DSP.buildPracticeContour(tokens, cents, 0.01);
+  assert.deepStrictEqual(
+    segments.filter((segment) => segment.kind === 'hold').map((segment) => segment.c0),
+    [0, 400, 200, 400, 500]
+  );
+  assert.strictEqual(
+    segments.filter((segment) => segment.kind === 'step').length,
+    4
+  );
+  assert.ok(!segments.some((segment) => segment.kind === 'slide'));
+});
+
 test('notationText: renders timestamps and sustain dashes', () => {
   const phrases = [{
     t0: 62.2, t1: 64,

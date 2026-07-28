@@ -29,7 +29,7 @@
     ready: false, fileName: '',
     f0: null, clarity: null, hopSec: 0.016, sr: 16000,
     tonicCands: [], saHz: 146.83,
-    tokens: [], phrases: [], noteRegions: [],
+    tokens: [], phrases: [], noteRegions: [], practiceContour: [],
     duration: 0, synthDuration: 0,
     loopA: null, loopB: null,
     phraseLoop: -1,                 // index into state.phrases; -1 = no phrase loop
@@ -51,7 +51,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=44';
+  const WORKER_URL = 'js/worker.js?v=45';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -642,10 +642,10 @@
     updateStats();
   }
 
-  // Precompute the smoothed contour cents ONCE per analysis/Sa/threshold change
-  // (drawCanvas runs every animation frame — doing thousands of median sorts
-  // per frame there made playback churn). Median over ±~16 ms: jitter dies,
-  // each fast note's plateau survives. NaN = unvoiced.
+  // Precompute contour cents once per analysis/Sa/threshold change. This track
+  // is retained for slide classification and the empty-notation fallback; the
+  // singer-facing guide itself is built from target-note holds. A ±35 ms median
+  // suppresses vibrato-scale jitter without erasing fast note transitions.
   function computeSmoothedCents() {
     const { f0, clarity, hopSec, saHz, opts } = state;
     const n = f0.length;
@@ -653,7 +653,7 @@
     for (let i = 0; i < n; i++) {
       raw[i] = (f0[i] > 0 && clarity[i] >= opts.clarityThresh) ? 1200 * Math.log2(f0[i] / saHz) : NaN;
     }
-    const half = Math.max(1, Math.round(0.016 / hopSec));
+    const half = Math.max(1, Math.round(0.035 / hopSec));
     const out = new Float32Array(n);
     const win = [];
     for (let k = 0; k < n; k++) {
@@ -666,6 +666,7 @@
       out[k] = win[win.length >> 1];
     }
     state.centsSm = out;
+    state.practiceContour = DSP.buildPracticeContour(state.tokens, out, hopSec);
   }
 
   // The song's scale: pitch classes carrying real melodic weight (duration),
@@ -1447,25 +1448,6 @@
   function viewWidthSec() { return Math.max(1, (cvs.clientWidth - GUTTER) / state.pxPerSec); }
   function clampScroll(s) { return Math.max(0, Math.min(Math.max(0, state.duration - viewWidthSec() * 0.5), s)); }
 
-  // Indian classical melody moves in curves (meend/gamak), never angular steps —
-  // so every melodic line is drawn as a smooth Catmull-Rom spline through its
-  // points rather than straight segments. Caller handles beginPath()/stroke();
-  // this adds one moveTo + smooth bézier subpath for the given [x,y] points.
-  function smoothSub(ctx, pts) {
-    const n = pts.length;
-    if (n === 0) return;
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    if (n === 1) return;
-    if (n === 2) { ctx.lineTo(pts[1][0], pts[1][1]); return; }
-    for (let i = 0; i < n - 1; i++) {
-      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-      ctx.bezierCurveTo(
-        p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6,
-        p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6,
-        p2[0], p2[1]);
-    }
-  }
-
   function drawCanvas() {
     if (!state.f0) return;
     const dpr = window.devicePixelRatio || 1;
@@ -1597,62 +1579,78 @@
       }
     }
 
-    // ---- The melody as ONE flowing curve. This is where the bends read: every
-    // meend, murki and gamak shows as the shape of the line (never straight
-    // segments). Bold, so it is the main thing on the canvas. ----
-    const { f0, clarity, hopSec, opts } = state;
-    const i0 = Math.max(0, Math.floor(scrollSec / hopSec));
-    const i1 = Math.min(f0.length - 1, Math.ceil(tEnd / hopSec));
-    // The line is coloured by how the pitch is MOVING, so the kinds of bend read
-    // at a glance: steady note (indigo) vs a glide. Glide speed (net cents/sec,
-    // measured over ±3 frames so vibrato — which nets to ~0 — stays "steady")
-    // splits into a slow meend (thick saffron) and a quick bend / step (thin
-    // saffron). So a long expressive slide looks different from a fast flick or
-    // a clean note change.
-    const MOVE = [
-      { c: colors.contour, w: 2.3, a: 0.5 },   // 0 steady / vibrato
-      { c: colors.accent, w: 3.4, a: 0.85 },   // 1 slow bend (meend)
-      { c: colors.accent, w: 1.5, a: 0.95 },   // 2 quick bend / step
-    ];
-    cctx.lineJoin = 'round'; cctx.lineCap = 'round';
-    // Bridge brief drop-outs (so one note's line doesn't shatter at a clarity
-    // dip) and drop isolated tiny fragments — together these remove the "random
-    // unconnected lines" and leave clean lines tracing the melody through the notes.
-    const BRIDGE = Math.max(2, Math.round(0.16 / hopSec));   // connect gaps ≤ ~160 ms
-    const MINLEN = Math.max(3, Math.round(0.06 / hopSec));   // drop runs shorter than ~60 ms
-    // Smoothed contour cents are PRECOMPUTED in computeSmoothedCents() (median,
-    // ±16 ms) — drawCanvas runs every animation frame, so it only reads.
+    // ---- Singer-facing practice contour. Stable notes are horizontal target
+    // holds, fast changes are clean steps, and a continuous pitch traversal is
+    // one eased slide. The detailed analysis contour remains available to the
+    // notation engine, but vibrato and tracker jitter are not drawing commands.
+    const { f0, hopSec } = state;
     const csm = state.centsSm || new Float32Array(0);
-    let pts = [], cnt = [], gap = 0;
-    const flushRun = () => {
-      if (pts.length >= MINLEN) {
-        const cls = new Array(pts.length);
-        for (let k = 0; k < pts.length; k++) {
-          const a = Math.max(0, k - 3), b = Math.min(pts.length - 1, k + 3);
-          const slope = Math.abs(cnt[b] - cnt[a]) / (((b - a) * hopSec) || 1);   // cents/sec
-          cls[k] = slope < 250 ? 0 : slope < 1500 ? 1 : 2;
+    const practice = state.practiceContour || [];
+    cctx.lineJoin = 'round';
+    cctx.lineCap = 'round';
+    for (const segment of practice) {
+      if (segment.t1 < scrollSec || segment.t0 > tEnd) continue;
+      // Let canvas clipping hide off-screen portions. Clamping the time while
+      // retaining the full pitch endpoints bends a partially visible slide.
+      const x0 = tToX(segment.t0);
+      const x1 = tToX(segment.t1);
+      const y0 = cToY(segment.c0);
+      const y1 = cToY(segment.c1);
+      if (Math.max(y0, y1) < RULER || Math.min(y0, y1) > H) continue;
+      cctx.beginPath();
+      cctx.moveTo(x0, y0);
+      if (segment.kind === 'slide') {
+        const dx = x1 - x0;
+        cctx.strokeStyle = colors.accent;
+        cctx.lineWidth = 3.4;
+        cctx.globalAlpha = 0.9;
+        cctx.bezierCurveTo(
+          x0 + dx * 0.35, y0,
+          x1 - dx * 0.35, y1,
+          x1, y1
+        );
+      } else if (segment.kind === 'step') {
+        cctx.strokeStyle = colors.accent;
+        cctx.lineWidth = 1.6;
+        cctx.globalAlpha = 0.8;
+        cctx.lineTo(x1, y1);
+      } else {
+        cctx.strokeStyle = colors.contour;
+        cctx.lineWidth = 3;
+        cctx.globalAlpha = 0.88;
+        cctx.lineTo(Math.max(x0 + 1, x1), y1);
+      }
+      cctx.stroke();
+    }
+
+    // Very short or uncertain clips can produce no notation tokens. Keep a
+    // subdued fallback contour so the canvas is not blank, but never bridge a
+    // vocal pause and never spline through frame-level wobble.
+    if (!practice.length) {
+      const i0 = Math.max(0, Math.floor(scrollSec / hopSec));
+      const i1 = Math.min(f0.length - 1, Math.ceil(tEnd / hopSec));
+      let drawing = false;
+      cctx.strokeStyle = colors.contour;
+      cctx.lineWidth = 2;
+      cctx.globalAlpha = 0.55;
+      cctx.beginPath();
+      for (let index = i0; index <= i1; index++) {
+        const value = csm[index];
+        if (!Number.isFinite(value)) {
+          drawing = false;
+          continue;
         }
-        let s = 0;
-        for (let k = 1; k <= pts.length; k++) {
-          if (k === pts.length || cls[k] !== cls[s]) {
-            const st = MOVE[cls[s]];
-            cctx.strokeStyle = st.c; cctx.lineWidth = st.w; cctx.globalAlpha = st.a;
-            cctx.beginPath(); smoothSub(cctx, pts.slice(s, Math.min(pts.length, k + 1))); cctx.stroke();
-            s = k;
-          }
+        const x = tToX(index * hopSec);
+        const y = cToY(value);
+        if (!drawing) {
+          cctx.moveTo(x, y);
+          drawing = true;
+        } else {
+          cctx.lineTo(x, y);
         }
       }
-      pts = []; cnt = [];
-    };
-    for (let i = i0; i <= i1; i++) {
-      const cc = csm[i];
-      if (!isNaN(cc)) {
-        const y = cToY(cc);
-        if (y < RULER || y > H) { flushRun(); gap = 0; continue; }
-        pts.push([tToX(i * hopSec), y]); cnt.push(cc); gap = 0;
-      } else if (pts.length && ++gap > BRIDGE) { flushRun(); gap = 0; }
+      cctx.stroke();
     }
-    flushRun();
     cctx.globalAlpha = 1;
 
     // ---- Name EVERY note. A dot sits on the line at each note the voice hits,
@@ -1714,12 +1712,12 @@
       if (dimmed(tk)) {   // spotlight mode: non-matching notes become faint specks
         cctx.fillStyle = colors.muted; cctx.globalAlpha = 0.25;
         cctx.beginPath();
-        cctx.arc(tToX((tk.t0 + tk.t1) / 2), cToY(tk.cents != null ? tk.cents : tk.k * 100), 2, 0, 2 * Math.PI);
+        cctx.arc(tToX((tk.t0 + tk.t1) / 2), cToY(tk.k * 100), 2, 0, 2 * Math.PI);
         cctx.fill(); cctx.globalAlpha = 1;
         continue;
       }
       if (spotPc != null && !isActive) {   // a match while spotlighting: make it pop
-        const cx0 = tToX((tk.t0 + tk.t1) / 2), cy0 = cToY(tk.cents != null ? tk.cents : tk.k * 100);
+        const cx0 = tToX((tk.t0 + tk.t1) / 2), cy0 = cToY(tk.k * 100);
         cctx.strokeStyle = colors.accent; cctx.lineWidth = 2; cctx.globalAlpha = 0.9;
         cctx.beginPath(); cctx.arc(cx0, cy0, 7, 0, 2 * Math.PI); cctx.stroke(); cctx.globalAlpha = 1;
       }
@@ -1737,10 +1735,10 @@
         cctx.beginPath(); cctx.roundRect(x, yTop - 2, w, (yBot - yTop) + 4, 4); cctx.fill();
         cctx.globalAlpha = 1;
       }
-      // Anchor the dot to the SUNG pitch (token mean cents), not the quantized
-      // grid — so it sits ON the curve even when the note is sung komal-ish or
-      // between grid lines. The label still names the quantized swara.
-      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.cents != null ? tk.cents : tk.k * 100);
+      // The dot is the note to hit, so anchor it to the target swara grid. Fine
+      // intonation remains in the analysis panel instead of making the practice
+      // instruction look out of tune.
+      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
       const held = dur >= 0.28;
       const r = isActive ? 6 : (held ? 4.5 : 3);
       if (isActive) { cctx.fillStyle = colors.accentSoft; cctx.beginPath(); cctx.arc(cx, cy, r + 5, 0, 2 * Math.PI); cctx.fill(); }
@@ -1761,7 +1759,7 @@
         for (let p = 0; p < vv.length; p++) labelAt(tokenGlyph(vv[p]), viaX(tk, p, vv.length), cToY(vv[p] * 100), false, colors.contour);
         continue;
       }
-      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.cents != null ? tk.cents : tk.k * 100);
+      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
       const big = isActive || (tk.t1 - tk.t0) >= 0.28;
       const col = isActive ? colors.accent : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
       labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);
