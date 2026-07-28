@@ -5,6 +5,9 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "benchmark:download:vocadito": "bash evaluation/download-vocadito.sh",
+    "benchmark:vocadito": "node evaluation/evaluate-vocadito.js",
+    "benchmark:tune:vocadito": "node evaluation/evaluate-vocadito.js --tune",
     "serve": "python3 -m http.server 4173"
   },
   "license": "MIT"

@@ -6,3 +6,8 @@ node_modules/
 server/.venv/
 server/__pycache__/
 server/server.log
+
+# downloaded evaluation corpora and generated feature caches
+evaluation/data/
+evaluation/cache/
+evaluation/__pycache__/
