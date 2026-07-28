@@ -1,0 +1,282 @@
+{
+  "dataset": "Vocadito 1.0",
+  "generatedAt": "2026-07-28T14:35:04.189Z",
+  "splitPolicy": "Singer-disjoint SHA-256 partition; hash modulo 3 equals 0 is held-out test.",
+  "baselineConfig": {
+    "clarityThresh": 0.5,
+    "minNoteMs": 130,
+    "ornMinMs": 25,
+    "onsetMinMs": 100,
+    "gateCentsPerSec": 900,
+    "quantizeHysteresisCents": 12
+  },
+  "mode": "development-tuning-with-held-out-test",
+  "baselineDevelopment": {
+    "tracks": 33,
+    "singers": 24,
+    "pitch": {
+      "rawPitchAccuracy": 0.8977869191831501,
+      "rawChromaAccuracy": 0.9273703471211251,
+      "voicingRecall": 0.9562859775887169,
+      "voicingFalseAlarm": 0.1438504444387846,
+      "overallAccuracy": 0.8834635872993621
+    },
+    "notes": {
+      "onsetPitch": {
+        "precision": 0.3322445170321979,
+        "recall": 0.4180857310628303,
+        "f1": 0.3702548101924077
+      },
+      "onsetOffsetPitch": {
+        "precision": 0.22235184321045265,
+        "recall": 0.2798003523194363,
+        "f1": 0.24778991159646388
+      },
+      "annotatorAgreementOnsetPitch": {
+        "precision": 0.7927295918367347,
+        "recall": 0.676278563656148,
+        "f1": 0.7298884321785086
+      },
+      "annotatorAgreementOnsetOffsetPitch": {
+        "precision": 0.6741071428571429,
+        "recall": 0.5750816104461371,
+        "f1": 0.620669406928949
+      }
+    },
+    "counts": {
+      "pitch": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 71600,
+        "estimatedVoicedOnReferenceUnvoiced": 5648,
+        "rawPitchCorrect": 67220,
+        "rawChromaCorrect": 69435,
+        "overallCorrect": 100835
+      },
+      "noteOnset": {
+        "matches": 1424,
+        "reference": 3406,
+        "estimated": 4286
+      },
+      "noteStrict": {
+        "matches": 953,
+        "reference": 3406,
+        "estimated": 4286
+      },
+      "annotatorOnset": {
+        "matches": 1243,
+        "reference": 1838,
+        "estimated": 1568
+      },
+      "annotatorStrict": {
+        "matches": 1057,
+        "reference": 1838,
+        "estimated": 1568
+      }
+    }
+  },
+  "baselineTest": {
+    "tracks": 7,
+    "singers": 5,
+    "pitch": {
+      "rawPitchAccuracy": 0.9684408334715083,
+      "rawChromaAccuracy": 0.9714806831371249,
+      "voicingRecall": 0.9882827612888962,
+      "voicingFalseAlarm": 0.10756459721735064,
+      "overallAccuracy": 0.9440441342040081
+    },
+    "notes": {
+      "onsetPitch": {
+        "precision": 0.4253246753246753,
+        "recall": 0.5558698727015559,
+        "f1": 0.4819129368485592
+      },
+      "onsetOffsetPitch": {
+        "precision": 0.2824675324675325,
+        "recall": 0.36916548797736914,
+        "f1": 0.3200490496627836
+      },
+      "annotatorAgreementOnsetPitch": {
+        "precision": 0.8246753246753247,
+        "recall": 0.6365914786967418,
+        "f1": 0.7185289957567186
+      },
+      "annotatorAgreementOnsetOffsetPitch": {
+        "precision": 0.7012987012987013,
+        "recall": 0.5413533834586466,
+        "f1": 0.611032531824611
+      }
+    },
+    "counts": {
+      "pitch": {
+        "frames": 26646,
+        "referenceVoiced": 18093,
+        "referenceUnvoiced": 8553,
+        "estimatedVoicedOnReferenceVoiced": 17881,
+        "estimatedVoicedOnReferenceUnvoiced": 920,
+        "rawPitchCorrect": 17522,
+        "rawChromaCorrect": 17577,
+        "overallCorrect": 25155
+      },
+      "noteOnset": {
+        "matches": 393,
+        "reference": 707,
+        "estimated": 924
+      },
+      "noteStrict": {
+        "matches": 261,
+        "reference": 707,
+        "estimated": 924
+      },
+      "annotatorOnset": {
+        "matches": 254,
+        "reference": 399,
+        "estimated": 308
+      },
+      "annotatorStrict": {
+        "matches": 216,
+        "reference": 399,
+        "estimated": 308
+      }
+    }
+  },
+  "tunedConfig": {
+    "clarityThresh": 0.55,
+    "minNoteMs": 130,
+    "ornMinMs": 25,
+    "onsetMinMs": 100,
+    "gateCentsPerSec": 700,
+    "quantizeHysteresisCents": 12
+  },
+  "tunedDevelopment": {
+    "tracks": 33,
+    "singers": 24,
+    "pitch": {
+      "rawPitchAccuracy": 0.8974396644985508,
+      "rawChromaAccuracy": 0.9269429567400799,
+      "voicingRecall": 0.9553243492313651,
+      "voicingFalseAlarm": 0.1382726740187963,
+      "overallAccuracy": 0.8851545524637274
+    },
+    "notes": {
+      "onsetPitch": {
+        "precision": 0.35138954309938764,
+        "recall": 0.4380504991192014,
+        "f1": 0.3899634082592786
+      },
+      "onsetOffsetPitch": {
+        "precision": 0.23339613754121527,
+        "recall": 0.29095713446858484,
+        "f1": 0.25901725039205437
+      },
+      "annotatorAgreementOnsetPitch": {
+        "precision": 0.7927295918367347,
+        "recall": 0.676278563656148,
+        "f1": 0.7298884321785086
+      },
+      "annotatorAgreementOnsetOffsetPitch": {
+        "precision": 0.6741071428571429,
+        "recall": 0.5750816104461371,
+        "f1": 0.620669406928949
+      }
+    },
+    "counts": {
+      "pitch": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 71528,
+        "estimatedVoicedOnReferenceUnvoiced": 5429,
+        "rawPitchCorrect": 67194,
+        "rawChromaCorrect": 69403,
+        "overallCorrect": 101028
+      },
+      "noteOnset": {
+        "matches": 1492,
+        "reference": 3406,
+        "estimated": 4246
+      },
+      "noteStrict": {
+        "matches": 991,
+        "reference": 3406,
+        "estimated": 4246
+      },
+      "annotatorOnset": {
+        "matches": 1243,
+        "reference": 1838,
+        "estimated": 1568
+      },
+      "annotatorStrict": {
+        "matches": 1057,
+        "reference": 1838,
+        "estimated": 1568
+      }
+    }
+  },
+  "tunedTest": {
+    "tracks": 7,
+    "singers": 5,
+    "pitch": {
+      "rawPitchAccuracy": 0.9682197534958271,
+      "rawChromaAccuracy": 0.9712596031614437,
+      "voicingRecall": 0.9879511413253744,
+      "voicingFalseAlarm": 0.10475856424646322,
+      "overallAccuracy": 0.9447947159048262
+    },
+    "notes": {
+      "onsetPitch": {
+        "precision": 0.4392935982339956,
+        "recall": 0.562942008486563,
+        "f1": 0.4934903905765655
+      },
+      "onsetOffsetPitch": {
+        "precision": 0.2913907284768212,
+        "recall": 0.3734087694483734,
+        "f1": 0.32734035957842533
+      },
+      "annotatorAgreementOnsetPitch": {
+        "precision": 0.8246753246753247,
+        "recall": 0.6365914786967418,
+        "f1": 0.7185289957567186
+      },
+      "annotatorAgreementOnsetOffsetPitch": {
+        "precision": 0.7012987012987013,
+        "recall": 0.5413533834586466,
+        "f1": 0.611032531824611
+      }
+    },
+    "counts": {
+      "pitch": {
+        "frames": 26646,
+        "referenceVoiced": 18093,
+        "referenceUnvoiced": 8553,
+        "estimatedVoicedOnReferenceVoiced": 17875,
+        "estimatedVoicedOnReferenceUnvoiced": 896,
+        "rawPitchCorrect": 17518,
+        "rawChromaCorrect": 17573,
+        "overallCorrect": 25175
+      },
+      "noteOnset": {
+        "matches": 398,
+        "reference": 707,
+        "estimated": 906
+      },
+      "noteStrict": {
+        "matches": 264,
+        "reference": 707,
+        "estimated": 906
+      },
+      "annotatorOnset": {
+        "matches": 254,
+        "reference": 399,
+        "estimated": 308
+      },
+      "annotatorStrict": {
+        "matches": 216,
+        "reference": 399,
+        "estimated": 308
+      }
+    }
+  }
+}

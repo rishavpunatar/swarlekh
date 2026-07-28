@@ -2,10 +2,11 @@
 """
 SwarLekh local analysis server — highest-quality pitch track, on YOUR machine.
 
-Pipeline: Demucs (htdemucs) isolates the VOCAL stem from the mix, then CREPE
-(full model, Viterbi decoding) tracks pitch on the clean voice. Separating the
-voice first is what removes the harmonium/tabla confusion that makes octaves
-flip — the single biggest quality lever.
+Pipeline: BS-RoFormer isolates the VOCAL stem from the mix when available,
+falling back to Demucs (htdemucs). RMVPE tracks robust frame-level pitch, Praat
+confirms uncertain voicing decisions, and GAME predicts sung note boundaries.
+Separation removes harmonium/tabla confusion; the neural models preserve
+octaves and resolve fast murkis and sargam runs.
 
 Privacy: this runs entirely on localhost. The browser sends the decoded audio
 to 127.0.0.1 only; nothing leaves your machine. Start it, then in the web app
@@ -13,7 +14,12 @@ pick Pitch engine → "Best (local server)".
 
 Run:  server/.venv/bin/python server/server.py
 """
-import io, os, gc, time, hashlib
+import gc
+import hashlib
+import importlib.util
+import io
+import os
+import time
 import numpy as np
 import soundfile as sf
 import torch, torchaudio, torchcrepe
@@ -23,6 +29,7 @@ import pyrubberband
 import parselmouth
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
+from singing_models import GameTranscriber, RobustPitchTracker
 
 # Ensure the Rubber Band CLI (Homebrew) is on PATH even under launchd, whose
 # LaunchAgents start with a minimal PATH that excludes /opt/homebrew/bin.
@@ -31,9 +38,15 @@ from demucs.pretrained import get_model
 from demucs.apply import apply_model
 
 PORT = 8765
-HOP = 256            # 16 ms at 16 kHz — matches the in-browser pipeline
+CREPE_HOP = 256      # 16 ms at 16 kHz; used only by the /transpose voice resynthesis
+PRAAT_HOP_SEC = 0.004
 SR = 16000
 DEMUCS_SR = 44100
+MODEL_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
+GAME_MODEL_DIR = os.environ.get(
+    'SWARLEKH_GAME_MODEL',
+    os.path.join(MODEL_ROOT, 'GAME-1.0.3-small-onnx'),
+)
 
 # CPU, deliberately: Apple's MPS backend is far SLOWER than CPU for Demucs's
 # transformer here (measured ~10x), so CPU (multi-threaded) is the fast path.
@@ -43,6 +56,40 @@ DEVICE = 'cpu'
 # idles light — the ~1 GB model is only paged in when a separation actually runs.
 _demucs = None
 _voc_idx = None
+_robust_pitch = None
+_robust_pitch_failed = False
+_game = None
+_game_failed = False
+
+
+def get_robust_pitch():
+    global _robust_pitch, _robust_pitch_failed
+    if _robust_pitch is None and not _robust_pitch_failed:
+        try:
+            print('[swarlekh] loading RMVPE...', flush=True)
+            _robust_pitch = RobustPitchTracker(
+                model_path=os.environ.get('SWARLEKH_RMVPE_MODEL'),
+                device=os.environ.get('SWARLEKH_ONNX_DEVICE'),
+            )
+        except Exception as error:
+            _robust_pitch_failed = True
+            print('[swarlekh] RMVPE unavailable (%s); using Praat fallback' % error, flush=True)
+    return _robust_pitch
+
+
+def get_game():
+    global _game, _game_failed
+    if _game is None and not _game_failed:
+        try:
+            print('[swarlekh] loading GAME note transcriber...', flush=True)
+            _game = GameTranscriber(GAME_MODEL_DIR, steps=2)
+        except Exception as error:
+            _game_failed = True
+            print('[swarlekh] GAME unavailable (%s); using contour notation fallback'
+                  % error, flush=True)
+    return _game
+
+
 def get_demucs():
     global _demucs, _voc_idx
     if _demucs is None:
@@ -234,7 +281,20 @@ def detect_rhythm(x, voc):
 
 @app.get('/')
 def health():
-    return jsonify(ok=True, device=DEVICE, hopSec=HOP / SR, sr=SR)
+    game_files = ('encoder.onnx', 'segmenter.onnx', 'bd2dur.onnx', 'estimator.onnx')
+    return jsonify(
+        ok=True,
+        device=DEVICE,
+        analyzer='rmvpe+praat+game',
+        neuralModelsInstalled=(
+            importlib.util.find_spec('rmvpe_onnx') is not None
+            and all(
+                os.path.exists(os.path.join(GAME_MODEL_DIR, name))
+                for name in game_files
+            )
+        ),
+        sr=SR,
+    )
 
 
 @app.post('/analyze')
@@ -248,66 +308,93 @@ def analyze():
     if in_sr != DEMUCS_SR:
         x = torchaudio.functional.resample(x, in_sr, DEMUCS_SR)
     voc, _ = separated_stems_44k(raw, x)               # [1, n] @44.1k (cached for /transpose)
+    voc44 = voc[0].cpu().numpy().astype(np.float32)
     voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)[0].cpu().numpy().astype(np.float64)  # [n] @16k
     t_sep = time.time() - t0
-    print('[swarlekh] separation done in %.1fs -- Praat-CC pitch on the clean voice...' % t_sep, flush=True)
+    print('[swarlekh] separation done in %.1fs -- neural singing analysis...'
+          % t_sep, flush=True)
 
-    # Praat cross-correlation replaces CREPE here (benchmarked on synthetic
-    # fast-sargam suites): its analysis window is 1/pitch_floor -- ~5-10 ms vs
-    # CREPE's fixed 64 ms -- so 30-40 ms murki/sargam notes resolve as distinct
-    # notes with NO time-stretch preprocessing, at ~1/1000th the compute
-    # (bench: FAST_EDIT 3 vs CREPE-x3's 7; 0 with the client's plateau gate).
-    # Two passes: a quick low-floor pass finds the singer's register, then the
-    # real pass uses the highest safe floor = smallest window (a fixed 200 Hz
-    # floor would clip mandra-saptak / low voices).
+    # Praat supplies an independent voicing decision for borderline RMVPE
+    # frames. High-confidence RMVPE frames stand on their own. This preserves
+    # RMVPE's octave robustness without accepting every low-confidence edge.
     snd = parselmouth.Sound(voc16, sampling_frequency=SR)
     quick = snd.to_pitch_cc(time_step=0.01, pitch_floor=75.0, pitch_ceiling=1200.0)
     qf = quick.selected_array['frequency']; qf = qf[qf > 0]
     floor = float(np.clip(0.8 * np.percentile(qf, 5), 75.0, 200.0)) if qf.size else 120.0
-    hop_sec = 0.004
-    p2 = snd.to_pitch_cc(time_step=hop_sec, pitch_floor=floor, pitch_ceiling=1200.0, very_accurate=True)
-    f0 = np.nan_to_num(p2.selected_array['frequency'])
-    # Per-frame confidence = Praat's real correlation strength, so the client's
-    # noise filters (and the Voicing-strictness slider) can tell a solidly sung
-    # note from a breathy flicker or separation artifact. (A flat 0.9 encoding
-    # made every frame look equally confident — fine on clean synthetic audio,
-    # but on real singing it let junk through as notes.)
+    p2 = snd.to_pitch_cc(time_step=PRAAT_HOP_SEC, pitch_floor=floor,
+                         pitch_ceiling=1200.0, very_accurate=True)
+    praat_f0 = np.nan_to_num(p2.selected_array['frequency'])
     strength = np.nan_to_num(p2.selected_array['strength'])
-    pd = np.where(f0 > 0, np.clip(strength, 0.0, 1.0), 0.0)
 
-    # VOCAL-ENERGY GATE: separation isn't perfect -- instrumental-only stretches
-    # leave a faint residual that would read as spurious notes; silence frames
-    # well below the singing level so only sung notes survive.
+    analyzer = 'praat-cc'
+    robust_pitch = get_robust_pitch()
+    if robust_pitch is not None:
+        pitch = robust_pitch.predict(
+            voc44,
+            DEMUCS_SR,
+            praat_f0,
+            strength,
+            PRAAT_HOP_SEC,
+        )
+        f0 = pitch['f0']
+        pd = pitch['confidence']
+        hop_sec = pitch['hopSec']
+        analyzer = 'rmvpe+praat'
+    else:
+        hop_sec = PRAAT_HOP_SEC
+        f0 = praat_f0
+        pd = np.where(f0 > 0, np.clip(strength, 0.0, 1.0), 0.0)
+
     n_frames = len(f0)
     hop_n = int(round(hop_sec * SR))
     rms = np.zeros(n_frames, dtype='float32')
     for i in range(n_frames):
         s = i * hop_n
         rms[i] = float(np.sqrt(np.mean(voc16[s:s + 1024] ** 2))) if s + 1024 <= len(voc16) else 0.0
-    loud = np.percentile(rms[rms > 0], 90) if np.any(rms > 0) else 0.0
-    thresh = max(0.08 * loud, 1e-4)                    # ~residual is far quieter than singing
-    keep = (pd > 0.01) & (rms > thresh)
-    f0 = np.where(keep, f0, 0.0)
+    if robust_pitch is None:
+        # The fallback still needs the vocal-energy gate that RMVPE's learned
+        # voiced/unvoiced confidence replaces.
+        loud = np.percentile(rms[rms > 0], 90) if np.any(rms > 0) else 0.0
+        threshold = max(0.08 * loud, 1e-4)
+        keep = (pd > 0.01) & (rms > threshold)
+        f0 = np.where(keep, f0, 0.0)
+        pd = np.where(keep, pd, 0.0)
 
-    # Syllable/consonant onsets, detected on the SEPARATED voice — every sung
-    # articulation ("sa", "re"…) starts a fresh note in the notation. Detecting
-    # here (not on the mix, where tabla strokes drown them) makes each consonant
-    # a clean, visible note boundary.
-    try:
-        onsets = librosa.onset.onset_detect(y=voc16.astype(np.float32), sr=SR,
-                                            hop_length=160, units='time', backtrack=True)
-        onsets = [round(float(t), 3) for t in onsets]
-    except Exception as e:
-        print('[swarlekh] onset detect failed: %s' % e, flush=True)
-        onsets = []
+    note_regions = []
+    game = get_game()
+    if game is not None:
+        try:
+            note_regions = game.transcribe(voc44, DEMUCS_SR)
+            analyzer += '+game'
+        except Exception as error:
+            print('[swarlekh] GAME inference failed for this recording: %s'
+                  % error, flush=True)
+
+    if note_regions:
+        onsets = [note['onset'] for note in note_regions]
+    else:
+        try:
+            onsets = librosa.onset.onset_detect(
+                y=voc16.astype(np.float32),
+                sr=SR,
+                hop_length=160,
+                units='time',
+                backtrack=True,
+            )
+            onsets = [round(float(t), 3) for t in onsets]
+        except Exception as error:
+            print('[swarlekh] onset detect failed: %s' % error, flush=True)
+            onsets = []
     rhythm = detect_rhythm(x, voc)
-    print('[swarlekh] %.1fs sep + %.1fs total · %d frames @ %.0fms hop · %d voiced · %d onsets · rhythm=%s'
-          % (t_sep, time.time() - t0, n_frames, hop_sec * 1000, int(keep.sum()), len(onsets),
+    print('[swarlekh] %.1fs sep + %.1fs total · %s · %d frames @ %.0fms hop · %d voiced · %d notes · rhythm=%s'
+          % (t_sep, time.time() - t0, analyzer, n_frames, hop_sec * 1000,
+             int(np.count_nonzero(f0)), len(note_regions),
              ('%s %s %sbpm' % (rhythm['conf'], rhythm['taal'], rhythm['bpm'])) if rhythm else 'none'), flush=True)
     return jsonify(f0=[round(float(x), 2) for x in f0],
                    periodicity=[round(float(x), 3) for x in pd],
                    rms=[round(float(x), 5) for x in rms],
-                   onsets=onsets, rhythm=rhythm,
+                   onsets=onsets, noteRegions=note_regions, rhythm=rhythm,
+                   analyzer=analyzer,
                    hopSec=hop_sec, sr=SR)
 
 
@@ -362,12 +449,12 @@ def transpose():
     # Rubber Band on the raw voice lost that definition. (High/low octaves can still
     # go a touch robotic — a WORLD formant-undersampling limit at f0 extremes.)
     voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)            # [1, n] @16k
-    f0c, pdc = torchcrepe.predict(voc16, SR, hop_length=HOP, fmin=50, fmax=1100,
+    f0c, pdc = torchcrepe.predict(voc16, SR, hop_length=CREPE_HOP, fmin=50, fmax=1100,
                                   model='tiny', decoder=torchcrepe.decode.weighted_argmax,
                                   return_periodicity=True, batch_size=512, device=DEVICE)
     f0c = torchcrepe.filter.median(f0c, 3)[0].cpu().numpy()
     pdc = pdc[0].cpu().numpy()
-    crepe_t = np.arange(len(f0c)) * (HOP / SR)
+    crepe_t = np.arange(len(f0c)) * (CREPE_HOP / SR)
     voc_w = torchaudio.functional.resample(voc, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
     _f0, tw = pw.dio(voc_w.astype(np.float64), WORLD_SR)                  # just for WORLD's frame times
     vmask = f0c > 0

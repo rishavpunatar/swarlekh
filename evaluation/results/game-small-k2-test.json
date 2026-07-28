@@ -1,0 +1,49 @@
+{
+  "dataset": "Vocadito 1.0",
+  "model": "GAME-1.0.3-small-onnx",
+  "modelFingerprint": "c3705bce51ce",
+  "split": "test",
+  "tracks": 7,
+  "singers": 5,
+  "parameters": {
+    "steps": 2,
+    "boundaryThreshold": 0.2,
+    "presenceThreshold": 0.2,
+    "radius": 2,
+    "seed": 20260728
+  },
+  "notes": {
+    "onsetPitch": {
+      "precision": 0.7421875,
+      "recall": 0.6718528995756718,
+      "f1": 0.7052709725315516
+    },
+    "onsetOffsetPitch": {
+      "precision": 0.371875,
+      "recall": 0.33663366336633666,
+      "f1": 0.3533778767631774
+    },
+    "annotatorAgreementOnsetPitch": {
+      "precision": 0.8246753246753247,
+      "recall": 0.6365914786967418,
+      "f1": 0.7185289957567186
+    },
+    "annotatorAgreementOnsetOffsetPitch": {
+      "precision": 0.7012987012987013,
+      "recall": 0.5413533834586466,
+      "f1": 0.611032531824611
+    }
+  },
+  "counts": {
+    "onset": {
+      "matches": 475,
+      "reference": 707,
+      "estimated": 640
+    },
+    "strict": {
+      "matches": 238,
+      "reference": 707,
+      "estimated": 640
+    }
+  }
+}

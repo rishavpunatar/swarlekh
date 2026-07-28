@@ -1,0 +1,80 @@
+{
+  "dataset": "Vocadito 1.0",
+  "generatedAt": "2026-07-28T14:35:17.231Z",
+  "splitPolicy": "Singer-disjoint SHA-256 partition; hash modulo 3 equals 0 is held-out test.",
+  "baselineConfig": {
+    "clarityThresh": 0.5,
+    "minNoteMs": 130,
+    "ornMinMs": 25,
+    "onsetMinMs": 100,
+    "gateCentsPerSec": 900,
+    "quantizeHysteresisCents": 12
+  },
+  "mode": "baseline",
+  "split": "all",
+  "baseline": {
+    "tracks": 40,
+    "singers": 29,
+    "pitch": {
+      "rawPitchAccuracy": 0.9115375513628639,
+      "rawChromaAccuracy": 0.9359550803519566,
+      "voicingRecall": 0.9625131768603575,
+      "voicingFalseAlarm": 0.13735987953822987,
+      "overallAccuracy": 0.8949297495418448
+    },
+    "notes": {
+      "onsetPitch": {
+        "precision": 0.34875239923224566,
+        "recall": 0.4417699975686847,
+        "f1": 0.3897886946261933
+      },
+      "onsetOffsetPitch": {
+        "precision": 0.2330134357005758,
+        "recall": 0.2951616824702164,
+        "f1": 0.260431191676499
+      },
+      "annotatorAgreementOnsetPitch": {
+        "precision": 0.7979744136460555,
+        "recall": 0.6691998211890925,
+        "f1": 0.7279358132749817
+      },
+      "annotatorAgreementOnsetOffsetPitch": {
+        "precision": 0.6785714285714286,
+        "recall": 0.5690657130084935,
+        "f1": 0.6190128859713104
+      }
+    },
+    "counts": {
+      "pitch": {
+        "frames": 140782,
+        "referenceVoiced": 92966,
+        "referenceUnvoiced": 47816,
+        "estimatedVoicedOnReferenceVoiced": 89481,
+        "estimatedVoicedOnReferenceUnvoiced": 6568,
+        "rawPitchCorrect": 84742,
+        "rawChromaCorrect": 87012,
+        "overallCorrect": 125990
+      },
+      "noteOnset": {
+        "matches": 1817,
+        "reference": 4113,
+        "estimated": 5210
+      },
+      "noteStrict": {
+        "matches": 1214,
+        "reference": 4113,
+        "estimated": 5210
+      },
+      "annotatorOnset": {
+        "matches": 1497,
+        "reference": 2237,
+        "estimated": 1876
+      },
+      "annotatorStrict": {
+        "matches": 1273,
+        "reference": 2237,
+        "estimated": 1876
+      }
+    }
+  }
+}

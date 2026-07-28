@@ -12,7 +12,8 @@
     loopABtn: $('loopABtn'), loopBBtn: $('loopBBtn'), loopClearBtn: $('loopClearBtn'), loopDisp: $('loopDisp'),
     ragaThaat: $('ragaThaat'), ragaGuess: $('ragaGuess'), swarPalette: $('swarPalette'), ragaGrammar: $('ragaGrammar'),
     tonicCard: $('tonicCard'), tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
-    tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'), tonicHint: $('tonicHint'),
+    tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'),
+    saAtPlayheadBtn: $('saAtPlayheadBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
@@ -28,7 +29,7 @@
     ready: false, fileName: '',
     f0: null, clarity: null, hopSec: 0.016, sr: 16000,
     tonicCands: [], saHz: 146.83,
-    tokens: [], phrases: [],
+    tokens: [], phrases: [], noteRegions: [], practiceContour: [],
     duration: 0, synthDuration: 0,
     loopA: null, loopB: null,
     phraseLoop: -1,                 // index into state.phrases; -1 = no phrase loop
@@ -41,13 +42,16 @@
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
     raga: null, highlightPc: null, ragaMatches: [], script: 'latin', rhythm: null,
     engine: 'yin', file: null,
-    opts: { clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45, clean: true, onsets: [] },
+    opts: {
+      clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45,
+      onsetMinMs: 100, clean: true, onsets: [],
+    },
   };
 
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=42';
+  const WORKER_URL = 'js/worker.js?v=46';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -157,6 +161,7 @@
         providedRms: opts.providedRms || null,
         providedHopSec: opts.providedHopSec || 0,
         providedOnsets: opts.providedOnsets || null,
+        providedNoteRegions: opts.providedNoteRegions || null,
       }, [samples.buffer]);
     });
   }
@@ -176,7 +181,7 @@
         method: 'POST', body: wav, headers: { 'Content-Type': 'application/octet-stream' }, signal: ctrl.signal,
       });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return await resp.json();   // { f0, periodicity, rms, onsets, hopSec, sr }
+      return await resp.json();   // { f0, periodicity, rms, noteRegions, hopSec, sr }
     } finally {
       clearTimeout(to);
       if (analyzeAbort === ctrl) analyzeAbort = null;
@@ -249,7 +254,7 @@
 
       const ab = await file.arrayBuffer();
       if (stale()) return;
-      const hash = 'v3:' + await fileHash(ab.slice(0));   // v3: adds rhythm (BPM/taal) to the analysis
+      const hash = 'v4:' + await fileHash(ab.slice(0));   // v4: neural pitch + note regions
       const ctx = ensureCtx();
       let buf;
       try {
@@ -294,7 +299,14 @@
         const cached = await idbGet(hash);
         if (stale()) return;
         if (cached && cached.f0 && cached.f0.length) {
-          workerOpts = { providedF0: cached.f0, providedClarity: cached.periodicity, providedRms: cached.rms, providedHopSec: cached.hopSec, providedOnsets: cached.onsets };
+          workerOpts = {
+            providedF0: cached.f0,
+            providedClarity: cached.periodicity,
+            providedRms: cached.rms,
+            providedHopSec: cached.hopSec,
+            providedOnsets: cached.onsets,
+            providedNoteRegions: cached.noteRegions,
+          };
           state.rhythm = cached.rhythm || null;
           toast('Analyzed this recording before — restored instantly.');
         } else if (!(await serverUp())) {
@@ -329,9 +341,25 @@
           }
           if (stale()) return;
           if (data) {
-            workerOpts = { providedF0: data.f0, providedClarity: data.periodicity, providedRms: data.rms, providedHopSec: data.hopSec, providedOnsets: data.onsets };
+            workerOpts = {
+              providedF0: data.f0,
+              providedClarity: data.periodicity,
+              providedRms: data.rms,
+              providedHopSec: data.hopSec,
+              providedOnsets: data.onsets,
+              providedNoteRegions: data.noteRegions,
+            };
             state.rhythm = data.rhythm || null;
-            idbPut(hash, { f0: data.f0, periodicity: data.periodicity, rms: data.rms, onsets: data.onsets, rhythm: data.rhythm, hopSec: data.hopSec, ts: Date.now() });
+            idbPut(hash, {
+              f0: data.f0,
+              periodicity: data.periodicity,
+              rms: data.rms,
+              onsets: data.onsets,
+              noteRegions: data.noteRegions,
+              rhythm: data.rhythm,
+              hopSec: data.hopSec,
+              ts: Date.now(),
+            });
           }
         }
       }
@@ -348,6 +376,7 @@
       state.tonicCands = result.tonic;
       state.opts.onsets = result.onsets || [];
       state.opts.rms = result.rms;
+      state.noteRegions = result.noteRegions || [];
       applyOctaveMode(false);
       state.synthDuration = result.synth.length / targetSr;
 
@@ -456,9 +485,9 @@
     els.tonicCard.classList.toggle('uncertain', !!uncertain);
     els.droneBtn.classList.toggle('pulse', !!uncertain && !droneNodes);
     if (uncertain && cands.length > 1) {
-      els.tonicHint.innerHTML = '⚠️ <b>Sa is a close call</b> — this is usually Sa vs Pa. Tap each candidate above and play the <b>Drone</b> against the song; the right Sa is the note that sounds like “home”.';
+      els.tonicHint.innerHTML = '⚠️ <b>Sa is a close call.</b> Try the candidates with the <b>Drone</b>, or pause on a sung Sa and choose <b>Set playhead as Sa</b>.';
     } else if (uncertain) {
-      els.tonicHint.innerHTML = '⚠️ Couldn’t hear enough clear melody to be sure of Sa. Set it by note below, or play the <b>Drone</b> and match it to the song’s home note.';
+      els.tonicHint.innerHTML = '⚠️ Couldn’t hear enough clear melody to be sure of Sa. Set it by note, or pause on a sung Sa and choose <b>Set playhead as Sa</b>.';
     } else {
       els.tonicHint.innerHTML = 'Pick the candidate that sounds like the song’s home note — toggle the <b>Drone</b> and listen against the recording.';
     }
@@ -499,6 +528,31 @@
   }
   els.tonicNote.addEventListener('change', tonicFromControls);
   els.tonicFine.addEventListener('input', tonicFromControls);
+
+  function setPlayheadAsSa() {
+    if (!state.f0 || !state.clarity) return;
+    const center = Math.round(origEl.currentTime / state.hopSec);
+    const collect = (radiusSec) => {
+      const vals = [];
+      const radius = Math.max(1, Math.round(radiusSec / state.hopSec));
+      for (let i = Math.max(0, center - radius); i <= Math.min(state.f0.length - 1, center + radius); i++) {
+        if (state.f0[i] > 0 && state.clarity[i] >= state.opts.clarityThresh) vals.push(state.f0[i]);
+      }
+      vals.sort((a, b) => a - b);
+      return vals;
+    };
+    let vals = collect(0.08);
+    if (!vals.length) vals = collect(0.25);
+    if (!vals.length) {
+      toast('No clear sung pitch at the playhead. Move it onto a steady Sa and try again.');
+      return;
+    }
+    state.saHz = vals[vals.length >> 1];
+    syncTonicControls();
+    renotateNow();
+    toast(`Sa set from the playhead: ${noteLabel(state.saHz)} (${state.saHz.toFixed(1)} Hz).`);
+  }
+  if (els.saAtPlayheadBtn) els.saAtPlayheadBtn.addEventListener('click', setPlayheadAsSa);
 
   els.droneBtn.addEventListener('click', () => {
     const on = !droneNodes;
@@ -561,12 +615,20 @@
 
   function renotateNow() {
     if (!state.f0) return;
-    // A fine-hop track (the server's 4 ms Praat-CC) resolves 30-40 ms sargam
-    // notes, so lower the ornament floor to keep them; coarser tracks (16 ms
-    // YIN/CREPE) keep the safer floor — a lower one only surfaces their blur.
+    // Fine-hop contour tracks can resolve short notes directly. The local
+    // neural path uses GAME's learned note regions instead of this heuristic.
     const opts = Object.assign({}, state.opts);
     if (state.hopSec <= 0.006 && opts.ornaments && opts.ornMinMs > 25) opts.ornMinMs = 25;
-    const res = DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
+    const res = state.noteRegions.length
+      ? DSP.notateRegions(
+        state.noteRegions,
+        state.f0,
+        state.clarity,
+        state.hopSec,
+        state.saHz,
+        opts
+      )
+      : DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
     state.tokens = res.tokens;
     state.phrases = res.phrases;
     state.raga = DSP.analyzeRaga(res.tokens, res.phrases);
@@ -580,10 +642,10 @@
     updateStats();
   }
 
-  // Precompute the smoothed contour cents ONCE per analysis/Sa/threshold change
-  // (drawCanvas runs every animation frame — doing thousands of median sorts
-  // per frame there made playback churn). Median over ±~16 ms: jitter dies,
-  // each fast note's plateau survives. NaN = unvoiced.
+  // Precompute contour cents once per analysis/Sa/threshold change. This track
+  // is retained for slide classification and the empty-notation fallback; the
+  // singer-facing guide itself is built from target-note holds. A ±35 ms median
+  // suppresses vibrato-scale jitter without erasing fast note transitions.
   function computeSmoothedCents() {
     const { f0, clarity, hopSec, saHz, opts } = state;
     const n = f0.length;
@@ -591,7 +653,7 @@
     for (let i = 0; i < n; i++) {
       raw[i] = (f0[i] > 0 && clarity[i] >= opts.clarityThresh) ? 1200 * Math.log2(f0[i] / saHz) : NaN;
     }
-    const half = Math.max(1, Math.round(0.016 / hopSec));
+    const half = Math.max(1, Math.round(0.035 / hopSec));
     const out = new Float32Array(n);
     const win = [];
     for (let k = 0; k < n; k++) {
@@ -604,6 +666,7 @@
       out[k] = win[win.length >> 1];
     }
     state.centsSm = out;
+    state.practiceContour = DSP.buildPracticeContour(state.tokens, out, hopSec);
   }
 
   // The song's scale: pitch classes carrying real melodic weight (duration),
@@ -656,6 +719,9 @@
   function viaDisplay(via) {
     const sc = state.scale;
     if (!sc || !via || via.length <= 2) return via || [];
+    // Skipped semitones indicate articulated swaras, not intermediate pitches
+    // swept through by a continuous meend. Name every one of those targets.
+    if (via.some((k, index) => index > 0 && Math.abs(k - via[index - 1]) > 1)) return via;
     return via.filter((k, i) => i === 0 || i === via.length - 1 || sc.has(((k % 12) + 12) % 12));
   }
 
@@ -857,9 +923,9 @@
     // Clean keeps ornaments ON now (so murkis/bends show which swaras they
     // touch) but filters noise; Detailed shows every nuance; Simple is the
     // bare melodic skeleton.
-    if (v === 'clean') Object.assign(state.opts, { ornaments: true, clean: true, ornMinMs: 45, minNoteMs: 130 });
-    else if (v === 'detailed') Object.assign(state.opts, { ornaments: true, clean: false, ornMinMs: 30, minNoteMs: 90 });
-    else Object.assign(state.opts, { ornaments: false, clean: true, ornMinMs: 45, minNoteMs: 170 });
+    if (v === 'clean') Object.assign(state.opts, { ornaments: true, clean: true, ornMinMs: 45, minNoteMs: 130, onsetMinMs: 100 });
+    else if (v === 'detailed') Object.assign(state.opts, { ornaments: true, clean: false, ornMinMs: 30, minNoteMs: 90, onsetMinMs: 80 });
+    else Object.assign(state.opts, { ornaments: false, clean: true, ornMinMs: 45, minNoteMs: 170, onsetMinMs: 125 });
     els.minNoteSlider.value = state.opts.minNoteMs;
     els.minNoteVal.textContent = `${state.opts.minNoteMs} ms`;
     if (detailMirror) detailMirror.value = v;
@@ -1385,25 +1451,6 @@
   function viewWidthSec() { return Math.max(1, (cvs.clientWidth - GUTTER) / state.pxPerSec); }
   function clampScroll(s) { return Math.max(0, Math.min(Math.max(0, state.duration - viewWidthSec() * 0.5), s)); }
 
-  // Indian classical melody moves in curves (meend/gamak), never angular steps —
-  // so every melodic line is drawn as a smooth Catmull-Rom spline through its
-  // points rather than straight segments. Caller handles beginPath()/stroke();
-  // this adds one moveTo + smooth bézier subpath for the given [x,y] points.
-  function smoothSub(ctx, pts) {
-    const n = pts.length;
-    if (n === 0) return;
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    if (n === 1) return;
-    if (n === 2) { ctx.lineTo(pts[1][0], pts[1][1]); return; }
-    for (let i = 0; i < n - 1; i++) {
-      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-      ctx.bezierCurveTo(
-        p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6,
-        p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6,
-        p2[0], p2[1]);
-    }
-  }
-
   function drawCanvas() {
     if (!state.f0) return;
     const dpr = window.devicePixelRatio || 1;
@@ -1535,62 +1582,42 @@
       }
     }
 
-    // ---- The melody as ONE flowing curve. This is where the bends read: every
-    // meend, murki and gamak shows as the shape of the line (never straight
-    // segments). Bold, so it is the main thing on the canvas. ----
-    const { f0, clarity, hopSec, opts } = state;
-    const i0 = Math.max(0, Math.floor(scrollSec / hopSec));
-    const i1 = Math.min(f0.length - 1, Math.ceil(tEnd / hopSec));
-    // The line is coloured by how the pitch is MOVING, so the kinds of bend read
-    // at a glance: steady note (indigo) vs a glide. Glide speed (net cents/sec,
-    // measured over ±3 frames so vibrato — which nets to ~0 — stays "steady")
-    // splits into a slow meend (thick saffron) and a quick bend / step (thin
-    // saffron). So a long expressive slide looks different from a fast flick or
-    // a clean note change.
-    const MOVE = [
-      { c: colors.contour, w: 2.3, a: 0.5 },   // 0 steady / vibrato
-      { c: colors.accent, w: 3.4, a: 0.85 },   // 1 slow bend (meend)
-      { c: colors.accent, w: 1.5, a: 0.95 },   // 2 quick bend / step
-    ];
-    cctx.lineJoin = 'round'; cctx.lineCap = 'round';
-    // Bridge brief drop-outs (so one note's line doesn't shatter at a clarity
-    // dip) and drop isolated tiny fragments — together these remove the "random
-    // unconnected lines" and leave clean lines tracing the melody through the notes.
-    const BRIDGE = Math.max(2, Math.round(0.16 / hopSec));   // connect gaps ≤ ~160 ms
-    const MINLEN = Math.max(3, Math.round(0.06 / hopSec));   // drop runs shorter than ~60 ms
-    // Smoothed contour cents are PRECOMPUTED in computeSmoothedCents() (median,
-    // ±16 ms) — drawCanvas runs every animation frame, so it only reads.
-    const csm = state.centsSm || new Float32Array(0);
-    let pts = [], cnt = [], gap = 0;
-    const flushRun = () => {
-      if (pts.length >= MINLEN) {
-        const cls = new Array(pts.length);
-        for (let k = 0; k < pts.length; k++) {
-          const a = Math.max(0, k - 3), b = Math.min(pts.length - 1, k + 3);
-          const slope = Math.abs(cnt[b] - cnt[a]) / (((b - a) * hopSec) || 1);   // cents/sec
-          cls[k] = slope < 250 ? 0 : slope < 1500 ? 1 : 2;
-        }
-        let s = 0;
-        for (let k = 1; k <= pts.length; k++) {
-          if (k === pts.length || cls[k] !== cls[s]) {
-            const st = MOVE[cls[s]];
-            cctx.strokeStyle = st.c; cctx.lineWidth = st.w; cctx.globalAlpha = st.a;
-            cctx.beginPath(); smoothSub(cctx, pts.slice(s, Math.min(pts.length, k + 1))); cctx.stroke();
-            s = k;
-          }
-        }
+    // ---- Singer-facing practice contour. Stable notes are horizontal target
+    // holds, fast changes are clean steps, and a continuous pitch traversal is
+    // one straight slide. The detailed analysis contour remains available to the
+    // notation engine, but vibrato and tracker jitter are not drawing commands.
+    const practice = state.practiceContour || [];
+    cctx.lineJoin = 'round';
+    cctx.lineCap = 'round';
+    for (const segment of practice) {
+      if (segment.t1 < scrollSec || segment.t0 > tEnd) continue;
+      // Let canvas clipping hide off-screen portions. Clamping the time while
+      // retaining the full pitch endpoints bends a partially visible slide.
+      const x0 = tToX(segment.t0);
+      const x1 = tToX(segment.t1);
+      const y0 = cToY(segment.c0);
+      const y1 = cToY(segment.c1);
+      if (Math.max(y0, y1) < RULER || Math.min(y0, y1) > H) continue;
+      cctx.beginPath();
+      cctx.moveTo(x0, y0);
+      if (segment.kind === 'slide') {
+        cctx.strokeStyle = colors.accent;
+        cctx.lineWidth = 3.4;
+        cctx.globalAlpha = 0.9;
+        cctx.lineTo(x1, y1);
+      } else if (segment.kind === 'step') {
+        cctx.strokeStyle = colors.accent;
+        cctx.lineWidth = 1.6;
+        cctx.globalAlpha = 0.8;
+        cctx.lineTo(x1, y1);
+      } else {
+        cctx.strokeStyle = colors.contour;
+        cctx.lineWidth = 3;
+        cctx.globalAlpha = 0.88;
+        cctx.lineTo(Math.max(x0 + 1, x1), y1);
       }
-      pts = []; cnt = [];
-    };
-    for (let i = i0; i <= i1; i++) {
-      const cc = csm[i];
-      if (!isNaN(cc)) {
-        const y = cToY(cc);
-        if (y < RULER || y > H) { flushRun(); gap = 0; continue; }
-        pts.push([tToX(i * hopSec), y]); cnt.push(cc); gap = 0;
-      } else if (pts.length && ++gap > BRIDGE) { flushRun(); gap = 0; }
+      cctx.stroke();
     }
-    flushRun();
     cctx.globalAlpha = 1;
 
     // ---- Name EVERY note. A dot sits on the line at each note the voice hits,
@@ -1652,12 +1679,12 @@
       if (dimmed(tk)) {   // spotlight mode: non-matching notes become faint specks
         cctx.fillStyle = colors.muted; cctx.globalAlpha = 0.25;
         cctx.beginPath();
-        cctx.arc(tToX((tk.t0 + tk.t1) / 2), cToY(tk.cents != null ? tk.cents : tk.k * 100), 2, 0, 2 * Math.PI);
+        cctx.arc(tToX((tk.t0 + tk.t1) / 2), cToY(tk.k * 100), 2, 0, 2 * Math.PI);
         cctx.fill(); cctx.globalAlpha = 1;
         continue;
       }
       if (spotPc != null && !isActive) {   // a match while spotlighting: make it pop
-        const cx0 = tToX((tk.t0 + tk.t1) / 2), cy0 = cToY(tk.cents != null ? tk.cents : tk.k * 100);
+        const cx0 = tToX((tk.t0 + tk.t1) / 2), cy0 = cToY(tk.k * 100);
         cctx.strokeStyle = colors.accent; cctx.lineWidth = 2; cctx.globalAlpha = 0.9;
         cctx.beginPath(); cctx.arc(cx0, cy0, 7, 0, 2 * Math.PI); cctx.stroke(); cctx.globalAlpha = 1;
       }
@@ -1675,10 +1702,10 @@
         cctx.beginPath(); cctx.roundRect(x, yTop - 2, w, (yBot - yTop) + 4, 4); cctx.fill();
         cctx.globalAlpha = 1;
       }
-      // Anchor the dot to the SUNG pitch (token mean cents), not the quantized
-      // grid — so it sits ON the curve even when the note is sung komal-ish or
-      // between grid lines. The label still names the quantized swara.
-      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.cents != null ? tk.cents : tk.k * 100);
+      // The dot is the note to hit, so anchor it to the target swara grid. Fine
+      // intonation remains in the analysis panel instead of making the practice
+      // instruction look out of tune.
+      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
       const held = dur >= 0.28;
       const r = isActive ? 6 : (held ? 4.5 : 3);
       if (isActive) { cctx.fillStyle = colors.accentSoft; cctx.beginPath(); cctx.arc(cx, cy, r + 5, 0, 2 * Math.PI); cctx.fill(); }
@@ -1699,7 +1726,7 @@
         for (let p = 0; p < vv.length; p++) labelAt(tokenGlyph(vv[p]), viaX(tk, p, vv.length), cToY(vv[p] * 100), false, colors.contour);
         continue;
       }
-      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.cents != null ? tk.cents : tk.k * 100);
+      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
       const big = isActive || (tk.t1 - tk.t0) >= 0.28;
       const col = isActive ? colors.accent : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
       labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);

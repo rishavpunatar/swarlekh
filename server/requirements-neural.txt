@@ -1,0 +1,2 @@
+onnxruntime==1.28.0
+rmvpe-onnx==0.2.3

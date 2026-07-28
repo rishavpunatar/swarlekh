@@ -1,0 +1,38 @@
+{
+  "model": "RMVPE ONNX",
+  "supportModel": "Praat cross-correlation",
+  "split": "all",
+  "baseline": {
+    "rawPitchAccuracy": 0.9115375513628639,
+    "rawChromaAccuracy": 0.9359550803519566,
+    "voicingRecall": 0.9625131768603575,
+    "voicingFalseAlarm": 0.13735987953822987,
+    "overallAccuracy": 0.8949297495418448
+  },
+  "selected": {
+    "config": {
+      "lowConfidence": 0.2,
+      "highConfidence": 0.4,
+      "praatThreshold": 0.6
+    },
+    "tracks": 40,
+    "singers": 29,
+    "pitch": {
+      "rawPitchAccuracy": 0.9788524837037197,
+      "rawChromaAccuracy": 0.979756039842523,
+      "voicingRecall": 0.9932448422003743,
+      "voicingFalseAlarm": 0.14497239417768112,
+      "overallAccuracy": 0.9367958972027673
+    },
+    "counts": {
+      "frames": 140782,
+      "referenceVoiced": 92966,
+      "referenceUnvoiced": 47816,
+      "estimatedVoicedOnReferenceVoiced": 92338,
+      "estimatedVoicedOnReferenceUnvoiced": 6932,
+      "rawPitchCorrect": 91000,
+      "rawChromaCorrect": 91084,
+      "overallCorrect": 131884
+    }
+  }
+}

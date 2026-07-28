@@ -1,0 +1,3941 @@
+{
+  "model": "RMVPE ONNX",
+  "supportModel": "Praat cross-correlation",
+  "split": "development",
+  "baseline": {
+    "rawPitchAccuracy": 0.8977869191831501,
+    "rawChromaAccuracy": 0.9273703471211251,
+    "voicingRecall": 0.9562859775887169,
+    "voicingFalseAlarm": 0.1438504444387846,
+    "overallAccuracy": 0.8834635872993621
+  },
+  "selectionObjective": "maximize the minimum absolute gain over baseline across raw pitch, raw chroma, and overall accuracy",
+  "selected": {
+    "config": {
+      "lowConfidence": 0.2,
+      "highConfidence": 0.4,
+      "praatThreshold": 0.6
+    },
+    "tracks": 33,
+    "singers": 24,
+    "pitch": {
+      "rawPitchAccuracy": 0.9764801730931043,
+      "rawChromaAccuracy": 0.9775887168939404,
+      "voicingRecall": 0.9922401933941474,
+      "voicingFalseAlarm": 0.146855818455034,
+      "overallAccuracy": 0.9340523585897526
+    },
+    "counts": {
+      "frames": 114136,
+      "referenceVoiced": 74873,
+      "referenceUnvoiced": 39263,
+      "estimatedVoicedOnReferenceVoiced": 74292,
+      "estimatedVoicedOnReferenceUnvoiced": 5766,
+      "rawPitchCorrect": 73112,
+      "rawChromaCorrect": 73195,
+      "overallCorrect": 106609
+    }
+  },
+  "candidates": [
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9764801730931043,
+        "rawChromaAccuracy": 0.9775887168939404,
+        "voicingRecall": 0.9922401933941474,
+        "voicingFalseAlarm": 0.146855818455034,
+        "overallAccuracy": 0.9340523585897526
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74292,
+        "estimatedVoicedOnReferenceUnvoiced": 5766,
+        "rawPitchCorrect": 73112,
+        "rawChromaCorrect": 73195,
+        "overallCorrect": 106609
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9764401052448813,
+        "rawChromaAccuracy": 0.9775352930963097,
+        "voicingRecall": 0.9922134814953321,
+        "voicingFalseAlarm": 0.14655018719914423,
+        "overallAccuracy": 0.9341312118875728
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74290,
+        "estimatedVoicedOnReferenceUnvoiced": 5754,
+        "rawPitchCorrect": 73109,
+        "rawChromaCorrect": 73191,
+        "overallCorrect": 106618
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9764267492954737,
+        "rawChromaAccuracy": 0.977521937146902,
+        "voicingRecall": 0.9921867695965167,
+        "voicingFalseAlarm": 0.147721773680055,
+        "overallAccuracy": 0.9337194224434009
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74288,
+        "estimatedVoicedOnReferenceUnvoiced": 5800,
+        "rawPitchCorrect": 73108,
+        "rawChromaCorrect": 73190,
+        "overallCorrect": 106571
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9763199017002123,
+        "rawChromaAccuracy": 0.9774017336022331,
+        "voicingRecall": 0.9919864303554018,
+        "voicingFalseAlarm": 0.14512390800499197,
+        "overallAccuracy": 0.9345430013317446
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74273,
+        "estimatedVoicedOnReferenceUnvoiced": 5698,
+        "rawPitchCorrect": 73100,
+        "rawChromaCorrect": 73181,
+        "overallCorrect": 106665
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9762798338519894,
+        "rawChromaAccuracy": 0.9773883776528255,
+        "voicingRecall": 0.9919997863048094,
+        "voicingFalseAlarm": 0.1442834220512951,
+        "overallAccuracy": 0.9348058456578118
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74274,
+        "estimatedVoicedOnReferenceUnvoiced": 5665,
+        "rawPitchCorrect": 73097,
+        "rawChromaCorrect": 73180,
+        "overallCorrect": 106695
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.976493529042512,
+        "rawChromaAccuracy": 0.9775753609445328,
+        "voicingRecall": 0.9922669052929628,
+        "voicingFalseAlarm": 0.14858772890507602,
+        "overallAccuracy": 0.9334653395948693
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74294,
+        "estimatedVoicedOnReferenceUnvoiced": 5834,
+        "rawPitchCorrect": 73113,
+        "rawChromaCorrect": 73194,
+        "overallCorrect": 106542
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.976253121953174,
+        "rawChromaAccuracy": 0.9773616657540102,
+        "voicingRecall": 0.9919597184565865,
+        "voicingFalseAlarm": 0.14372309808216388,
+        "overallAccuracy": 0.9349810752085231
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74271,
+        "estimatedVoicedOnReferenceUnvoiced": 5643,
+        "rawPitchCorrect": 73095,
+        "rawChromaCorrect": 73178,
+        "overallCorrect": 106715
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.976253121953174,
+        "rawChromaAccuracy": 0.9773349538551948,
+        "voicingRecall": 0.9918929387095482,
+        "voicingFalseAlarm": 0.1440541986093778,
+        "overallAccuracy": 0.9348671760005607
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74266,
+        "estimatedVoicedOnReferenceUnvoiced": 5656,
+        "rawPitchCorrect": 73095,
+        "rawChromaCorrect": 73176,
+        "overallCorrect": 106702
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9762130541049511,
+        "rawChromaAccuracy": 0.9773082419563794,
+        "voicingRecall": 0.9918261589625098,
+        "voicingFalseAlarm": 0.14321371265568092,
+        "overallAccuracy": 0.9351300203266278
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74261,
+        "estimatedVoicedOnReferenceUnvoiced": 5623,
+        "rawPitchCorrect": 73092,
+        "rawChromaCorrect": 73174,
+        "overallCorrect": 106732
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9762264100543587,
+        "rawChromaAccuracy": 0.9773082419563794,
+        "voicingRecall": 0.9918395149119175,
+        "voicingFalseAlarm": 0.14321371265568092,
+        "overallAccuracy": 0.9351387818041634
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74262,
+        "estimatedVoicedOnReferenceUnvoiced": 5623,
+        "rawPitchCorrect": 73093,
+        "rawChromaCorrect": 73174,
+        "overallCorrect": 106733
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9766270885365886,
+        "rawChromaAccuracy": 0.9777356323374247,
+        "voicingRecall": 0.9924806004834854,
+        "voicingFalseAlarm": 0.14912258360288314,
+        "overallAccuracy": 0.9333689633419779
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74310,
+        "estimatedVoicedOnReferenceUnvoiced": 5855,
+        "rawPitchCorrect": 73123,
+        "rawChromaCorrect": 73206,
+        "overallCorrect": 106531
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9761729862567281,
+        "rawChromaAccuracy": 0.9772681741081565,
+        "voicingRecall": 0.9918929387095482,
+        "voicingFalseAlarm": 0.1442324835086468,
+        "overallAccuracy": 0.9347532767925983
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74266,
+        "estimatedVoicedOnReferenceUnvoiced": 5663,
+        "rawPitchCorrect": 73089,
+        "rawChromaCorrect": 73171,
+        "overallCorrect": 106689
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9761462743579127,
+        "rawChromaAccuracy": 0.9772548181587488,
+        "voicingRecall": 0.9917994470636945,
+        "voicingFalseAlarm": 0.14204212617477013,
+        "overallAccuracy": 0.9354892409055863
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74259,
+        "estimatedVoicedOnReferenceUnvoiced": 5577,
+        "rawPitchCorrect": 73087,
+        "rawChromaCorrect": 73170,
+        "overallCorrect": 106773
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9760661386614667,
+        "rawChromaAccuracy": 0.9771613265128952,
+        "voicingRecall": 0.9916925994684332,
+        "voicingFalseAlarm": 0.14130351730636986,
+        "overallAccuracy": 0.9356907548889045
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74251,
+        "estimatedVoicedOnReferenceUnvoiced": 5548,
+        "rawPitchCorrect": 73081,
+        "rawChromaCorrect": 73163,
+        "overallCorrect": 106796
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9760794946108744,
+        "rawChromaAccuracy": 0.9771479705634875,
+        "voicingRecall": 0.9917193113672486,
+        "voicingFalseAlarm": 0.1443852991365917,
+        "overallAccuracy": 0.9346393775846359
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74253,
+        "estimatedVoicedOnReferenceUnvoiced": 5669,
+        "rawPitchCorrect": 73082,
+        "rawChromaCorrect": 73162,
+        "overallCorrect": 106676
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9760661386614667,
+        "rawChromaAccuracy": 0.9771479705634875,
+        "voicingRecall": 0.9915723959237642,
+        "voicingFalseAlarm": 0.14043756208134886,
+        "overallAccuracy": 0.9359886451251139
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74242,
+        "estimatedVoicedOnReferenceUnvoiced": 5514,
+        "rawPitchCorrect": 73081,
+        "rawChromaCorrect": 73162,
+        "overallCorrect": 106830
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.976653800435404,
+        "rawChromaAccuracy": 0.9777623442362401,
+        "voicingRecall": 0.9925206683317084,
+        "voicingFalseAlarm": 0.1497593153859868,
+        "overallAccuracy": 0.9331674493586598
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74313,
+        "estimatedVoicedOnReferenceUnvoiced": 5880,
+        "rawPitchCorrect": 73125,
+        "rawChromaCorrect": 73208,
+        "overallCorrect": 106508
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9759459351167977,
+        "rawChromaAccuracy": 0.9770144110694109,
+        "voicingRecall": 0.9914521923790953,
+        "voicingFalseAlarm": 0.13924050632911392,
+        "overallAccuracy": 0.9363215812714656
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74233,
+        "estimatedVoicedOnReferenceUnvoiced": 5467,
+        "rawPitchCorrect": 73072,
+        "rawChromaCorrect": 73152,
+        "overallCorrect": 106868
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9759192232179824,
+        "rawChromaAccuracy": 0.9770144110694109,
+        "voicingRecall": 0.991465548328503,
+        "voicingFalseAlarm": 0.13934238341441052,
+        "overallAccuracy": 0.9362690124062522
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74234,
+        "estimatedVoicedOnReferenceUnvoiced": 5471,
+        "rawPitchCorrect": 73070,
+        "rawChromaCorrect": 73152,
+        "overallCorrect": 106862
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9765469528401426,
+        "rawChromaAccuracy": 0.9776287847421634,
+        "voicingRecall": 0.9923470409894087,
+        "voicingFalseAlarm": 0.14973384611466267,
+        "overallAccuracy": 0.9331061190159109
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74300,
+        "estimatedVoicedOnReferenceUnvoiced": 5879,
+        "rawPitchCorrect": 73117,
+        "rawChromaCorrect": 73198,
+        "overallCorrect": 106501
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9758791553697594,
+        "rawChromaAccuracy": 0.9769743432211879,
+        "voicingRecall": 0.9913987685814646,
+        "voicingFalseAlarm": 0.13883299798792756,
+        "overallAccuracy": 0.9364179575243569
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74229,
+        "estimatedVoicedOnReferenceUnvoiced": 5451,
+        "rawPitchCorrect": 73067,
+        "rawChromaCorrect": 73149,
+        "overallCorrect": 106879
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9758791553697594,
+        "rawChromaAccuracy": 0.9769609872717803,
+        "voicingRecall": 0.9913720566826493,
+        "voicingFalseAlarm": 0.1385783052746861,
+        "overallAccuracy": 0.9365055722997127
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74227,
+        "estimatedVoicedOnReferenceUnvoiced": 5441,
+        "rawPitchCorrect": 73067,
+        "rawChromaCorrect": 73148,
+        "overallCorrect": 106889
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9759058672685748,
+        "rawChromaAccuracy": 0.9769342753729648,
+        "voicingRecall": 0.9913987685814646,
+        "voicingFalseAlarm": 0.14323918192700508,
+        "overallAccuracy": 0.9349197448657741
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74229,
+        "estimatedVoicedOnReferenceUnvoiced": 5624,
+        "rawPitchCorrect": 73069,
+        "rawChromaCorrect": 73146,
+        "overallCorrect": 106708
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9758524434709441,
+        "rawChromaAccuracy": 0.9769342753729648,
+        "voicingRecall": 0.9913186328850186,
+        "voicingFalseAlarm": 0.13781422713496166,
+        "overallAccuracy": 0.9367508936707086
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74223,
+        "estimatedVoicedOnReferenceUnvoiced": 5411,
+        "rawPitchCorrect": 73065,
+        "rawChromaCorrect": 73146,
+        "overallCorrect": 106917
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9758123756227212,
+        "rawChromaAccuracy": 0.9768407837271113,
+        "voicingRecall": 0.991265209087388,
+        "voicingFalseAlarm": 0.14199118763212185,
+        "overallAccuracy": 0.9352877269222681
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74219,
+        "estimatedVoicedOnReferenceUnvoiced": 5575,
+        "rawPitchCorrect": 73062,
+        "rawChromaCorrect": 73139,
+        "overallCorrect": 106750
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9757455958756828,
+        "rawChromaAccuracy": 0.9768140718282959,
+        "voicingRecall": 0.9912251412391649,
+        "voicingFalseAlarm": 0.1392150370577898,
+        "overallAccuracy": 0.9361989205859677
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74216,
+        "estimatedVoicedOnReferenceUnvoiced": 5466,
+        "rawPitchCorrect": 73057,
+        "rawChromaCorrect": 73137,
+        "overallCorrect": 106854
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9757322399262751,
+        "rawChromaAccuracy": 0.9768140718282959,
+        "voicingRecall": 0.9911316495933113,
+        "voicingFalseAlarm": 0.13562386980108498,
+        "overallAccuracy": 0.9374255274409476
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74209,
+        "estimatedVoicedOnReferenceUnvoiced": 5325,
+        "rawPitchCorrect": 73056,
+        "rawChromaCorrect": 73137,
+        "overallCorrect": 106994
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9759860029650208,
+        "rawChromaAccuracy": 0.9770144110694109,
+        "voicingRecall": 0.9915991078225795,
+        "voicingFalseAlarm": 0.14930086850215216,
+        "overallAccuracy": 0.9328870820775216
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74244,
+        "estimatedVoicedOnReferenceUnvoiced": 5862,
+        "rawPitchCorrect": 73075,
+        "rawChromaCorrect": 73152,
+        "overallCorrect": 106476
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9757589518250905,
+        "rawChromaAccuracy": 0.9767873599294806,
+        "voicingRecall": 0.991265209087388,
+        "voicingFalseAlarm": 0.1443852991365917,
+        "overallAccuracy": 0.9344291021237822
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74219,
+        "estimatedVoicedOnReferenceUnvoiced": 5669,
+        "rawPitchCorrect": 73058,
+        "rawChromaCorrect": 73135,
+        "overallCorrect": 106652
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9757188839768675,
+        "rawChromaAccuracy": 0.9767873599294806,
+        "voicingRecall": 0.9910648698462731,
+        "voicingFalseAlarm": 0.1359040317856506,
+        "overallAccuracy": 0.9373203897105208
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74204,
+        "estimatedVoicedOnReferenceUnvoiced": 5336,
+        "rawPitchCorrect": 73055,
+        "rawChromaCorrect": 73135,
+        "overallCorrect": 106982
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9756253923310139,
+        "rawChromaAccuracy": 0.9767339361318499,
+        "voicingRecall": 0.991104937694496,
+        "voicingFalseAlarm": 0.13911315997249318,
+        "overallAccuracy": 0.9361551131982898
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74207,
+        "estimatedVoicedOnReferenceUnvoiced": 5462,
+        "rawPitchCorrect": 73048,
+        "rawChromaCorrect": 73131,
+        "overallCorrect": 106849
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9756253923310139,
+        "rawChromaAccuracy": 0.9767339361318499,
+        "voicingRecall": 0.9910915817450884,
+        "voicingFalseAlarm": 0.13860377454601025,
+        "overallAccuracy": 0.9363303427490012
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74206,
+        "estimatedVoicedOnReferenceUnvoiced": 5442,
+        "rawPitchCorrect": 73048,
+        "rawChromaCorrect": 73131,
+        "overallCorrect": 106869
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9756120363816062,
+        "rawChromaAccuracy": 0.9767072242330346,
+        "voicingRecall": 0.9910648698462731,
+        "voicingFalseAlarm": 0.13664264065405088,
+        "overallAccuracy": 0.9369962150417046
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74204,
+        "estimatedVoicedOnReferenceUnvoiced": 5365,
+        "rawPitchCorrect": 73047,
+        "rawChromaCorrect": 73129,
+        "overallCorrect": 106945
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9764267492954737,
+        "rawChromaAccuracy": 0.9774952252480867,
+        "voicingRecall": 0.9921199898494785,
+        "voicingFalseAlarm": 0.15049792425438707,
+        "overallAccuracy": 0.9327644213920235
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74283,
+        "estimatedVoicedOnReferenceUnvoiced": 5909,
+        "rawPitchCorrect": 73108,
+        "rawChromaCorrect": 73188,
+        "overallCorrect": 106462
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9756521042298292,
+        "rawChromaAccuracy": 0.9766671563848116,
+        "voicingRecall": 0.990984734149827,
+        "voicingFalseAlarm": 0.14232228815933576,
+        "overallAccuracy": 0.9350686899838789
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74198,
+        "estimatedVoicedOnReferenceUnvoiced": 5588,
+        "rawPitchCorrect": 73050,
+        "rawChromaCorrect": 73126,
+        "overallCorrect": 106725
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9755586125839756,
+        "rawChromaAccuracy": 0.9766671563848116,
+        "voicingRecall": 0.9909980900992347,
+        "voicingFalseAlarm": 0.13761047296436849,
+        "overallAccuracy": 0.9366282329852106
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74199,
+        "estimatedVoicedOnReferenceUnvoiced": 5403,
+        "rawPitchCorrect": 73043,
+        "rawChromaCorrect": 73126,
+        "overallCorrect": 106903
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9756120363816062,
+        "rawChromaAccuracy": 0.9766404444859963,
+        "voicingRecall": 0.9909580222510117,
+        "voicingFalseAlarm": 0.1378906349489341,
+        "overallAccuracy": 0.9365669026424617
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74196,
+        "estimatedVoicedOnReferenceUnvoiced": 5414,
+        "rawPitchCorrect": 73047,
+        "rawChromaCorrect": 73124,
+        "overallCorrect": 106896
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9756120363816062,
+        "rawChromaAccuracy": 0.9766404444859963,
+        "voicingRecall": 0.990944666301604,
+        "voicingFalseAlarm": 0.1375595344217202,
+        "overallAccuracy": 0.936680801850424
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74195,
+        "estimatedVoicedOnReferenceUnvoiced": 5401,
+        "rawPitchCorrect": 73047,
+        "rawChromaCorrect": 73124,
+        "overallCorrect": 106909
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9755452566345678,
+        "rawChromaAccuracy": 0.976573664738958,
+        "voicingRecall": 0.9908378187063427,
+        "voicingFalseAlarm": 0.13661717138272675,
+        "overallAccuracy": 0.9369611691315624
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74187,
+        "estimatedVoicedOnReferenceUnvoiced": 5364,
+        "rawPitchCorrect": 73042,
+        "rawChromaCorrect": 73119,
+        "overallCorrect": 106941
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9755319006851602,
+        "rawChromaAccuracy": 0.9765603087895504,
+        "voicingRecall": 0.9908511746557505,
+        "voicingFalseAlarm": 0.14621908667193032,
+        "overallAccuracy": 0.9336493306231163
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74188,
+        "estimatedVoicedOnReferenceUnvoiced": 5741,
+        "rawPitchCorrect": 73041,
+        "rawChromaCorrect": 73118,
+        "overallCorrect": 106563
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9754918328369372,
+        "rawChromaAccuracy": 0.9765603087895504,
+        "voicingRecall": 0.9909313103521964,
+        "voicingFalseAlarm": 0.1357257468863816,
+        "overallAccuracy": 0.9372327749351651
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74194,
+        "estimatedVoicedOnReferenceUnvoiced": 5329,
+        "rawPitchCorrect": 73038,
+        "rawChromaCorrect": 73118,
+        "overallCorrect": 106972
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9754384090393066,
+        "rawChromaAccuracy": 0.9765335968907349,
+        "voicingRecall": 0.9908111068075274,
+        "voicingFalseAlarm": 0.13582762397167816,
+        "overallAccuracy": 0.9371626831148805
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74185,
+        "estimatedVoicedOnReferenceUnvoiced": 5333,
+        "rawPitchCorrect": 73034,
+        "rawChromaCorrect": 73116,
+        "overallCorrect": 106964
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9754918328369372,
+        "rawChromaAccuracy": 0.9765202409413273,
+        "voicingRecall": 0.9909313103521964,
+        "voicingFalseAlarm": 0.14489468456307464,
+        "overallAccuracy": 0.9340786430223593
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74194,
+        "estimatedVoicedOnReferenceUnvoiced": 5689,
+        "rawPitchCorrect": 73038,
+        "rawChromaCorrect": 73115,
+        "overallCorrect": 106612
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9767339361318499,
+        "rawChromaAccuracy": 0.977842479932686,
+        "voicingRecall": 0.9926542278257849,
+        "voicingFalseAlarm": 0.15154216437867712,
+        "overallAccuracy": 0.9326067147963832
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74323,
+        "estimatedVoicedOnReferenceUnvoiced": 5950,
+        "rawPitchCorrect": 73131,
+        "rawChromaCorrect": 73214,
+        "overallCorrect": 106444
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9754250530898989,
+        "rawChromaAccuracy": 0.976493529042512,
+        "voicingRecall": 0.9907042592122661,
+        "voicingFalseAlarm": 0.1320327025443802,
+        "overallAccuracy": 0.9384593817901451
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74177,
+        "estimatedVoicedOnReferenceUnvoiced": 5184,
+        "rawPitchCorrect": 73033,
+        "rawChromaCorrect": 73113,
+        "overallCorrect": 107112
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9753849852416759,
+        "rawChromaAccuracy": 0.976453461194289,
+        "voicingRecall": 0.9907309711110814,
+        "voicingFalseAlarm": 0.13279678068410464,
+        "overallAccuracy": 0.9381702530314713
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74179,
+        "estimatedVoicedOnReferenceUnvoiced": 5214,
+        "rawPitchCorrect": 73030,
+        "rawChromaCorrect": 73110,
+        "overallCorrect": 107079
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9753716292922683,
+        "rawChromaAccuracy": 0.9764000373966584,
+        "voicingRecall": 0.9907443270604891,
+        "voicingFalseAlarm": 0.14316277411303263,
+        "overallAccuracy": 0.934595570196958
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74180,
+        "estimatedVoicedOnReferenceUnvoiced": 5621,
+        "rawPitchCorrect": 73029,
+        "rawChromaCorrect": 73106,
+        "overallCorrect": 106671
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9761062065096897,
+        "rawChromaAccuracy": 0.9771346146140798,
+        "voicingRecall": 0.9917593792154715,
+        "voicingFalseAlarm": 0.15070167842498025,
+        "overallAccuracy": 0.9324840541108853
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74256,
+        "estimatedVoicedOnReferenceUnvoiced": 5917,
+        "rawPitchCorrect": 73084,
+        "rawChromaCorrect": 73161,
+        "overallCorrect": 106430
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9753582733428606,
+        "rawChromaAccuracy": 0.9763866814472507,
+        "voicingRecall": 0.9905439878193741,
+        "voicingFalseAlarm": 0.133204289025291,
+        "overallAccuracy": 0.938012546435831
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74165,
+        "estimatedVoicedOnReferenceUnvoiced": 5230,
+        "rawPitchCorrect": 73028,
+        "rawChromaCorrect": 73105,
+        "overallCorrect": 107061
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.976573664738958,
+        "rawChromaAccuracy": 0.9776688525903864,
+        "voicingRecall": 0.9924806004834854,
+        "voicingFalseAlarm": 0.15169498000662202,
+        "overallAccuracy": 0.932449008200743
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74310,
+        "estimatedVoicedOnReferenceUnvoiced": 5956,
+        "rawPitchCorrect": 73119,
+        "rawChromaCorrect": 73201,
+        "overallCorrect": 106426
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9753048495452299,
+        "rawChromaAccuracy": 0.9763199017002123,
+        "voicingRecall": 0.9905840556675971,
+        "voicingFalseAlarm": 0.1362096630415404,
+        "overallAccuracy": 0.9369436461764912
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74168,
+        "estimatedVoicedOnReferenceUnvoiced": 5348,
+        "rawPitchCorrect": 73024,
+        "rawChromaCorrect": 73100,
+        "overallCorrect": 106939
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9752914935958222,
+        "rawChromaAccuracy": 0.9763199017002123,
+        "voicingRecall": 0.9905706997181895,
+        "voicingFalseAlarm": 0.13743218806509946,
+        "overallAccuracy": 0.9365143337772482
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74167,
+        "estimatedVoicedOnReferenceUnvoiced": 5396,
+        "rawPitchCorrect": 73023,
+        "rawChromaCorrect": 73100,
+        "overallCorrect": 106890
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.975224713848784,
+        "rawChromaAccuracy": 0.9763199017002123,
+        "voicingRecall": 0.9905172759205588,
+        "voicingFalseAlarm": 0.1344013447775259,
+        "overallAccuracy": 0.9375131422163033
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74163,
+        "estimatedVoicedOnReferenceUnvoiced": 5277,
+        "rawPitchCorrect": 73018,
+        "rawChromaCorrect": 73100,
+        "overallCorrect": 107004
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9764668171436967,
+        "rawChromaAccuracy": 0.9775486490457174,
+        "voicingRecall": 0.9922936171917781,
+        "voicingFalseAlarm": 0.15161857219264957,
+        "overallAccuracy": 0.9324052008130651
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74296,
+        "estimatedVoicedOnReferenceUnvoiced": 5953,
+        "rawPitchCorrect": 73111,
+        "rawChromaCorrect": 73192,
+        "overallCorrect": 106421
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.975224713848784,
+        "rawChromaAccuracy": 0.9763065457508047,
+        "voicingRecall": 0.9904772080723359,
+        "voicingFalseAlarm": 0.13340804319588417,
+        "overallAccuracy": 0.9378548398401907
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74160,
+        "estimatedVoicedOnReferenceUnvoiced": 5238,
+        "rawPitchCorrect": 73018,
+        "rawChromaCorrect": 73099,
+        "overallCorrect": 107043
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.975224713848784,
+        "rawChromaAccuracy": 0.9763065457508047,
+        "voicingRecall": 0.9904504961735205,
+        "voicingFalseAlarm": 0.13269490359880803,
+        "overallAccuracy": 0.9381001612111867
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74158,
+        "estimatedVoicedOnReferenceUnvoiced": 5210,
+        "rawPitchCorrect": 73018,
+        "rawChromaCorrect": 73099,
+        "overallCorrect": 107071
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9751980019499686,
+        "rawChromaAccuracy": 0.9762664779025817,
+        "voicingRecall": 0.9904371402241128,
+        "voicingFalseAlarm": 0.13032626136566233,
+        "overallAccuracy": 0.9388974556669236
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74157,
+        "estimatedVoicedOnReferenceUnvoiced": 5117,
+        "rawPitchCorrect": 73016,
+        "rawChromaCorrect": 73096,
+        "overallCorrect": 107162
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9752380697981916,
+        "rawChromaAccuracy": 0.9762664779025817,
+        "voicingRecall": 0.9904237842747051,
+        "voicingFalseAlarm": 0.1320836410870285,
+        "overallAccuracy": 0.938319198149576
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74156,
+        "estimatedVoicedOnReferenceUnvoiced": 5186,
+        "rawPitchCorrect": 73019,
+        "rawChromaCorrect": 73096,
+        "overallCorrect": 107096
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9751980019499686,
+        "rawChromaAccuracy": 0.9762264100543587,
+        "voicingRecall": 0.9904104283252975,
+        "voicingFalseAlarm": 0.13585309324300232,
+        "overallAccuracy": 0.9369962150417046
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74155,
+        "estimatedVoicedOnReferenceUnvoiced": 5334,
+        "rawPitchCorrect": 73016,
+        "rawChromaCorrect": 73093,
+        "overallCorrect": 106945
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9751445781523379,
+        "rawChromaAccuracy": 0.9762264100543587,
+        "voicingRecall": 0.9903302926288515,
+        "voicingFalseAlarm": 0.13119221659068334,
+        "overallAccuracy": 0.938564519520572
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74149,
+        "estimatedVoicedOnReferenceUnvoiced": 5151,
+        "rawPitchCorrect": 73012,
+        "rawChromaCorrect": 73093,
+        "overallCorrect": 107124
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9751712900511533,
+        "rawChromaAccuracy": 0.9761996981555434,
+        "voicingRecall": 0.9903169366794439,
+        "voicingFalseAlarm": 0.1312176858620075,
+        "overallAccuracy": 0.9385732809981076
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74148,
+        "estimatedVoicedOnReferenceUnvoiced": 5152,
+        "rawPitchCorrect": 73014,
+        "rawChromaCorrect": 73091,
+        "overallCorrect": 107125
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9751712900511533,
+        "rawChromaAccuracy": 0.9761863422061358,
+        "voicingRecall": 0.9903169366794439,
+        "voicingFalseAlarm": 0.1310648702340626,
+        "overallAccuracy": 0.938625849863321
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74148,
+        "estimatedVoicedOnReferenceUnvoiced": 5146,
+        "rawPitchCorrect": 73014,
+        "rawChromaCorrect": 73090,
+        "overallCorrect": 107131
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9751312222029302,
+        "rawChromaAccuracy": 0.9761596303073204,
+        "voicingRecall": 0.9903837164264822,
+        "voicingFalseAlarm": 0.13778875786363753,
+        "overallAccuracy": 0.9362865353613233
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74153,
+        "estimatedVoicedOnReferenceUnvoiced": 5410,
+        "rawPitchCorrect": 73011,
+        "rawChromaCorrect": 73088,
+        "overallCorrect": 106864
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.975024374607669,
+        "rawChromaAccuracy": 0.9760527827120591,
+        "voicingRecall": 0.9901032414889213,
+        "voicingFalseAlarm": 0.12839059674502712,
+        "overallAccuracy": 0.9394494287516647
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74132,
+        "estimatedVoicedOnReferenceUnvoiced": 5041,
+        "rawPitchCorrect": 73003,
+        "rawChromaCorrect": 73080,
+        "overallCorrect": 107225
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9749976627088537,
+        "rawChromaAccuracy": 0.9760260708132438,
+        "voicingRecall": 0.9901165974383289,
+        "voicingFalseAlarm": 0.13175254055981458,
+        "overallAccuracy": 0.938275390761898
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74133,
+        "estimatedVoicedOnReferenceUnvoiced": 5173,
+        "rawPitchCorrect": 73001,
+        "rawChromaCorrect": 73078,
+        "overallCorrect": 107091
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.974984306759446,
+        "rawChromaAccuracy": 0.9760127148638361,
+        "voicingRecall": 0.990076529590106,
+        "voicingFalseAlarm": 0.13129409367597994,
+        "overallAccuracy": 0.9384243358800028
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74130,
+        "estimatedVoicedOnReferenceUnvoiced": 5155,
+        "rawPitchCorrect": 73000,
+        "rawChromaCorrect": 73077,
+        "overallCorrect": 107108
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.974944238911223,
+        "rawChromaAccuracy": 0.9760127148638361,
+        "voicingRecall": 0.9900498176912906,
+        "voicingFalseAlarm": 0.12851794310164785,
+        "overallAccuracy": 0.9393530524987734
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74128,
+        "estimatedVoicedOnReferenceUnvoiced": 5046,
+        "rawPitchCorrect": 72997,
+        "rawChromaCorrect": 73077,
+        "overallCorrect": 107214
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9749308829618153,
+        "rawChromaAccuracy": 0.9759993589144285,
+        "voicingRecall": 0.9901032414889213,
+        "voicingFalseAlarm": 0.12813590403178565,
+        "overallAccuracy": 0.9394757131842714
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74132,
+        "estimatedVoicedOnReferenceUnvoiced": 5031,
+        "rawPitchCorrect": 72996,
+        "rawChromaCorrect": 73076,
+        "overallCorrect": 107228
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9749175270124076,
+        "rawChromaAccuracy": 0.9759726470156131,
+        "voicingRecall": 0.9902100890841825,
+        "voicingFalseAlarm": 0.14955556121539362,
+        "overallAccuracy": 0.9320985490993201
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74140,
+        "estimatedVoicedOnReferenceUnvoiced": 5872,
+        "rawPitchCorrect": 72995,
+        "rawChromaCorrect": 73074,
+        "overallCorrect": 106386
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.974944238911223,
+        "rawChromaAccuracy": 0.9759592910662055,
+        "voicingRecall": 0.9899296141466216,
+        "voicingFalseAlarm": 0.1277283956905993,
+        "overallAccuracy": 0.9396246583023761
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74119,
+        "estimatedVoicedOnReferenceUnvoiced": 5015,
+        "rawPitchCorrect": 72997,
+        "rawChromaCorrect": 73073,
+        "overallCorrect": 107245
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9749308829618153,
+        "rawChromaAccuracy": 0.9759592910662055,
+        "voicingRecall": 0.9899830379442522,
+        "voicingFalseAlarm": 0.13047907699360722,
+        "overallAccuracy": 0.9386696572509988
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74123,
+        "estimatedVoicedOnReferenceUnvoiced": 5123,
+        "rawPitchCorrect": 72996,
+        "rawChromaCorrect": 73073,
+        "overallCorrect": 107136
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9749575948606307,
+        "rawChromaAccuracy": 0.9759459351167977,
+        "voicingRecall": 0.989916258197214,
+        "voicingFalseAlarm": 0.13516542291725034,
+        "overallAccuracy": 0.9370750683395248
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74118,
+        "estimatedVoicedOnReferenceUnvoiced": 5307,
+        "rawPitchCorrect": 72998,
+        "rawChromaCorrect": 73072,
+        "overallCorrect": 106954
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9747706115689234,
+        "rawChromaAccuracy": 0.9757856637239058,
+        "voicingRecall": 0.9897292749055067,
+        "voicingFalseAlarm": 0.12976593739653108,
+        "overallAccuracy": 0.9388098408915679
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74104,
+        "estimatedVoicedOnReferenceUnvoiced": 5095,
+        "rawPitchCorrect": 72984,
+        "rawChromaCorrect": 73060,
+        "overallCorrect": 107152
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9747305437207003,
+        "rawChromaAccuracy": 0.9757856637239058,
+        "voicingRecall": 0.9899563260454369,
+        "voicingFalseAlarm": 0.14749255023813768,
+        "overallAccuracy": 0.9326855680942034
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74121,
+        "estimatedVoicedOnReferenceUnvoiced": 5791,
+        "rawPitchCorrect": 72981,
+        "rawChromaCorrect": 73060,
+        "overallCorrect": 106453
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9747305437207003,
+        "rawChromaAccuracy": 0.9757589518250905,
+        "voicingRecall": 0.9896624951584684,
+        "voicingFalseAlarm": 0.1266077477523368,
+        "overallAccuracy": 0.9398699796733722
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74099,
+        "estimatedVoicedOnReferenceUnvoiced": 4971,
+        "rawPitchCorrect": 72981,
+        "rawChromaCorrect": 73058,
+        "overallCorrect": 107273
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9761596303073204,
+        "rawChromaAccuracy": 0.9771880384117105,
+        "voicingRecall": 0.9917326673166562,
+        "voicingFalseAlarm": 0.15281562794488449,
+        "overallAccuracy": 0.9317918973855751
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74254,
+        "estimatedVoicedOnReferenceUnvoiced": 6000,
+        "rawPitchCorrect": 73088,
+        "rawChromaCorrect": 73165,
+        "overallCorrect": 106351
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9746504080242544,
+        "rawChromaAccuracy": 0.9756654601792368,
+        "voicingRecall": 0.9895690035126147,
+        "voicingFalseAlarm": 0.12385706644932888,
+        "overallAccuracy": 0.9407636503820004
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74092,
+        "estimatedVoicedOnReferenceUnvoiced": 4863,
+        "rawPitchCorrect": 72975,
+        "rawChromaCorrect": 73051,
+        "overallCorrect": 107375
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9746236961254391,
+        "rawChromaAccuracy": 0.9756521042298292,
+        "voicingRecall": 0.98959571541143,
+        "voicingFalseAlarm": 0.12627664722512288,
+        "overallAccuracy": 0.93991378706105
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74094,
+        "estimatedVoicedOnReferenceUnvoiced": 4958,
+        "rawPitchCorrect": 72973,
+        "rawChromaCorrect": 73050,
+        "overallCorrect": 107278
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9745435604289931,
+        "rawChromaAccuracy": 0.9756120363816062,
+        "voicingRecall": 0.989555647563207,
+        "voicingFalseAlarm": 0.12589460815526068,
+        "overallAccuracy": 0.9399926403588701
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74091,
+        "estimatedVoicedOnReferenceUnvoiced": 4943,
+        "rawPitchCorrect": 72967,
+        "rawChromaCorrect": 73047,
+        "overallCorrect": 107287
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9745836282772161,
+        "rawChromaAccuracy": 0.9756120363816062,
+        "voicingRecall": 0.9895289356643917,
+        "voicingFalseAlarm": 0.12691337900822658,
+        "overallAccuracy": 0.939668465690054
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74089,
+        "estimatedVoicedOnReferenceUnvoiced": 4983,
+        "rawPitchCorrect": 72970,
+        "rawChromaCorrect": 73047,
+        "overallCorrect": 107250
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9768942075247419,
+        "rawChromaAccuracy": 0.978002751325578,
+        "voicingRecall": 0.9929079908645306,
+        "voicingFalseAlarm": 0.15449659985227823,
+        "overallAccuracy": 0.9316955211326838
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74342,
+        "estimatedVoicedOnReferenceUnvoiced": 6066,
+        "rawPitchCorrect": 73143,
+        "rawChromaCorrect": 73226,
+        "overallCorrect": 106340
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9746103401760314,
+        "rawChromaAccuracy": 0.9755986804321986,
+        "voicingRecall": 0.989515579714984,
+        "voicingFalseAlarm": 0.12905279779945497,
+        "overallAccuracy": 0.938950024532137
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74088,
+        "estimatedVoicedOnReferenceUnvoiced": 5067,
+        "rawPitchCorrect": 72972,
+        "rawChromaCorrect": 73046,
+        "overallCorrect": 107168
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9745569163784008,
+        "rawChromaAccuracy": 0.9755853244827909,
+        "voicingRecall": 0.9894621559173534,
+        "voicingFalseAlarm": 0.12507959147288797,
+        "overallAccuracy": 0.940281769117544
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74084,
+        "estimatedVoicedOnReferenceUnvoiced": 4911,
+        "rawPitchCorrect": 72968,
+        "rawChromaCorrect": 73045,
+        "overallCorrect": 107320
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9745435604289931,
+        "rawChromaAccuracy": 0.9755719685333832,
+        "voicingRecall": 0.9894487999679458,
+        "voicingFalseAlarm": 0.12609836232585386,
+        "overallAccuracy": 0.9399225485385856
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74083,
+        "estimatedVoicedOnReferenceUnvoiced": 4951,
+        "rawPitchCorrect": 72967,
+        "rawChromaCorrect": 73044,
+        "overallCorrect": 107279
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9745168485301777,
+        "rawChromaAccuracy": 0.9755452566345678,
+        "voicingRecall": 0.9896892070572837,
+        "voicingFalseAlarm": 0.139775361026921,
+        "overallAccuracy": 0.9352001121469125
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74101,
+        "estimatedVoicedOnReferenceUnvoiced": 5488,
+        "rawPitchCorrect": 72965,
+        "rawChromaCorrect": 73042,
+        "overallCorrect": 106740
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9745168485301777,
+        "rawChromaAccuracy": 0.9755319006851602,
+        "voicingRecall": 0.9894354440185381,
+        "voicingFalseAlarm": 0.12627664722512288,
+        "overallAccuracy": 0.9398436952407654
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74082,
+        "estimatedVoicedOnReferenceUnvoiced": 4958,
+        "rawPitchCorrect": 72965,
+        "rawChromaCorrect": 73041,
+        "overallCorrect": 107270
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9744367128337318,
+        "rawChromaAccuracy": 0.9754651209381219,
+        "voicingRecall": 0.9894755118667611,
+        "voicingFalseAlarm": 0.1404120928100247,
+        "overallAccuracy": 0.9349285063433097
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74085,
+        "estimatedVoicedOnReferenceUnvoiced": 5513,
+        "rawPitchCorrect": 72959,
+        "rawChromaCorrect": 73036,
+        "overallCorrect": 106709
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9744767806819548,
+        "rawChromaAccuracy": 0.9754651209381219,
+        "voicingRecall": 0.9892484607268308,
+        "voicingFalseAlarm": 0.12390800499197718,
+        "overallAccuracy": 0.9406322282189669
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74068,
+        "estimatedVoicedOnReferenceUnvoiced": 4865,
+        "rawPitchCorrect": 72962,
+        "rawChromaCorrect": 73036,
+        "overallCorrect": 107360
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9744367128337318,
+        "rawChromaAccuracy": 0.9754651209381219,
+        "voicingRecall": 0.9893018845244614,
+        "voicingFalseAlarm": 0.12395894353462547,
+        "overallAccuracy": 0.940588420831289
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74072,
+        "estimatedVoicedOnReferenceUnvoiced": 4867,
+        "rawPitchCorrect": 72959,
+        "rawChromaCorrect": 73036,
+        "overallCorrect": 107355
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9757723077744982,
+        "rawChromaAccuracy": 0.9768274277777036,
+        "voicingRecall": 0.991265209087388,
+        "voicingFalseAlarm": 0.15279015867356036,
+        "overallAccuracy": 0.9315465760145791
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74219,
+        "estimatedVoicedOnReferenceUnvoiced": 5999,
+        "rawPitchCorrect": 73059,
+        "rawChromaCorrect": 73138,
+        "overallCorrect": 106323
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9744100009349165,
+        "rawChromaAccuracy": 0.9754250530898989,
+        "voicingRecall": 0.9892351047774232,
+        "voicingFalseAlarm": 0.12334768102284593,
+        "overallAccuracy": 0.9407811733370716
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74067,
+        "estimatedVoicedOnReferenceUnvoiced": 4843,
+        "rawPitchCorrect": 72957,
+        "rawChromaCorrect": 73033,
+        "overallCorrect": 107377
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9743966449855088,
+        "rawChromaAccuracy": 0.9754250530898989,
+        "voicingRecall": 0.9892217488280154,
+        "voicingFalseAlarm": 0.12179405547207295,
+        "overallAccuracy": 0.9413068619892059
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74066,
+        "estimatedVoicedOnReferenceUnvoiced": 4782,
+        "rawPitchCorrect": 72956,
+        "rawChromaCorrect": 73033,
+        "overallCorrect": 107437
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9743298652384704,
+        "rawChromaAccuracy": 0.9753582733428606,
+        "voicingRecall": 0.9894354440185381,
+        "voicingFalseAlarm": 0.13786516567760995,
+        "overallAccuracy": 0.9357345622765824
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74082,
+        "estimatedVoicedOnReferenceUnvoiced": 5413,
+        "rawPitchCorrect": 72951,
+        "rawChromaCorrect": 73028,
+        "overallCorrect": 106801
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9743165092890628,
+        "rawChromaAccuracy": 0.9753449173934529,
+        "voicingRecall": 0.9893285964232768,
+        "voicingFalseAlarm": 0.13231286452894583,
+        "overallAccuracy": 0.9376358029018014
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74074,
+        "estimatedVoicedOnReferenceUnvoiced": 5195,
+        "rawPitchCorrect": 72950,
+        "rawChromaCorrect": 73027,
+        "overallCorrect": 107018
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9769476313223725,
+        "rawChromaAccuracy": 0.9780561751232086,
+        "voicingRecall": 0.9929747706115689,
+        "voicingFalseAlarm": 0.15543896289127168,
+        "overallAccuracy": 0.9314063923740099
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74347,
+        "estimatedVoicedOnReferenceUnvoiced": 6103,
+        "rawPitchCorrect": 73147,
+        "rawChromaCorrect": 73230,
+        "overallCorrect": 106307
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9742230176432092,
+        "rawChromaAccuracy": 0.9752380697981916,
+        "voicingRecall": 0.9889412738904545,
+        "voicingFalseAlarm": 0.12087716170440364,
+        "overallAccuracy": 0.941508375972524
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74045,
+        "estimatedVoicedOnReferenceUnvoiced": 4746,
+        "rawPitchCorrect": 72943,
+        "rawChromaCorrect": 73019,
+        "overallCorrect": 107460
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9742497295420245,
+        "rawChromaAccuracy": 0.9752380697981916,
+        "voicingRecall": 0.9888611381940086,
+        "voicingFalseAlarm": 0.12057153044851386,
+        "overallAccuracy": 0.9416310366580221
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74039,
+        "estimatedVoicedOnReferenceUnvoiced": 4734,
+        "rawPitchCorrect": 72945,
+        "rawChromaCorrect": 73019,
+        "overallCorrect": 107474
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9741562378961709,
+        "rawChromaAccuracy": 0.975184646000561,
+        "voicingRecall": 0.9891015452833465,
+        "voicingFalseAlarm": 0.13055548480757964,
+        "overallAccuracy": 0.9381352071213289
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74057,
+        "estimatedVoicedOnReferenceUnvoiced": 5126,
+        "rawPitchCorrect": 72938,
+        "rawChromaCorrect": 73015,
+        "overallCorrect": 107075
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9741695938455786,
+        "rawChromaAccuracy": 0.975184646000561,
+        "voicingRecall": 0.9889145619916392,
+        "voicingFalseAlarm": 0.12034230700659654,
+        "overallAccuracy": 0.9416573210906287
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74043,
+        "estimatedVoicedOnReferenceUnvoiced": 4725,
+        "rawPitchCorrect": 72939,
+        "rawChromaCorrect": 73015,
+        "overallCorrect": 107477
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9740360343515019,
+        "rawChromaAccuracy": 0.975064442455892,
+        "voicingRecall": 0.9890080536374928,
+        "voicingFalseAlarm": 0.13198176400173192,
+        "overallAccuracy": 0.9375657110815168
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74050,
+        "estimatedVoicedOnReferenceUnvoiced": 5182,
+        "rawPitchCorrect": 72929,
+        "rawChromaCorrect": 73006,
+        "overallCorrect": 107010
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9740226784020942,
+        "rawChromaAccuracy": 0.9750510865064843,
+        "voicingRecall": 0.9888744941434162,
+        "voicingFalseAlarm": 0.12663321702366095,
+        "overallAccuracy": 0.9393968598864513
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74040,
+        "estimatedVoicedOnReferenceUnvoiced": 4972,
+        "rawPitchCorrect": 72928,
+        "rawChromaCorrect": 73005,
+        "overallCorrect": 107219
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9739692546044636,
+        "rawChromaAccuracy": 0.9749976627088537,
+        "voicingRecall": 0.9887008668011166,
+        "voicingFalseAlarm": 0.12110638514632097,
+        "overallAccuracy": 0.941263054601528
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74027,
+        "estimatedVoicedOnReferenceUnvoiced": 4755,
+        "rawPitchCorrect": 72924,
+        "rawChromaCorrect": 73001,
+        "overallCorrect": 107432
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9766671563848116,
+        "rawChromaAccuracy": 0.9777489882868323,
+        "voicingRecall": 0.9926008040281543,
+        "voicingFalseAlarm": 0.15589740977510633,
+        "overallAccuracy": 0.9310646947501227
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74319,
+        "estimatedVoicedOnReferenceUnvoiced": 6121,
+        "rawPitchCorrect": 73126,
+        "rawChromaCorrect": 73207,
+        "overallCorrect": 106268
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9739558986550559,
+        "rawChromaAccuracy": 0.9749709508100384,
+        "voicingRecall": 0.9886073751552629,
+        "voicingFalseAlarm": 0.11868680437052696,
+        "overallAccuracy": 0.9420866334898718
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74020,
+        "estimatedVoicedOnReferenceUnvoiced": 4660,
+        "rawPitchCorrect": 72923,
+        "rawChromaCorrect": 72999,
+        "overallCorrect": 107526
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9739291867562405,
+        "rawChromaAccuracy": 0.9749575948606307,
+        "voicingRecall": 0.9885940192058552,
+        "voicingFalseAlarm": 0.11996026793673432,
+        "overallAccuracy": 0.9416310366580221
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74019,
+        "estimatedVoicedOnReferenceUnvoiced": 4710,
+        "rawPitchCorrect": 72921,
+        "rawChromaCorrect": 72998,
+        "overallCorrect": 107474
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9739558986550559,
+        "rawChromaAccuracy": 0.974944238911223,
+        "voicingRecall": 0.9885005275600016,
+        "voicingFalseAlarm": 0.11670020120724346,
+        "overallAccuracy": 0.9427700287376464
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74012,
+        "estimatedVoicedOnReferenceUnvoiced": 4582,
+        "rawPitchCorrect": 72923,
+        "rawChromaCorrect": 72997,
+        "overallCorrect": 107604
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9738891189080175,
+        "rawChromaAccuracy": 0.9749175270124076,
+        "voicingRecall": 0.9887008668011166,
+        "voicingFalseAlarm": 0.12548709981407433,
+        "overallAccuracy": 0.9397035116001963
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74027,
+        "estimatedVoicedOnReferenceUnvoiced": 4927,
+        "rawPitchCorrect": 72918,
+        "rawChromaCorrect": 72995,
+        "overallCorrect": 107254
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9738891189080175,
+        "rawChromaAccuracy": 0.9749175270124076,
+        "voicingRecall": 0.9886741549023013,
+        "voicingFalseAlarm": 0.12518146855818454,
+        "overallAccuracy": 0.9398086493306231
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74025,
+        "estimatedVoicedOnReferenceUnvoiced": 4915,
+        "rawPitchCorrect": 72918,
+        "rawChromaCorrect": 72995,
+        "overallCorrect": 107266
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9758925113191671,
+        "rawChromaAccuracy": 0.9769476313223725,
+        "voicingRecall": 0.9914521923790953,
+        "voicingFalseAlarm": 0.15467488475154725,
+        "overallAccuracy": 0.930977079974767
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74233,
+        "estimatedVoicedOnReferenceUnvoiced": 6073,
+        "rawPitchCorrect": 73068,
+        "rawChromaCorrect": 73147,
+        "overallCorrect": 106258
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9738490510597946,
+        "rawChromaAccuracy": 0.9748373913159617,
+        "voicingRecall": 0.9883803240153326,
+        "voicingFalseAlarm": 0.12148842421618318,
+        "overallAccuracy": 0.9410527791406743
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74003,
+        "estimatedVoicedOnReferenceUnvoiced": 4770,
+        "rawPitchCorrect": 72915,
+        "rawChromaCorrect": 72989,
+        "overallCorrect": 107408
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9738089832115716,
+        "rawChromaAccuracy": 0.9748373913159617,
+        "voicingRecall": 0.9884203918635556,
+        "voicingFalseAlarm": 0.1173624022616713,
+        "overallAccuracy": 0.9424458540688302
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74006,
+        "estimatedVoicedOnReferenceUnvoiced": 4608,
+        "rawPitchCorrect": 72912,
+        "rawChromaCorrect": 72989,
+        "overallCorrect": 107567
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9737689153633486,
+        "rawChromaAccuracy": 0.9747572556195158,
+        "voicingRecall": 0.9884070359141479,
+        "voicingFalseAlarm": 0.12856888164429617,
+        "overallAccuracy": 0.938564519520572
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74005,
+        "estimatedVoicedOnReferenceUnvoiced": 5048,
+        "rawPitchCorrect": 72909,
+        "rawChromaCorrect": 72983,
+        "overallCorrect": 107124
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9736487118186796,
+        "rawChromaAccuracy": 0.9746771199230697,
+        "voicingRecall": 0.9883536121165173,
+        "voicingFalseAlarm": 0.12115732368896925,
+        "overallAccuracy": 0.9410352561856031
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74001,
+        "estimatedVoicedOnReferenceUnvoiced": 4757,
+        "rawPitchCorrect": 72900,
+        "rawChromaCorrect": 72977,
+        "overallCorrect": 107406
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.973635355869272,
+        "rawChromaAccuracy": 0.9746637639736621,
+        "voicingRecall": 0.988286832369479,
+        "voicingFalseAlarm": 0.1208007538904312,
+        "overallAccuracy": 0.9411491553935656
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73996,
+        "estimatedVoicedOnReferenceUnvoiced": 4743,
+        "rawPitchCorrect": 72899,
+        "rawChromaCorrect": 72976,
+        "overallCorrect": 107419
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.973595288021049,
+        "rawChromaAccuracy": 0.9745836282772161,
+        "voicingRecall": 0.988086493128364,
+        "voicingFalseAlarm": 0.11799913404477498,
+        "overallAccuracy": 0.9420866334898718
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73981,
+        "estimatedVoicedOnReferenceUnvoiced": 4633,
+        "rawPitchCorrect": 72896,
+        "rawChromaCorrect": 72970,
+        "overallCorrect": 107526
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9735685761222337,
+        "rawChromaAccuracy": 0.9745836282772161,
+        "voicingRecall": 0.9880597812295487,
+        "voicingFalseAlarm": 0.11644550849400198,
+        "overallAccuracy": 0.9426035606644705
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73979,
+        "estimatedVoicedOnReferenceUnvoiced": 4572,
+        "rawPitchCorrect": 72894,
+        "rawChromaCorrect": 72970,
+        "overallCorrect": 107585
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9767472920812575,
+        "rawChromaAccuracy": 0.9778291239832784,
+        "voicingRecall": 0.9927076516234157,
+        "voicingFalseAlarm": 0.15719634261263785,
+        "overallAccuracy": 0.930670428261022
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74327,
+        "estimatedVoicedOnReferenceUnvoiced": 6172,
+        "rawPitchCorrect": 73132,
+        "rawChromaCorrect": 73213,
+        "overallCorrect": 106223
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.973515152324603,
+        "rawChromaAccuracy": 0.9745435604289931,
+        "voicingRecall": 0.9881532728754023,
+        "voicingFalseAlarm": 0.1197819830374653,
+        "overallAccuracy": 0.9414207611971683
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73986,
+        "estimatedVoicedOnReferenceUnvoiced": 4703,
+        "rawPitchCorrect": 72890,
+        "rawChromaCorrect": 72967,
+        "overallCorrect": 107450
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9769209194235572,
+        "rawChromaAccuracy": 0.9780161072749857,
+        "voicingRecall": 0.9928812789657153,
+        "voicingFalseAlarm": 0.15780760512441738,
+        "overallAccuracy": 0.9305740520081307
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74340,
+        "estimatedVoicedOnReferenceUnvoiced": 6196,
+        "rawPitchCorrect": 73145,
+        "rawChromaCorrect": 73227,
+        "overallCorrect": 106212
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9734884404257876,
+        "rawChromaAccuracy": 0.9744767806819548,
+        "voicingRecall": 0.9878861538872491,
+        "voicingFalseAlarm": 0.11507016784249803,
+        "overallAccuracy": 0.9430241115861779
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73966,
+        "estimatedVoicedOnReferenceUnvoiced": 4518,
+        "rawPitchCorrect": 72888,
+        "rawChromaCorrect": 72962,
+        "overallCorrect": 107633
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.97347508447638,
+        "rawChromaAccuracy": 0.9744634247325471,
+        "voicingRecall": 0.9878460860390261,
+        "voicingFalseAlarm": 0.11318544176451112,
+        "overallAccuracy": 0.9436636994462746
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73963,
+        "estimatedVoicedOnReferenceUnvoiced": 4444,
+        "rawPitchCorrect": 72887,
+        "rawChromaCorrect": 72961,
+        "overallCorrect": 107706
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9734216606787494,
+        "rawChromaAccuracy": 0.9744100009349165,
+        "voicingRecall": 0.988006357431918,
+        "voicingFalseAlarm": 0.12245625652650077,
+        "overallAccuracy": 0.9404394757131843
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73975,
+        "estimatedVoicedOnReferenceUnvoiced": 4808,
+        "rawPitchCorrect": 72883,
+        "rawChromaCorrect": 72957,
+        "overallCorrect": 107338
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9768808515753342,
+        "rawChromaAccuracy": 0.9779893953761704,
+        "voicingRecall": 0.9929614146621613,
+        "voicingFalseAlarm": 0.15803682856633472,
+        "overallAccuracy": 0.9304689142777038
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74346,
+        "estimatedVoicedOnReferenceUnvoiced": 6205,
+        "rawPitchCorrect": 73142,
+        "rawChromaCorrect": 73225,
+        "overallCorrect": 106200
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9733014571340803,
+        "rawChromaAccuracy": 0.9743298652384704,
+        "voicingRecall": 0.9878460860390261,
+        "voicingFalseAlarm": 0.11598706161016734,
+        "overallAccuracy": 0.9425860377093993
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73963,
+        "estimatedVoicedOnReferenceUnvoiced": 4554,
+        "rawPitchCorrect": 72874,
+        "rawChromaCorrect": 72951,
+        "overallCorrect": 107583
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9733014571340803,
+        "rawChromaAccuracy": 0.9742897973902475,
+        "voicingRecall": 0.9875923230002804,
+        "voicingFalseAlarm": 0.11259964852405573,
+        "overallAccuracy": 0.9437513142216304
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73944,
+        "estimatedVoicedOnReferenceUnvoiced": 4421,
+        "rawPitchCorrect": 72874,
+        "rawChromaCorrect": 72948,
+        "overallCorrect": 107716
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9732881011846727,
+        "rawChromaAccuracy": 0.9742764414408398,
+        "voicingRecall": 0.9877392384437648,
+        "voicingFalseAlarm": 0.117311463719023,
+        "overallAccuracy": 0.942121679400014
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73955,
+        "estimatedVoicedOnReferenceUnvoiced": 4606,
+        "rawPitchCorrect": 72873,
+        "rawChromaCorrect": 72947,
+        "overallCorrect": 107530
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9730610500447424,
+        "rawChromaAccuracy": 0.9740493903009095,
+        "voicingRecall": 0.9873519159109425,
+        "voicingFalseAlarm": 0.11397498917555969,
+        "overallAccuracy": 0.9431204878390692
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73926,
+        "estimatedVoicedOnReferenceUnvoiced": 4475,
+        "rawPitchCorrect": 72856,
+        "rawChromaCorrect": 72930,
+        "overallCorrect": 107644
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9730343381459271,
+        "rawChromaAccuracy": 0.9740226784020942,
+        "voicingRecall": 0.9872584242650889,
+        "voicingFalseAlarm": 0.11040929119017905,
+        "overallAccuracy": 0.944329571738978
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73919,
+        "estimatedVoicedOnReferenceUnvoiced": 4335,
+        "rawPitchCorrect": 72854,
+        "rawChromaCorrect": 72928,
+        "overallCorrect": 107782
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9729942702977041,
+        "rawChromaAccuracy": 0.9740226784020942,
+        "voicingRecall": 0.9874587635062039,
+        "voicingFalseAlarm": 0.11598706161016734,
+        "overallAccuracy": 0.9423845237260812
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73934,
+        "estimatedVoicedOnReferenceUnvoiced": 4554,
+        "rawPitchCorrect": 72851,
+        "rawChromaCorrect": 72928,
+        "overallCorrect": 107560
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9728874227024428,
+        "rawChromaAccuracy": 0.9739158308068329,
+        "voicingRecall": 0.9872851361639042,
+        "voicingFalseAlarm": 0.11466265950131167,
+        "overallAccuracy": 0.9427700287376464
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73921,
+        "estimatedVoicedOnReferenceUnvoiced": 4502,
+        "rawPitchCorrect": 72843,
+        "rawChromaCorrect": 72920,
+        "overallCorrect": 107604
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9727672191577739,
+        "rawChromaAccuracy": 0.973755559413941,
+        "voicingRecall": 0.9869913052769356,
+        "voicingFalseAlarm": 0.11010365993428928,
+        "overallAccuracy": 0.9442594799186935
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73899,
+        "estimatedVoicedOnReferenceUnvoiced": 4323,
+        "rawPitchCorrect": 72834,
+        "rawChromaCorrect": 72908,
+        "overallCorrect": 107774
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9763866814472507,
+        "rawChromaAccuracy": 0.9774418014504561,
+        "voicingRecall": 0.9921199898494785,
+        "voicingFalseAlarm": 0.15892825306267988,
+        "overallAccuracy": 0.9298380878951427
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74283,
+        "estimatedVoicedOnReferenceUnvoiced": 6240,
+        "rawPitchCorrect": 73105,
+        "rawChromaCorrect": 73184,
+        "overallCorrect": 106128
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9727137953601431,
+        "rawChromaAccuracy": 0.9737422034645333,
+        "voicingRecall": 0.9870447290745663,
+        "voicingFalseAlarm": 0.11155540839976569,
+        "overallAccuracy": 0.9437250297890236
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73903,
+        "estimatedVoicedOnReferenceUnvoiced": 4380,
+        "rawPitchCorrect": 72830,
+        "rawChromaCorrect": 72907,
+        "overallCorrect": 107713
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9768674956259266,
+        "rawChromaAccuracy": 0.9779493275279473,
+        "voicingRecall": 0.9927610754210463,
+        "voicingFalseAlarm": 0.16004890100094235,
+        "overallAccuracy": 0.929767996074858
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74331,
+        "estimatedVoicedOnReferenceUnvoiced": 6284,
+        "rawPitchCorrect": 73141,
+        "rawChromaCorrect": 73222,
+        "overallCorrect": 106120
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.55,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9726470156131048,
+        "rawChromaAccuracy": 0.973635355869272,
+        "voicingRecall": 0.9867108303393747,
+        "voicingFalseAlarm": 0.10816799531365408,
+        "overallAccuracy": 0.9448464989135767
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73878,
+        "estimatedVoicedOnReferenceUnvoiced": 4247,
+        "rawPitchCorrect": 72825,
+        "rawChromaCorrect": 72899,
+        "overallCorrect": 107841
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9723398287767286,
+        "rawChromaAccuracy": 0.9733281690328957,
+        "voicingRecall": 0.9864837791994444,
+        "voicingFalseAlarm": 0.11344013447775259,
+        "overallAccuracy": 0.9428313590803953
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73861,
+        "estimatedVoicedOnReferenceUnvoiced": 4454,
+        "rawPitchCorrect": 72802,
+        "rawChromaCorrect": 72876,
+        "overallCorrect": 107611
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.5,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9765068849919196,
+        "rawChromaAccuracy": 0.9775620049951251,
+        "voicingRecall": 0.9922802612423705,
+        "voicingFalseAlarm": 0.16048187861345287,
+        "overallAccuracy": 0.929382491063293
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74295,
+        "estimatedVoicedOnReferenceUnvoiced": 6301,
+        "rawPitchCorrect": 73114,
+        "rawChromaCorrect": 73193,
+        "overallCorrect": 106076
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.7
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9722864049790979,
+        "rawChromaAccuracy": 0.973274745235265,
+        "voicingRecall": 0.9863368637559601,
+        "voicingFalseAlarm": 0.10658890049155693,
+        "overallAccuracy": 0.9451531506273217
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73850,
+        "estimatedVoicedOnReferenceUnvoiced": 4185,
+        "rawPitchCorrect": 72798,
+        "rawChromaCorrect": 72872,
+        "overallCorrect": 107876
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9770678348670415,
+        "rawChromaAccuracy": 0.9781763786678777,
+        "voicingRecall": 0.9932418895997221,
+        "voicingFalseAlarm": 0.16180628072230854,
+        "overallAccuracy": 0.9292948762879372
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74367,
+        "estimatedVoicedOnReferenceUnvoiced": 6353,
+        "rawPitchCorrect": 73156,
+        "rawChromaCorrect": 73239,
+        "overallCorrect": 106066
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.972086065737983,
+        "rawChromaAccuracy": 0.9730744059941501,
+        "voicingRecall": 0.9861899483124758,
+        "voicingFalseAlarm": 0.1099508443063444,
+        "overallAccuracy": 0.9438652134295927
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73839,
+        "estimatedVoicedOnReferenceUnvoiced": 4317,
+        "rawPitchCorrect": 72783,
+        "rawChromaCorrect": 72857,
+        "overallCorrect": 107729
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.15,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9719792181427217,
+        "rawChromaAccuracy": 0.9729675583988888,
+        "voicingRecall": 0.9859896090713608,
+        "voicingFalseAlarm": 0.10702187810406744,
+        "overallAccuracy": 0.9448026915258989
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73824,
+        "estimatedVoicedOnReferenceUnvoiced": 4202,
+        "rawPitchCorrect": 72775,
+        "rawChromaCorrect": 72849,
+        "overallCorrect": 107836
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.1,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9771479705634875,
+        "rawChromaAccuracy": 0.9782565143643236,
+        "voicingRecall": 0.9933353812455759,
+        "voicingFalseAlarm": 0.16290145938924688,
+        "overallAccuracy": 0.9289707016191211
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74374,
+        "estimatedVoicedOnReferenceUnvoiced": 6396,
+        "rawPitchCorrect": 73162,
+        "rawChromaCorrect": 73245,
+        "overallCorrect": 106029
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.2,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9717922348510144,
+        "rawChromaAccuracy": 0.9727805751071815,
+        "voicingRecall": 0.9856957781843922,
+        "voicingFalseAlarm": 0.10455135878562515,
+        "overallAccuracy": 0.9455298941613514
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73802,
+        "estimatedVoicedOnReferenceUnvoiced": 4105,
+        "rawPitchCorrect": 72761,
+        "rawChromaCorrect": 72835,
+        "overallCorrect": 107919
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.25,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9715251158628612,
+        "rawChromaAccuracy": 0.9725134561190282,
+        "voicingRecall": 0.9853618794492006,
+        "voicingFalseAlarm": 0.10236100145174847,
+        "overallAccuracy": 0.9461081516786991
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73777,
+        "estimatedVoicedOnReferenceUnvoiced": 4019,
+        "rawPitchCorrect": 72741,
+        "rawChromaCorrect": 72815,
+        "overallCorrect": 107985
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.3,
+        "highConfidence": 0.6,
+        "praatThreshold": 0.8
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9711377933300389,
+        "rawChromaAccuracy": 0.9721261335862059,
+        "voicingRecall": 0.9848142855234865,
+        "voicingFalseAlarm": 0.1001197055752235,
+        "overallAccuracy": 0.9466250788532978
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 73736,
+        "estimatedVoicedOnReferenceUnvoiced": 3931,
+        "rawPitchCorrect": 72712,
+        "rawChromaCorrect": 72786,
+        "overallCorrect": 108044
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9770678348670415,
+        "rawChromaAccuracy": 0.9781763786678777,
+        "voicingRecall": 0.9931216860550532,
+        "voicingFalseAlarm": 0.16552479433563405,
+        "overallAccuracy": 0.9280157005677437
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74358,
+        "estimatedVoicedOnReferenceUnvoiced": 6499,
+        "rawPitchCorrect": 73156,
+        "rawChromaCorrect": 73239,
+        "overallCorrect": 105920
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.6
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9772815300575641,
+        "rawChromaAccuracy": 0.9783900738584003,
+        "voicingRecall": 0.9934288728914294,
+        "voicingFalseAlarm": 0.1664671573746275,
+        "overallAccuracy": 0.9278317095394968
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74381,
+        "estimatedVoicedOnReferenceUnvoiced": 6536,
+        "rawPitchCorrect": 73172,
+        "rawChromaCorrect": 73255,
+        "overallCorrect": 105899
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.45,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9771479705634875,
+        "rawChromaAccuracy": 0.9782565143643236,
+        "voicingRecall": 0.9932285336503145,
+        "voicingFalseAlarm": 0.16697654280111046,
+        "overallAccuracy": 0.9275688652134296
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74366,
+        "estimatedVoicedOnReferenceUnvoiced": 6556,
+        "rawPitchCorrect": 73162,
+        "rawChromaCorrect": 73245,
+        "overallCorrect": 105869
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.5
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9774685133492714,
+        "rawChromaAccuracy": 0.9786037690489229,
+        "voicingRecall": 0.9937627716266211,
+        "voicingFalseAlarm": 0.17143366528283627,
+        "overallAccuracy": 0.9262458821055582
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74406,
+        "estimatedVoicedOnReferenceUnvoiced": 6731,
+        "rawPitchCorrect": 73186,
+        "rawChromaCorrect": 73271,
+        "overallCorrect": 105718
+      }
+    },
+    {
+      "config": {
+        "lowConfidence": 0.05,
+        "highConfidence": 0.4,
+        "praatThreshold": 0.4
+      },
+      "tracks": 33,
+      "singers": 24,
+      "pitch": {
+        "rawPitchAccuracy": 0.9775486490457174,
+        "rawChromaAccuracy": 0.9786839047453688,
+        "voicingRecall": 0.9938562632724747,
+        "voicingFalseAlarm": 0.17268165957771947,
+        "overallAccuracy": 0.9258691385715287
+      },
+      "counts": {
+        "frames": 114136,
+        "referenceVoiced": 74873,
+        "referenceUnvoiced": 39263,
+        "estimatedVoicedOnReferenceVoiced": 74413,
+        "estimatedVoicedOnReferenceUnvoiced": 6780,
+        "rawPitchCorrect": 73192,
+        "rawChromaCorrect": 73277,
+        "overallCorrect": 105675
+      }
+    }
+  ]
+}
