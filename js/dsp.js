@@ -614,7 +614,8 @@
 
     const fps = sr / hop;
     const winF = Math.max(3, Math.round(0.14 * fps));     // local-mean window ~140 ms
-    const minIOI = Math.max(2, Math.round(0.12 * fps));   // notes ≥ ~120 ms apart
+    const minIOIMs = opts.minIOIMs != null ? opts.minIOIMs : 90;
+    const minIOI = Math.max(2, Math.round(minIOIMs / 1000 * fps));
     const delta = opts.delta != null ? opts.delta : 0.10; // additive sensitivity floor
     const ratio = opts.ratio != null ? opts.ratio : 1.7;  // must clearly exceed local mean
     // A real syllable/word onset is a clear, prominent flux peak; vibrato,
@@ -814,7 +815,10 @@
     if (placed.length) {
       const top = Math.max(...placed.map(p => p.score), 1e-6);
       for (const p of placed) p.score = Math.max(0, p.score / top);
-      if (placed.length > 1 && placed[1].score >= 0.85) placed[0].uncertain = true;
+      // A lone uninterrupted phrase does not provide enough independent cadence
+      // evidence to distinguish Sa reliably from a prominent Ma/Pa. Be honest
+      // about that ambiguity even when the numeric runner-up is weak.
+      if (nPhrases < 2 || (placed.length > 1 && placed[1].score >= 0.82)) placed[0].uncertain = true;
     }
     return placed.length ? placed : [{ hz: 146.83, score: 0, uncertain: true }];
   }
@@ -882,7 +886,7 @@
    * Only a genuinely fast oscillation is folded (see the excursion-rate gate
    * below); a single excursion, or a held swara with a couple of sparse grace
    * touches, is left alone so those touches stay visible as distinct notes. */
-  function absorbOscillations(runs, stableFrames, isReal) {
+  function absorbOscillations(runs, stableFrames, isReal, hopSec) {
     let changed = true;
     while (changed) {
       changed = false;
@@ -900,14 +904,16 @@
           break;
         }
         // Collapse only a genuinely fast oscillation (andolan/gamak): the ±1
-        // touches must recur often enough across the span (≳2 per second, i.e.
-        // ~0.035 per 16 ms frame). A held swara with a couple of sparse grace
+        // touches must recur often enough across the span (≳2 per second).
+        // Express this in real time so 4 ms Praat and 16 ms browser tracks make
+        // the same decision. A held swara with a couple of sparse grace
         // touches has a low excursion rate — leave those touches as their own
         // notes so they stay visible. (A slower continuous swing is still folded
         // downstream by collapseAndolan from the token stream, where over-
         // collapsing here would have destroyed the touches irreversibly.)
         const spanFrames = j > i ? runs[j - 1].end - runs[i].start : 0;
-        if (nExc >= 2 && j - i >= 4 && spanFrames > 0 && nExc / spanFrames >= 0.035) {
+        const excursionRate = spanFrames > 0 ? nExc / (spanFrames * hopSec) : 0;
+        if (nExc >= 2 && j - i >= 4 && excursionRate >= 2.1) {
           runs.splice(i, j - i, { start: runs[i].start, end: runs[j - 1].end, k: k0 });
           changed = true;
         }
@@ -933,7 +939,7 @@
   }
 
   /* Within-note character: andolan (slow oscillation) vs meend (directional glide). */
-  function analyzeToken(cents, start, end) {
+  function analyzeToken(cents, start, end, hopSec) {
     let cMin = Infinity, cMax = -Infinity, cSum = 0;
     for (let j = start; j < end; j++) {
       const cv = cents[j];
@@ -958,7 +964,7 @@
     for (let j = start; j < start + q; j++) a += cents[j];
     for (let j = end - q; j < end; j++) b += cents[j];
     const drift = Math.abs(b / q - a / q);
-    const durSec = (end - start) * 0.016;            // hopSec is 16 ms
+    const durSec = (end - start) * hopSec;
     const freq = durSec > 0 ? cross / (2 * durSec) : 0;
     // A true andolan keeps MOVING between two swaras, so few frames sit at the
     // centre; a held note with a couple of brief touches sits MOSTLY at centre.
@@ -1115,7 +1121,14 @@
     // Onset times (seconds) of syllable/word articulations — note boundaries.
     const onsetT = (opts.onsets || []).map((f) => f * hopSec).sort((a, b) => a - b);
     const onsetBetween = (a, b) => {
-      for (const t of onsetT) { if (t > a + 0.04 && t < b - 0.001) return true; if (t >= b) break; }
+      for (const t of onsetT) { if (t > a + 0.02 && t < b - 0.001) return true; if (t >= b) break; }
+      return false;
+    };
+    const onsetNear = (t, before, after) => {
+      for (const o of onsetT) {
+        if (o >= t - before && o <= t + after) return true;
+        if (o > t + after) break;
+      }
       return false;
     };
     const stableFrames = Math.max(2, Math.round(minNoteMs / 1000 / hopSec));
@@ -1146,9 +1159,28 @@
       win.sort((a, b) => a - b);
       kSm[i] = win[Math.floor(win.length / 2)];
     }
+    // Schmitt-trigger quantization: once a swara is active, pitch must cross
+    // slightly beyond the 50-cent midpoint before the label changes. This stops
+    // boundary jitter from alternating r/R (or any adjacent pair) while still
+    // switching immediately for clear leaps. Reset after silence and at detected
+    // articulations so a genuinely re-sung adjacent note is not delayed.
+    const hyst = opts.quantizeHysteresisCents != null ? opts.quantizeHysteresisCents : 12;
+    const onsetFrames = new Set((opts.onsets || []).map((f) => Math.max(0, Math.min(n - 1, Math.round(f)))));
+    let heldK = null;
+    for (let i = 0; i < n; i++) {
+      if (!voiced[i]) { heldK = null; continue; }
+      const reset = onsetFrames.has(i) || onsetFrames.has(i - 1) || onsetFrames.has(i + 1);
+      if (heldK == null || reset || Math.abs(kSm[i] - heldK) > 1) {
+        heldK = kSm[i];
+      } else {
+        while (cents[i] > (heldK + 0.5) * 100 + hyst) heldK++;
+        while (cents[i] < (heldK - 0.5) * 100 - hyst) heldK--;
+      }
+      kSm[i] = heldK;
+    }
 
     const makeToken = (r) => {
-      const a = analyzeToken(cents, r.start, r.end);
+      const a = analyzeToken(cents, r.start, r.end, hopSec);
       const tk = {
         t0: r.start * hopSec, t1: r.end * hopSec, k: r.k,
         cents: a.mean, meend: a.meend, andolan: a.andolan,
@@ -1189,7 +1221,7 @@
           }
         }
         mergeShortRuns(runs, minFrames);
-        if (ornaments) absorbOscillations(runs, stableFrames, hasPlateau);
+        if (ornaments) absorbOscillations(runs, stableFrames, hasPlateau, hopSec);
         if (runs.length === 1 && runs[0].end - runs[0].start < stableFrames && !ornaments) runs = [];
 
         if (!ornaments) {
@@ -1247,9 +1279,9 @@
       tokens = collapseGlides(tokens, cents, voiced, hopSec);
     }
 
-    /* Clean mode: keep only confident, singable notes.
-     * Drops weak/short blips and glitch jumps, snaps rare off-scale notes
-     * onto the song's scale, and merges a swara re-struck across a breath. */
+    /* Clean mode: keep confident, singable notes while preserving what the
+     * singer actually sang. Drops weak/short blips and implausible glitch jumps;
+     * it never changes a valid note merely because that swara is rare. */
     if (clean && tokens.length) {
       const n2 = clarity.length;
       const rms = opts.rms;
@@ -1292,51 +1324,17 @@
         const dn = nx ? Math.abs(tk.k - nx.k) : 99;
         return !(Math.min(dp, dn) > 7 && dur < 0.12);          // only a truly isolated micro-stray
       });
-      // 3. Snap rare off-scale short notes onto the song's scale.
-      const classDur = new Float64Array(12);
-      let total = 0;
-      for (const tk of out) {
-        const d = tk.t1 - tk.t0;
-        classDur[((tk.k % 12) + 12) % 12] += d;
-        total += d;
-      }
-      if (total > 0) {
-        const order = Array.from({ length: 12 }, (_, i) => i).sort((a, b) => classDur[b] - classDur[a]);
-        const scale = new Set();
-        let acc = 0;
-        for (const pc of order) {
-          if (classDur[pc] <= 0) break;
-          if (acc / total >= 0.9 && scale.size >= 5) break;
-          scale.add(pc);
-          acc += classDur[pc];
-        }
-        for (const tk of out) {
-          if (tk.glide || tk.andolan) continue;   // gestures are already resolved
-          const pc = ((tk.k % 12) + 12) % 12;
-          if (scale.has(pc) || (tk.t1 - tk.t0) >= 0.3) continue;
-          const rare = classDur[pc] / total < 0.02 || classDur[pc] < 0.6;
-          if (!rare) continue;
-          const cands = [];
-          if (scale.has((pc + 1) % 12)) cands.push(tk.k + 1);
-          if (scale.has((pc + 11) % 12)) cands.push(tk.k - 1);
-          if (cands.length) {
-            cands.sort((a, b) => Math.abs(tk.cents - a * 100) - Math.abs(tk.cents - b * 100));
-            tk.k = cands[0];
-          }
-        }
-      }
-      // 4. A held note re-struck on syllables/breaths reads as ONE note:
-      // collapse consecutive repeats of the same swara within a line. In the
-      // pure clean preset (no ornaments) merge across wider gaps and drop
-      // wobble marks — a hold with natural drift is just a hold.
-      const holdGap = ornaments ? 0.3 : 0.75;
+      // 3. Join only tiny confidence dropouts inside one continuous note. A
+      // breath, consonant or deliberate re-strike is a new sung note even when
+      // its pitch is unchanged.
+      const holdGap = Math.max(0.045, 3 * hopSec);
       const merged = [];
       for (const tk of out) {
         if (!ornaments) { tk.meend = false; tk.andolan = false; }
         const last = merged[merged.length - 1];
-        // A re-articulation (onset) between two same-pitch notes means a new
-        // syllable — keep them separate so every vocalised start is a note.
-        if (last && !last.glide && !tk.glide && !last.andolan && !tk.andolan && last.k === tk.k && tk.t0 - last.t1 < holdGap && !onsetBetween(last.t1, tk.t0)) {
+        const boundaryOnset = onsetBetween(last ? last.t1 : 0, tk.t0) || onsetNear(tk.t0, 0.06, 0.08);
+        if (last && !last.glide && !tk.glide && !last.andolan && !tk.andolan &&
+            last.k === tk.k && tk.t0 - last.t1 <= holdGap && !boundaryOnset) {
           last.t1 = tk.t1;
           last.meend = last.meend || tk.meend;
           last.andolan = last.andolan || tk.andolan;
@@ -1344,7 +1342,7 @@
           if (tk.graceAfter) last.graceAfter = tk.graceAfter;
         } else merged.push(tk);
       }
-      // 5. Clear meend connectors whose left side was dropped.
+      // 4. Clear meend connectors whose left side was dropped.
       for (let i = 0; i < merged.length; i++) {
         if (merged[i].meendFromPrev && (i === 0 || merged[i].t0 - merged[i - 1].t1 > 0.3)) {
           merged[i].meendFromPrev = false;
@@ -1361,12 +1359,13 @@
       const split = [];
       for (const tk of tokens) {
         if (tk.glide || tk.andolan) { split.push(tk); continue; }   // one gesture, never split
-        // Only split where each resulting piece is a real, singable length
-        // (≥0.18 s) — avoids shaving a held note into spurious repeats.
+        // Keep a conservative floor, but allow fast syllables: 180 ms hid real
+        // 100–150 ms re-articulations in taans and words with several notes.
+        const onsetMinSec = (opts.onsetMinMs != null ? opts.onsetMinMs : (clean ? 105 : 85)) / 1000;
         const cuts = [];
         let prevCut = tk.t0;
         for (const t of onsetT) {
-          if (t > prevCut + 0.18 && t < tk.t1 - 0.18) { cuts.push(t); prevCut = t; }
+          if (t > prevCut + onsetMinSec && t < tk.t1 - onsetMinSec) { cuts.push(t); prevCut = t; }
         }
         if (!cuts.length) { split.push(tk); continue; }
         let prev = tk.t0;

@@ -2,10 +2,10 @@
 """
 SwarLekh local analysis server — highest-quality pitch track, on YOUR machine.
 
-Pipeline: Demucs (htdemucs) isolates the VOCAL stem from the mix, then CREPE
-(full model, Viterbi decoding) tracks pitch on the clean voice. Separating the
-voice first is what removes the harmonium/tabla confusion that makes octaves
-flip — the single biggest quality lever.
+Pipeline: BS-RoFormer isolates the VOCAL stem from the mix when available,
+falling back to Demucs (htdemucs). Praat cross-correlation then tracks pitch on
+the clean voice every 4 ms. Separation removes harmonium/tabla confusion;
+Praat's short window resolves fast murkis and sargam runs.
 
 Privacy: this runs entirely on localhost. The browser sends the decoded audio
 to 127.0.0.1 only; nothing leaves your machine. Start it, then in the web app
@@ -31,7 +31,8 @@ from demucs.pretrained import get_model
 from demucs.apply import apply_model
 
 PORT = 8765
-HOP = 256            # 16 ms at 16 kHz — matches the in-browser pipeline
+CREPE_HOP = 256      # 16 ms at 16 kHz; used only by the /transpose voice resynthesis
+PRAAT_HOP_SEC = 0.004
 SR = 16000
 DEMUCS_SR = 44100
 
@@ -234,7 +235,7 @@ def detect_rhythm(x, voc):
 
 @app.get('/')
 def health():
-    return jsonify(ok=True, device=DEVICE, hopSec=HOP / SR, sr=SR)
+    return jsonify(ok=True, device=DEVICE, analyzer='praat-cc', hopSec=PRAAT_HOP_SEC, sr=SR)
 
 
 @app.post('/analyze')
@@ -264,7 +265,7 @@ def analyze():
     quick = snd.to_pitch_cc(time_step=0.01, pitch_floor=75.0, pitch_ceiling=1200.0)
     qf = quick.selected_array['frequency']; qf = qf[qf > 0]
     floor = float(np.clip(0.8 * np.percentile(qf, 5), 75.0, 200.0)) if qf.size else 120.0
-    hop_sec = 0.004
+    hop_sec = PRAAT_HOP_SEC
     p2 = snd.to_pitch_cc(time_step=hop_sec, pitch_floor=floor, pitch_ceiling=1200.0, very_accurate=True)
     f0 = np.nan_to_num(p2.selected_array['frequency'])
     # Per-frame confidence = Praat's real correlation strength, so the client's
@@ -362,12 +363,12 @@ def transpose():
     # Rubber Band on the raw voice lost that definition. (High/low octaves can still
     # go a touch robotic — a WORLD formant-undersampling limit at f0 extremes.)
     voc16 = torchaudio.functional.resample(voc, DEMUCS_SR, SR)            # [1, n] @16k
-    f0c, pdc = torchcrepe.predict(voc16, SR, hop_length=HOP, fmin=50, fmax=1100,
+    f0c, pdc = torchcrepe.predict(voc16, SR, hop_length=CREPE_HOP, fmin=50, fmax=1100,
                                   model='tiny', decoder=torchcrepe.decode.weighted_argmax,
                                   return_periodicity=True, batch_size=512, device=DEVICE)
     f0c = torchcrepe.filter.median(f0c, 3)[0].cpu().numpy()
     pdc = pdc[0].cpu().numpy()
-    crepe_t = np.arange(len(f0c)) * (HOP / SR)
+    crepe_t = np.arange(len(f0c)) * (CREPE_HOP / SR)
     voc_w = torchaudio.functional.resample(voc, DEMUCS_SR, WORLD_SR)[0].cpu().numpy()
     _f0, tw = pw.dio(voc_w.astype(np.float64), WORLD_SR)                  # just for WORLD's frame times
     vmask = f0c > 0

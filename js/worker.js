@@ -1,10 +1,11 @@
 /* SwarLekh — analysis worker. Receives 16 kHz mono samples, returns the
  * pitch track, tonic candidates and a synthesized melody preview.
  *
- * Two pitch engines:
+ * Three pitch engines:
  *   • default — DSP.yinTrack (fast, dependency-free DSP).
  *   • neural  — CREPE-tiny via TensorFlow.js (WASM backend), loaded lazily ONLY
  *     when requested, all self-hosted (no third-party fetch, no audio egress).
+ *   • external — voice separation + Praat-CC from the optional local server.
  * Everything downstream (stabilizeOctave → detectTonic → notate) is identical,
  * so the engine only changes how the f0 track is produced. */
 'use strict';
@@ -48,10 +49,10 @@ self.onmessage = async function (e) {
     prog('filter', 0);
     const filtered = DSP.preFilter(samples, sr);
 
-    const external = !!e.data.providedF0;   // pitch track from the local Demucs+CREPE server
+    const external = !!e.data.providedF0;   // pitch track from the local separator + Praat-CC server
     let track;
     if (external) {
-      // The heavy lifting (vocal separation + CREPE) happened on the local
+      // The heavy lifting (vocal separation + Praat-CC) happened on the local
       // server; wrap its f0/periodicity like a yinTrack result and compute the
       // per-frame rms here for the loudness gate.
       prog('pitch', 0.5);
@@ -80,19 +81,20 @@ self.onmessage = async function (e) {
     }
     const f0raw = track.f0.slice();
 
-    // A CREPE-based track (in-browser, or the separated-vocal server track) is
-    // already octave-accurate → gentle glitch-only pass; YIN's noisy track gets
-    // the full 'auto' register align.
+    // CREPE and the separated-vocal Praat track are already octave-accurate:
+    // apply only the gentle glitch pass. YIN's noisier track gets full register
+    // alignment.
     const cleanTrack = e.data.neural || external;
     const stab = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, cleanTrack ? 'gentle' : 'auto');
 
     prog('tonic', 0);
-    // Sa is a property of the music, not the tracker. CREPE's flatter salience
-    // confuses the (YIN-tuned) tonic scorer into borderline Sa-vs-third picks,
-    // so for a CREPE-based track detect Sa from a quick YIN pass and apply it to
-    // the notes — they share the same register (both call Sa ≈208 Hz), verified.
+    // Browser CREPE's flatter salience can confuse the YIN-tuned tonic scorer,
+    // so it keeps the established quick-YIN fallback. The local-server path is
+    // different: its f0, clarity and loudness all come from the separated voice.
+    // Using mix YIN here would throw that isolation away and let harmonium or
+    // accompaniment choose Sa.
     let tonic;
-    if (cleanTrack) {
+    if (e.data.neural) {
       const yt = DSP.yinTrack(filtered, sr, {});
       const ys = DSP.stabilizeOctave(yt.f0, yt.clarity, yt.rms, yt.hopSec, 'auto');
       tonic = DSP.detectTonic(ys.f0, yt.clarity, yt.hopSec, yt.rms);

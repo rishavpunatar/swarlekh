@@ -361,25 +361,28 @@ test('clean: drops a sub-100ms isolated octave stray (tracking glitch)', () => {
   assert.deepStrictEqual(tokens.map(t => t.k), [0, 2]);
 });
 
-test('clean: same swara re-struck across a breath merges into one note', () => {
+test('clean: same swara re-struck across a breath remains two sung notes', () => {
   const { f0, clarity } = trackFromRuns([[7, 28], [null, 12], [7, 28]]);
   const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
-  assert.strictEqual(tokens.length, 1);
-  assert.strictEqual(tokens[0].k, 7);
-  assert.ok(tokens[0].t1 - tokens[0].t0 > 1.0, 'merged duration spans the gap');
+  assert.deepStrictEqual(tokens.map(t => t.k), [7, 7]);
+  assert.ok(tokens[1].t0 > tokens[0].t1, 'the breath remains a real boundary');
 });
 
-test('clean: note re-sung on syllables collapses into one held note', () => {
-  // P sung three times with ~0.45 s articulation gaps = one held P.
+test('clean: note re-sung on syllables remains one note per vocalised start', () => {
+  // P sung three times with articulation gaps must read as three P notes.
   const { f0, clarity } = trackFromRuns([
     [7, 25], [null, 28], [7, 25], [null, 30], [7, 25],
   ]);
   const { tokens, phrases } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
-  assert.strictEqual(tokens.length, 1, `expected one held note, got ${tokens.map(t => t.k)}`);
-  assert.strictEqual(tokens[0].k, 7);
+  assert.deepStrictEqual(tokens.map(t => t.k), [7, 7, 7]);
   const txt = DSP.notationText(phrases);
-  assert.match(txt, /P( –){4,}/, `dashes should span the hold: ${txt}`);
-  assert.strictEqual((txt.match(/P/g) || []).length, 1, `P written once: ${txt}`);
+  assert.strictEqual((txt.match(/P/g) || []).length, 3, `P written for every re-strike: ${txt}`);
+});
+
+test('clean: a tiny confidence dropout inside a held swara is stitched', () => {
+  const { f0, clarity } = trackFromRuns([[7, 28], [null, 2], [7, 28]]);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
+  assert.deepStrictEqual(tokens.map(t => t.k), [7], 'a 32 ms tracker dropout is not a re-sung note');
 });
 
 test('clean: drifting held note carries no ~ or ≈ marks', () => {
@@ -408,13 +411,13 @@ test('detailed mode keeps wobble marks and tight hold-merge', () => {
   assert.ok(tokens[0].andolan, 'detailed keeps andolan');
 });
 
-test('clean: rare off-scale short note snaps onto the scale', () => {
-  // Strong scale {S R G P D}, one brief komal-ga stray.
+test('clean: a confident brief chromatic swara is preserved exactly', () => {
+  // Strong scale {S R G P D}, plus a clearly sung brief komal-ga touch.
   const { f0, clarity } = trackFromRuns([
     [0, 40], [2, 40], [4, 40], [7, 40], [9, 40], [4, 40], [3, 9], [2, 40], [0, 40],
   ]);
   const { tokens } = DSP.notate(f0, clarity, HOP, SA, CLEAN);
-  assert.ok(!tokens.some(t => t.k === 3), `stray komal ga should snap: ${tokens.map(t => t.k)}`);
+  assert.ok(tokens.some(t => t.k === 3), `komal ga must not be rewritten to fit an inferred scale: ${tokens.map(t => t.k)}`);
 });
 
 test('clean: lines split at >=1 s pauses, sections at >=4 s', () => {
@@ -514,6 +517,13 @@ test('detectTonic: ambiguous Pa-centric fragment still surfaces Sa in top-3 + fl
   const c = DSP.detectTonic(f0, clarity, 0.016);
   assert.ok(c.some(x => tonicErrCents(x.hz, SA) < 35), `Sa should be a candidate: ${c.map(x => x.hz.toFixed(1)).join(',')}`);
   assert.ok(c[0].uncertain, 'a close fifth-symmetry call should be flagged uncertain');
+});
+
+test('detectTonic: one Ma-centric phrase is marked uncertain even with a weak runner-up', () => {
+  const { f0, clarity } = tonicTrack(SA, [[5,90],[7,40],[5,90],[4,30],[5,60],[2,30],[0,40],[5,80]]);
+  const c = DSP.detectTonic(f0, clarity, 0.016);
+  assert.ok(c.some(x => tonicErrCents(x.hz, SA) < 35), `Sa should remain available: ${c.map(x => x.hz.toFixed(1)).join(',')}`);
+  assert.ok(c[0].uncertain, 'one phrase cannot establish Sa confidently from cadence alone');
 });
 
 /* ----------------------------- raga ID ----------------------------- */
@@ -827,6 +837,17 @@ test('notate: a held pitch splits into a note per syllable onset', () => {
   assert.ok(Math.abs(withSplit.tokens[1].t0 - 50 * HOP) < 0.05, 'split lands at the onset');
 });
 
+test('notate: fast 110ms syllables split a held pitch', () => {
+  const n = 24;
+  const f0 = new Float32Array(n).fill(SA * Math.pow(2, 7 / 12));
+  const clarity = new Float32Array(n).fill(0.9);
+  const { tokens } = DSP.notate(f0, clarity, HOP, SA, {
+    clean: true, ornaments: false, onsetMinMs: 100, onsets: [7, 14],
+  });
+  assert.deepStrictEqual(tokens.map(t => t.k), [7, 7, 7]);
+  assert.ok(tokens[1].reart && tokens[2].reart, 'later syllables are marked re-articulations');
+});
+
 /* -------------------------- high-note octaves -------------------------- */
 
 test('yinTrack: taar-saptak notes are not octave-halved', () => {
@@ -955,6 +976,47 @@ test('fine hop: 40ms sargam run resolves note-by-note (praat-track regime)', () 
   const { f0, cl } = fineTrack(seq.map(k => [k, 40, 0.15]), hop, sa);
   const { tokens } = DSP.notate(f0, cl, hop, sa, { clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130, clarityThresh: 0.5 });
   assert.deepStrictEqual(tokens.map(t => t.k), seq, 'every 40ms note is its own swara');
+});
+
+test('fine hop: every pitch hit inside one fast melismatic word remains visible', () => {
+  const hop = 0.004, sa = 220;
+  const seq = [[0, 28, 0.1], [2, 28, 0.1], [4, 32, 0.1], [2, 28, 0.1], [0, 40, 0]];
+  const { f0, cl } = fineTrack(seq, hop, sa);
+  const { tokens } = DSP.notate(f0, cl, hop, sa, {
+    clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130,
+  });
+  assert.deepStrictEqual(tokens.map(t => t.k), [0, 2, 4, 2, 0]);
+});
+
+test('quantization: pitch jitter around an adjacent-swara boundary does not chatter', () => {
+  const hop = 0.004, sa = 220;
+  const cents = [];
+  for (let block = 0; block < 10; block++) {
+    const c = block % 2 ? 155 : 145; // around the r/R midpoint at 150 cents
+    for (let j = 0; j < 10; j++) cents.push(c);
+  }
+  const f0 = new Float32Array(cents.length);
+  const cl = new Float32Array(cents.length).fill(0.9);
+  for (let i = 0; i < cents.length; i++) f0[i] = sa * Math.pow(2, cents[i] / 1200);
+  const { tokens } = DSP.notate(f0, cl, hop, sa, {
+    clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130,
+  });
+  assert.deepStrictEqual(tokens.map(t => t.k), [1], `boundary jitter must keep one label, got ${tokens.map(t => t.k)}`);
+});
+
+test('fine hop: andolan timing matches the 16ms browser-track decision', () => {
+  const hop = 0.004, sa = 220;
+  const n = Math.round(1.28 / hop);
+  const f0 = new Float32Array(n), cl = new Float32Array(n).fill(0.9);
+  for (let i = 0; i < n; i++) {
+    const c = 400 + 55 * Math.sin(2 * Math.PI * 3 * i * hop);
+    f0[i] = sa * Math.pow(2, c / 1200);
+  }
+  const { tokens } = DSP.notate(f0, cl, hop, sa, {
+    clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130,
+  });
+  assert.strictEqual(tokens.length, 1);
+  assert.ok(tokens[0].andolan, '4 ms timing must not make a 3 Hz andolan appear four times slower');
 });
 
 test('passing-tone gate: glide fragments do not become fake notes', () => {

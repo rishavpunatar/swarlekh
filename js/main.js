@@ -12,7 +12,8 @@
     loopABtn: $('loopABtn'), loopBBtn: $('loopBBtn'), loopClearBtn: $('loopClearBtn'), loopDisp: $('loopDisp'),
     ragaThaat: $('ragaThaat'), ragaGuess: $('ragaGuess'), swarPalette: $('swarPalette'), ragaGrammar: $('ragaGrammar'),
     tonicCard: $('tonicCard'), tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
-    tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'), tonicHint: $('tonicHint'),
+    tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'),
+    saAtPlayheadBtn: $('saAtPlayheadBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
@@ -41,13 +42,16 @@
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
     raga: null, highlightPc: null, ragaMatches: [], script: 'latin', rhythm: null,
     engine: 'yin', file: null,
-    opts: { clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45, clean: true, onsets: [] },
+    opts: {
+      clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45,
+      onsetMinMs: 100, clean: true, onsets: [],
+    },
   };
 
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=42';
+  const WORKER_URL = 'js/worker.js?v=43';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -456,9 +460,9 @@
     els.tonicCard.classList.toggle('uncertain', !!uncertain);
     els.droneBtn.classList.toggle('pulse', !!uncertain && !droneNodes);
     if (uncertain && cands.length > 1) {
-      els.tonicHint.innerHTML = '⚠️ <b>Sa is a close call</b> — this is usually Sa vs Pa. Tap each candidate above and play the <b>Drone</b> against the song; the right Sa is the note that sounds like “home”.';
+      els.tonicHint.innerHTML = '⚠️ <b>Sa is a close call.</b> Try the candidates with the <b>Drone</b>, or pause on a sung Sa and choose <b>Set playhead as Sa</b>.';
     } else if (uncertain) {
-      els.tonicHint.innerHTML = '⚠️ Couldn’t hear enough clear melody to be sure of Sa. Set it by note below, or play the <b>Drone</b> and match it to the song’s home note.';
+      els.tonicHint.innerHTML = '⚠️ Couldn’t hear enough clear melody to be sure of Sa. Set it by note, or pause on a sung Sa and choose <b>Set playhead as Sa</b>.';
     } else {
       els.tonicHint.innerHTML = 'Pick the candidate that sounds like the song’s home note — toggle the <b>Drone</b> and listen against the recording.';
     }
@@ -499,6 +503,31 @@
   }
   els.tonicNote.addEventListener('change', tonicFromControls);
   els.tonicFine.addEventListener('input', tonicFromControls);
+
+  function setPlayheadAsSa() {
+    if (!state.f0 || !state.clarity) return;
+    const center = Math.round(origEl.currentTime / state.hopSec);
+    const collect = (radiusSec) => {
+      const vals = [];
+      const radius = Math.max(1, Math.round(radiusSec / state.hopSec));
+      for (let i = Math.max(0, center - radius); i <= Math.min(state.f0.length - 1, center + radius); i++) {
+        if (state.f0[i] > 0 && state.clarity[i] >= state.opts.clarityThresh) vals.push(state.f0[i]);
+      }
+      vals.sort((a, b) => a - b);
+      return vals;
+    };
+    let vals = collect(0.08);
+    if (!vals.length) vals = collect(0.25);
+    if (!vals.length) {
+      toast('No clear sung pitch at the playhead. Move it onto a steady Sa and try again.');
+      return;
+    }
+    state.saHz = vals[vals.length >> 1];
+    syncTonicControls();
+    renotateNow();
+    toast(`Sa set from the playhead: ${noteLabel(state.saHz)} (${state.saHz.toFixed(1)} Hz).`);
+  }
+  if (els.saAtPlayheadBtn) els.saAtPlayheadBtn.addEventListener('click', setPlayheadAsSa);
 
   els.droneBtn.addEventListener('click', () => {
     const on = !droneNodes;
@@ -857,9 +886,9 @@
     // Clean keeps ornaments ON now (so murkis/bends show which swaras they
     // touch) but filters noise; Detailed shows every nuance; Simple is the
     // bare melodic skeleton.
-    if (v === 'clean') Object.assign(state.opts, { ornaments: true, clean: true, ornMinMs: 45, minNoteMs: 130 });
-    else if (v === 'detailed') Object.assign(state.opts, { ornaments: true, clean: false, ornMinMs: 30, minNoteMs: 90 });
-    else Object.assign(state.opts, { ornaments: false, clean: true, ornMinMs: 45, minNoteMs: 170 });
+    if (v === 'clean') Object.assign(state.opts, { ornaments: true, clean: true, ornMinMs: 45, minNoteMs: 130, onsetMinMs: 100 });
+    else if (v === 'detailed') Object.assign(state.opts, { ornaments: true, clean: false, ornMinMs: 30, minNoteMs: 90, onsetMinMs: 80 });
+    else Object.assign(state.opts, { ornaments: false, clean: true, ornMinMs: 45, minNoteMs: 170, onsetMinMs: 125 });
     els.minNoteSlider.value = state.opts.minNoteMs;
     els.minNoteVal.textContent = `${state.opts.minNoteMs} ms`;
     if (detailMirror) detailMirror.value = v;
