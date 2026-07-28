@@ -1257,6 +1257,34 @@ test('passing-tone gate: glide fragments do not become fake notes', () => {
   assert.ok(ks.includes(0) && ks.includes(4), `S and G kept, got ${ks.join(',')}`);
 });
 
+test('passing-tone gate: repeated tracker frames inside a slide do not invent note hits', () => {
+  const hop = 0.004, sa = 220;
+  const cents = [];
+  const hold = (value, frames) => {
+    for (let i = 0; i < frames; i++) cents.push(value);
+  };
+  const glide = (from, to, frames, repeatedFrame) => {
+    for (let i = 1; i <= frames; i++) {
+      let value = from + (to - from) * i / frames;
+      if (i === repeatedFrame) value = cents[cents.length - 1];
+      cents.push(value);
+    }
+  };
+  hold(400, 23);
+  glide(400, 200, 30, 16);
+  hold(200, 18);
+  glide(200, 0, 25, 12);
+  hold(0, 25);
+
+  const f0 = Float32Array.from(cents, c => sa * Math.pow(2, c / 1200));
+  const cl = new Float32Array(f0.length).fill(0.9);
+  const { tokens } = DSP.notate(f0, cl, hop, sa, {
+    clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130,
+  });
+  assert.deepStrictEqual(tokens.map(t => t.k), [4, 2, 0],
+    'only the three pitches that level off should receive note labels');
+});
+
 test('passing-tone gate: fast murki (G R G) survives, glide fragment does not swallow it', () => {
   const hop = 0.004, sa = 220;
   const { f0, cl } = fineTrack([[0, 400, 0.1], [4, 40, 0.1], [2, 40, 0.1], [4, 40, 0.1], [5, 400, 0]], hop, sa);
