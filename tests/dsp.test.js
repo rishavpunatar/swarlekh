@@ -276,6 +276,83 @@ test('notateRegions: repeated same pitch remains one token per articulation', ()
   assert.deepStrictEqual(tokens.map((token) => token.k), [7, 7, 7]);
 });
 
+test('notateRegions: clean folds a short rebound overshoot into its target', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.43, frequency: st(4) },
+    { onset: 0.43, offset: 0.56, frequency: st(0) },
+    { onset: 0.56, offset: 0.72, frequency: st(2) },
+    { onset: 0.72, offset: 1.1, frequency: st(4) },
+  ];
+  const f0 = new Float32Array(110).fill(st(4));
+  const clarity = new Float32Array(110).fill(0.9);
+  const rebound = [230, 160, 95, 35, 0, -5, -4, 0, 12, 28, 43, 52, 58];
+  for (let i = 0; i < rebound.length; i++) {
+    f0[43 + i] = SA * Math.pow(2, rebound[i] / 1200);
+  }
+  for (let i = 56; i < 72; i++) f0[i] = st(2);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 2, 4]);
+  assert.strictEqual(tokens[1].t0, 0.43);
+});
+
+test('notateRegions: clean preserves a short flat note in the same run', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.43, frequency: st(4) },
+    { onset: 0.43, offset: 0.56, frequency: st(0) },
+    { onset: 0.56, offset: 0.72, frequency: st(2) },
+    { onset: 0.72, offset: 1.1, frequency: st(4) },
+  ];
+  const f0 = new Float32Array(110).fill(st(4));
+  const clarity = new Float32Array(110).fill(0.9);
+  for (let i = 43; i < 56; i++) f0[i] = st(0);
+  for (let i = 56; i < 72; i++) f0[i] = st(2);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 0, 2, 4]);
+});
+
+test('notateRegions: clean preserves a fast G R G murki', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.4, frequency: st(4) },
+    { onset: 0.4, offset: 0.48, frequency: st(2) },
+    { onset: 0.48, offset: 0.9, frequency: st(4) },
+  ];
+  const f0 = new Float32Array(90).fill(st(4));
+  const clarity = new Float32Array(90).fill(0.9);
+  for (let i = 40; i < 48; i++) f0[i] = st(2);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 2, 4]);
+});
+
 test('practice contour: vibrato becomes a flat target hold', () => {
   const hopSec = 0.01;
   const cents = Float32Array.from(
