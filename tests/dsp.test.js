@@ -773,6 +773,83 @@ test('notateRegions: raw landmark restores a neighbor turn at a neural boundary'
   assert.strictEqual(tokens[1].rawLandmark, true);
 });
 
+test('notateRegions: recovers a nuanced neighbor turn inside one broad neural note', () => {
+  const hopSec = 0.01;
+  const regions = [{ onset: 0, offset: 0.8, frequency: st(12) }];
+  const cents = new Float32Array(80).fill(1200);
+  const turn = [1160, 1125, 1112, 1107, 1110, 1118, 1140];
+  for (let index = 0; index < turn.length; index++) {
+    cents[32 + index] = turn[index];
+  }
+  const f0 = Float32Array.from(
+    cents,
+    value => SA * Math.pow(2, value / 1200)
+  );
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(80).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [12, 11, 12]);
+  assert.strictEqual(tokens[1].rawLandmark, true);
+});
+
+test('notateRegions: combines a nested traversal into its stable return target', () => {
+  const hopSec = 0.01;
+  const regions = [{ onset: 0, offset: 0.8, frequency: st(12) }];
+  const cents = new Float32Array(80).fill(1200);
+  cents.set([
+    1145, 1120, 1110, 1105,
+    1040, 1025, 1040,
+    1060, 1080, 1100, 1120, 1140,
+  ], 32);
+  const f0 = Float32Array.from(
+    cents,
+    value => SA * Math.pow(2, value / 1200)
+  );
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(80).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [12, 11, 12]);
+  assert.strictEqual(tokens[1].nestedTurn, true);
+});
+
+test('notateRegions: recurring vibrato inside one neural note is not split into a murki', () => {
+  const hopSec = 0.01;
+  const regions = [{ onset: 0, offset: 1, frequency: st(12) }];
+  const f0 = new Float32Array(100);
+  for (let frame = 0; frame < f0.length; frame++) {
+    const cents = 1200 - 82 * (
+      0.5 + 0.5 * Math.sin(2 * Math.PI * 5 * frame * hopSec)
+    );
+    f0[frame] = SA * Math.pow(2, cents / 1200);
+  }
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(100).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.strictEqual(tokens.length, 1);
+  assert.ok(!tokens[0].rawLandmark);
+});
+
 test('notateRegions: recovers a stable target reached on a fading phrase tail', () => {
   const hopSec = 0.01;
   const regions = [{ onset: 0, offset: 0.78, frequency: st(2) }];
