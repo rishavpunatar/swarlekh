@@ -1264,6 +1264,18 @@
         cents[i] = 1200 * Math.log2(f0[i] / saHz);
       }
     }
+    // Repair one missing pitch frame between matching voiced neighbours. Neural
+    // trackers commonly lose a single 4-10 ms frame on a fast consonant; leaving
+    // that hole in place splits a genuine 60-90 ms murki landing into two pieces
+    // that each fall below the ornament-duration gate.
+    for (let i = 1; i + 1 < n; i++) {
+      if (voiced[i] || !voiced[i - 1] || !voiced[i + 1] ||
+          Math.abs(cents[i + 1] - cents[i - 1]) > 110) {
+        continue;
+      }
+      voiced[i] = 1;
+      cents[i] = (cents[i - 1] + cents[i + 1]) / 2;
+    }
 
     const kArr = new Int16Array(n);
     for (let i = 0; i < n; i++) if (voiced[i]) kArr[i] = Math.round(cents[i] / 100);
@@ -1519,13 +1531,54 @@
 
   /**
    * Restore short, clearly landed turning notes that sit inside a broader GAME
-   * region. The frame segmenter is only allowed to replace a connected gesture
-   * when it finds a missing local reversal; monotonic passing tones therefore
-   * remain one visual bend.
+   * region. Each recovery is limited to the local three-note gesture around the
+   * turn. This keeps a real murki visible without allowing one frame-level turn
+   * to replace the neural model's boundaries across an entire alaap phrase.
    */
   function fuseTurningOrnaments(neuralTokens, frameTokens, suppressedTurns) {
     if (neuralTokens.length < 1 || frameTokens.length < 3) {
       return neuralTokens;
+    }
+    const refinedTokens = neuralTokens.map((token) => Object.assign({}, token));
+    const recoveredEntries = [];
+    for (let tokenIndex = 0; tokenIndex < refinedTokens.length; tokenIndex++) {
+      const token = refinedTokens[tokenIndex];
+      for (let frameIndex = 1; frameIndex < frameTokens.length; frameIndex++) {
+        let lead = frameTokens[frameIndex - 1];
+        const landing = frameTokens[frameIndex];
+        if (lead.t1 - lead.t0 <= 0.055 && frameIndex >= 2) {
+          const earlier = frameTokens[frameIndex - 2];
+          if (landing.t0 - earlier.t1 <= 0.12) lead = earlier;
+        }
+        const overlapInside = landing.t0 >= token.t0 + 0.07 &&
+          landing.t0 <= token.t1 - 0.025;
+        const leadCrossesOnset = lead.t0 <= token.t0 + 0.02 &&
+          lead.t1 >= token.t0 + 0.07;
+        const connected = landing.t0 - lead.t1 <= 0.12;
+        const closeStart = token.t0 - lead.t0 <= 0.30;
+        const materiallyEarlier = token.t0 - lead.t0 >= 0.08;
+        if (landing.k !== token.k || lead.k === token.k ||
+            lead.t1 - lead.t0 < 0.07 || !overlapInside ||
+            !leadCrossesOnset || !connected || !closeStart ||
+            !materiallyEarlier) {
+          continue;
+        }
+        const previous = refinedTokens[tokenIndex - 1];
+        const start = previous ? Math.max(lead.t0, previous.t1) : lead.t0;
+        if (landing.t0 - start < 0.06) continue;
+        recoveredEntries.push(Object.assign({}, lead, {
+          t0: start,
+          t1: landing.t0,
+          hybridOrnament: true,
+          recoveredEntry: true,
+        }));
+        token.t0 = landing.t0;
+        break;
+      }
+    }
+    if (recoveredEntries.length) {
+      refinedTokens.push(...recoveredEntries);
+      refinedTokens.sort((a, b) => a.t0 - b.t0);
     }
     const missingTurns = [];
     const maxTurnSec = 0.16;
@@ -1535,7 +1588,7 @@
       return Math.min(turn.t1, candidate.t1) -
         Math.max(turn.t0, candidate.t0) >= 0.02;
     });
-    const existingHit = (candidate) => neuralTokens.some((token) => {
+    const existingHit = (candidate) => refinedTokens.some((token) => {
       if (token.k !== candidate.k) return false;
       const overlap = Math.min(token.t1, candidate.t1) -
         Math.max(token.t0, candidate.t0);
@@ -1550,29 +1603,37 @@
       const leftGap = token.t0 - previous.t1;
       const rightGap = next.t0 - token.t1;
       const reverses = (token.k - previous.k) * (next.k - token.k) < 0;
+      const totalLeap = Math.abs(token.k - previous.k) +
+        Math.abs(next.k - token.k);
+      const neighborSpan = Math.abs(next.k - previous.k);
+      const outside = Math.max(
+        Math.min(previous.k, next.k) - token.k,
+        token.k - Math.max(previous.k, next.k),
+        0
+      );
+      // RMVPE can briefly jump an octave-like distance during a consonant. A
+      // real sub-100 ms murki turn is compact; these very large rebounds are
+      // tracker glitches. A one-semitone hook just outside two adjacent targets
+      // is transition geometry, so it belongs in the bend rather than as a note.
+      const implausibleSpike = duration <= 0.10 && totalLeap >= 7;
+      const classicNeighborTurn = previous.k === next.k && duration >= 0.065;
+      const adjacentHook = duration <= 0.14 && neighborSpan <= 2 &&
+        outside === 1 && !classicNeighborTurn;
       if (duration >= 0.025 && duration <= maxTurnSec &&
           leftGap <= maxNeighborGapSec && rightGap <= maxNeighborGapSec &&
-          reverses && !existingHit(token) && !wasSuppressed(token)) {
+          reverses && !implausibleSpike && !adjacentHook &&
+          !existingHit(token) && !wasSuppressed(token)) {
         missingTurns.push(i);
       }
     }
-    if (!missingTurns.length) return neuralTokens;
+    if (!missingTurns.length) return refinedTokens;
 
-    // Expand each missing turn to its connected frame-level gesture. Replacing
-    // the whole gesture avoids overlapping coarse and fine tokens on the canvas.
+    // Limit each missing turn to its immediate anchors. Merge only overlapping
+    // three-note windows, never every connected frame token in the phrase.
     const components = [];
-    const componentGapSec = 0.08;
     for (const index of missingTurns) {
-      let first = index;
-      let last = index;
-      while (first > 0 &&
-          frameTokens[first].t0 - frameTokens[first - 1].t1 <= componentGapSec) {
-        first--;
-      }
-      while (last + 1 < frameTokens.length &&
-          frameTokens[last + 1].t0 - frameTokens[last].t1 <= componentGapSec) {
-        last++;
-      }
+      const first = index - 1;
+      const last = index + 1;
       const previous = components[components.length - 1];
       if (previous && first <= previous.last + 1) {
         previous.last = Math.max(previous.last, last);
@@ -1581,27 +1642,157 @@
       }
     }
 
-    let result = neuralTokens.slice();
+    let result = refinedTokens.slice();
     for (const component of components) {
       const replacements = frameTokens
         .slice(component.first, component.last + 1)
         .map((token) => Object.assign({}, token, { hybridOrnament: true }));
       const start = replacements[0].t0;
       const end = replacements[replacements.length - 1].t1;
-      result = result.filter((token) => {
-        const midpoint = (token.t0 + token.t1) / 2;
-        const overlap = Math.max(
-          0,
-          Math.min(token.t1, end) - Math.max(token.t0, start)
-        );
-        const duration = token.t1 - token.t0;
-        return !(midpoint >= start && midpoint <= end ||
-          overlap >= duration * 0.45);
-      });
+      const preserved = [];
+      for (const token of result) {
+        if (token.t1 <= start || token.t0 >= end) {
+          preserved.push(token);
+          continue;
+        }
+        // A broad neural region can straddle a recovered turn. Keep its useful
+        // outer portions so local frame evidence cannot erase the rest of it.
+        if (token.t0 < start - 0.025) {
+          preserved.push(Object.assign({}, token, { t1: start }));
+        }
+        if (token.t1 > end + 0.025) {
+          preserved.push(Object.assign({}, token, { t0: end }));
+        }
+      }
+      result = preserved;
       result.push(...replacements);
     }
     result.sort((a, b) => a.t0 - b.t0);
-    return result;
+    const joined = [];
+    for (const token of result) {
+      const previous = joined[joined.length - 1];
+      if (previous && previous.k === token.k &&
+          token.t0 - previous.t1 <= 0.03 &&
+          (previous.hybridOrnament || token.hybridOrnament)) {
+        previous.t1 = Math.max(previous.t1, token.t1);
+        previous.hybridOrnament = true;
+      } else {
+        joined.push(token);
+      }
+    }
+    return joined;
+  }
+
+  /**
+   * Recover a very short adjacent-neighbour turn (for example D-n-D) directly
+   * from the raw contour when neural hysteresis has merged it into two same-note
+   * regions. A nearby neural boundary is required as independent evidence, which
+   * keeps ordinary vibrato from becoming a stream of one-semitone murki labels.
+   */
+  function fuseRawNeighborTurns(tokens, f0, clarity, hopSec, saHz, thresh,
+    suppressedTurns) {
+    if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
+    const runs = [];
+    for (let frame = 0; frame < f0.length; frame++) {
+      if (!(f0[frame] > 0) || clarity[frame] < thresh) continue;
+      const cents = 1200 * Math.log2(f0[frame] / saHz);
+      const k = Math.round(cents / 100);
+      const previous = runs[runs.length - 1];
+      if (previous && previous.k === k && frame - previous.end <= 2) {
+        previous.end = frame + 1;
+        previous.values.push(cents);
+      } else {
+        runs.push({ k, start: frame, end: frame + 1, values: [cents] });
+      }
+    }
+    const wasSuppressed = (candidate) => (suppressedTurns || []).some((turn) =>
+      turn.k === candidate.k &&
+      Math.min(turn.t1, candidate.t1) - Math.max(turn.t0, candidate.t0) >= 0.02
+    );
+    let result = tokens.slice();
+    for (let index = 1; index + 1 < runs.length; index++) {
+      const previous = runs[index - 1];
+      const run = runs[index];
+      const next = runs[index + 1];
+      const duration = (run.end - run.start) * hopSec;
+      if (previous.k !== next.k || run.k === previous.k ||
+          Math.abs(run.k - previous.k) > 2 ||
+          duration < 0.045 || duration > 0.16 ||
+          (run.start - previous.end) * hopSec > 0.02 ||
+          (next.start - run.end) * hopSec > 0.02) {
+        continue;
+      }
+      let plateau = 0, bestPlateau = 0;
+      for (const cents of run.values) {
+        if (Math.abs(cents - run.k * 100) <= 32) {
+          plateau++;
+          bestPlateau = Math.max(bestPlateau, plateau);
+        } else {
+          plateau = 0;
+        }
+      }
+      if (bestPlateau * hopSec < 0.025) continue;
+      const candidate = {
+        t0: run.start * hopSec,
+        t1: run.end * hopSec,
+        k: run.k,
+      };
+      const center = (candidate.t0 + candidate.t1) / 2;
+      const neuralBoundary = result.some((token, tokenIndex) => {
+        const following = result[tokenIndex + 1];
+        if (!following || token.k !== previous.k ||
+            following.k !== previous.k) {
+          return false;
+        }
+        return Math.abs((token.t1 + following.t0) / 2 - center) <= 0.12;
+      });
+      const existingHit = result.some((token) =>
+        token.k === candidate.k &&
+        Math.min(token.t1, candidate.t1) -
+          Math.max(token.t0, candidate.t0) >= 0.025
+      );
+      if (!neuralBoundary || existingHit || wasSuppressed(candidate)) continue;
+
+      const start = Math.max(previous.start * hopSec, candidate.t0 - 0.14);
+      const end = Math.min(next.end * hopSec, candidate.t1 + 0.14);
+      const replacements = [
+        { t0: start, t1: candidate.t0, k: previous.k },
+        candidate,
+        { t0: candidate.t1, t1: end, k: next.k },
+      ].map((token) => Object.assign({}, token, {
+        cents: token.k * 100,
+        hybridOrnament: true,
+        rawLandmark: true,
+      }));
+      const preserved = [];
+      for (const token of result) {
+        if (token.t1 <= start || token.t0 >= end) {
+          preserved.push(token);
+          continue;
+        }
+        if (token.t0 < start - 0.025) {
+          preserved.push(Object.assign({}, token, { t1: start }));
+        }
+        if (token.t1 > end + 0.025) {
+          preserved.push(Object.assign({}, token, { t0: end }));
+        }
+      }
+      result = preserved.concat(replacements).sort((a, b) => a.t0 - b.t0);
+    }
+    const joined = [];
+    for (const token of result) {
+      const previous = joined[joined.length - 1];
+      if (previous && previous.k === token.k &&
+          token.t0 - previous.t1 <= 0.03 &&
+          (previous.rawLandmark || token.rawLandmark)) {
+        previous.t1 = Math.max(previous.t1, token.t1);
+        previous.rawLandmark = true;
+        previous.hybridOrnament = true;
+      } else {
+        joined.push(token);
+      }
+    }
+    return joined;
   }
 
   /**
@@ -1687,6 +1878,57 @@
       ).tokens;
     }
     if (clean) {
+      // GAME can average a stable entry note together with its outgoing glide
+      // and place the whole region one semitone toward the destination. When a
+      // frame-level plateau begins with the region and lasts long enough to be
+      // sung deliberately, use that landed pitch for the singer-facing label.
+      for (const token of tokens) {
+        let entry = null;
+        for (const frameToken of frameTokens) {
+          const duration = frameToken.t1 - frameToken.t0;
+          const overlap = Math.min(token.t1, frameToken.t1) -
+            Math.max(token.t0, frameToken.t0);
+          if (Math.abs(frameToken.k - token.k) !== 1 ||
+              duration < 0.075 || overlap < 0.07 ||
+              frameToken.t0 < token.t0 - 0.035 ||
+              frameToken.t0 > token.t0 + 0.06) {
+            continue;
+          }
+          if (!entry || overlap > entry.overlap) {
+            entry = { frameToken, overlap };
+          }
+        }
+        if (entry) {
+          token.k = entry.frameToken.k;
+          token.entryPlateauSnap = true;
+          continue;
+        }
+        const startFrame = Math.max(0, Math.floor(token.t0 / hopSec));
+        const endFrame = Math.min(
+          f0 ? f0.length : 0,
+          Math.ceil(Math.min(token.t1, token.t0 + 0.14) / hopSec)
+        );
+        const counts = new Map();
+        for (let frame = startFrame; frame < endFrame; frame++) {
+          if (!(f0[frame] > 0) || (clarity && clarity[frame] < thresh)) continue;
+          const k = Math.round(12 * Math.log2(f0[frame] / saHz));
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+        let landedK = token.k, landedFrames = 0;
+        for (const [k, count] of counts) {
+          if (count > landedFrames) {
+            landedK = k;
+            landedFrames = count;
+          }
+        }
+        if (Math.abs(landedK - token.k) === 1 &&
+            landedFrames * hopSec >= 0.075 &&
+            token.t1 - token.t0 >= 0.20) {
+          token.k = landedK;
+          token.entryPlateauSnap = true;
+        }
+      }
+
       // GAME occasionally inserts a boundary inside one held note. Merge it
       // only when the source track stays voiced, close to the shared swara and
       // energetic across the boundary. Re-articulations with a pitch/energy
@@ -1701,15 +1943,12 @@
         const continuousBoundary = (left, right) => {
           if (left.k !== right.k || right.t0 - left.t1 > 0.03) return false;
           const boundary = (left.t1 + right.t0) / 2;
-          const boundaryOnset = (opts.onsets || []).some((frame) =>
-            Math.abs(frame * hopSec - boundary) <= Math.max(0.03, 2 * hopSec)
-          );
           const spanningFrame = frameTokens.some((frameToken) =>
             frameToken.k === left.k &&
             frameToken.t0 <= boundary - 0.02 &&
             frameToken.t1 >= boundary + 0.02
           );
-          if (boundaryOnset || !spanningFrame) return false;
+          if (!spanningFrame) return false;
           const center = Math.round(boundary / hopSec);
           const radius = Math.max(2, Math.round(0.025 / hopSec));
           let leftVoiced = 0, rightVoiced = 0, silentRun = 0, maxSilentRun = 0;
@@ -1773,6 +2012,64 @@
           }
         }
         tokens = merged;
+      }
+
+      // Fold a short one-semitone hook into the following target when its raw
+      // contour enters from the previous note, turns, and leaves toward the
+      // target. This is sung transition geometry, not a separate note landing.
+      // The same rule handles a leading dip after a pause when it immediately
+      // rebounds into a stronger adjacent target.
+      for (let i = 0; i + 1 < tokens.length; i++) {
+        const previous = i > 0 ? tokens[i - 1] : null;
+        const token = tokens[i];
+        const next = tokens[i + 1];
+        const path = token._contour || [];
+        const duration = token.t1 - token.t0;
+        const previousConnected = !!previous &&
+          token.t0 - previous.t1 <= 0.035;
+        const nextConnected = next.t0 - token.t1 <= 0.035;
+        if (!nextConnected || duration > 0.24 || path.length < 5) continue;
+
+        let pathMin = path[0], pathMax = path[0];
+        let extremeIndex = 0;
+        const hookHigh = token.k > next.k;
+        for (let p = 1; p < path.length; p++) {
+          pathMin = Math.min(pathMin, path[p]);
+          pathMax = Math.max(pathMax, path[p]);
+          if ((hookHigh && path[p] > path[extremeIndex]) ||
+              (!hookHigh && path[p] < path[extremeIndex])) {
+            extremeIndex = p;
+          }
+        }
+        const range = pathMax - pathMin;
+        const endNearTarget = Math.abs(path[path.length - 1] - next.k * 100) <= 75;
+        const turnsInside = extremeIndex > 0 &&
+          extremeIndex < path.length - 2;
+        const oneStepIntoTarget = Math.abs(token.k - next.k) === 1;
+        const leadingBend = !previousConnected && oneStepIntoTarget &&
+          range >= 75 && turnsInside && endNearTarget;
+
+        let connectedHook = false;
+        if (previousConnected) {
+          const lo = Math.min(previous.k, next.k);
+          const hi = Math.max(previous.k, next.k);
+          const outside = Math.max(lo - token.k, token.k - hi, 0);
+          const neighborSpan = Math.abs(next.k - previous.k);
+          const startsAtPrevious = Math.abs(path[0] - previous.k * 100) <= 85;
+          const approachesTarget =
+            Math.abs(path[path.length - 1] - next.k * 100) + 35 <
+            Math.abs(path[0] - next.k * 100);
+          connectedHook = outside === 1 && neighborSpan <= 2 &&
+            duration <= 0.16 && range >= 70 && turnsInside &&
+            startsAtPrevious && approachesTarget;
+        }
+        if (!leadingBend && !connectedHook) continue;
+
+        suppressedTurns.push({ t0: token.t0, t1: token.t1, k: token.k });
+        next.t0 = token.t0;
+        next.meendFromPrev = previousConnected;
+        tokens.splice(i, 1);
+        i--;
       }
 
       // GAME can split the bottom of one continuous rebound into a separate
@@ -1852,7 +2149,14 @@
         }
 
         const matchingLanding = frameTokens.some((frameToken) => {
-          if (frameToken.k !== token.k) return false;
+          // GAME and frame f0 can disagree by one semitone when a fast landing
+          // sits close to a komal/shuddh boundary. The presence of a stable
+          // adjacent plateau still proves this is a note, not a monotonic pass.
+          const pitchDistance = Math.abs(frameToken.k - token.k);
+          if (pitchDistance > 1 ||
+              (pitchDistance === 1 && frameToken.t1 - frameToken.t0 > 0.22)) {
+            return false;
+          }
           const overlap = Math.min(frameToken.t1, token.t1) -
             Math.max(frameToken.t0, token.t0);
           return overlap >= Math.min(0.04, (token.t1 - token.t0) * 0.35);
@@ -1885,6 +2189,100 @@
     }
     if (frameTokens.length) {
       tokens = fuseTurningOrnaments(tokens, frameTokens, suppressedTurns);
+    }
+    if (ornaments) {
+      tokens = fuseRawNeighborTurns(
+        tokens,
+        f0,
+        clarity,
+        hopSec,
+        saHz,
+        thresh,
+        suppressedTurns
+      );
+    }
+
+    // If a phrase audibly fades onto a new swara, keep the last stable target
+    // reached before the tracker follows the dying tail below it. This recovers
+    // singer-facing arrivals such as R -> S without labeling every pitch crossed
+    // after the voice has already faded away.
+    if (clean && f0 && clarity && rms && hopSec > 0) {
+      const withFadeLandings = [];
+      for (let index = 0; index < tokens.length; index++) {
+        const token = tokens[index];
+        const next = tokens[index + 1];
+        const isolatedEnd = !next || next.t0 - token.t1 >= 0.12;
+        const frameEnd = Math.min(f0.length, Math.ceil(token.t1 / hopSec));
+        const frameStart = Math.max(
+          Math.floor(token.t0 / hopSec),
+          frameEnd - Math.max(4, Math.round(0.18 / hopSec))
+        );
+        const runs = [];
+        for (let frame = frameStart; frame < frameEnd; frame++) {
+          if (!(f0[frame] > 0) || clarity[frame] < thresh) continue;
+          const k = Math.round(12 * Math.log2(f0[frame] / saHz));
+          const previousRun = runs[runs.length - 1];
+          if (previousRun && previousRun.k === k &&
+              frame - previousRun.end <= 2) {
+            previousRun.end = frame + 1;
+          } else {
+            runs.push({ k, start: frame, end: frame + 1 });
+          }
+        }
+        // A fade endpoint needs a perceptible landing, not merely two or three
+        // quantized frames crossed while the pitch disappears.
+        const minLandingFrames = Math.max(3, Math.round(0.055 / hopSec));
+        let landing = null;
+        for (const run of runs) {
+          if (run.k !== token.k && run.end - run.start >= minLandingFrames &&
+              run.end >= frameEnd - Math.max(2, Math.round(0.04 / hopSec))) {
+            landing = run;
+          }
+        }
+
+        let recovered = null;
+        if (isolatedEnd && landing && Math.abs(landing.k - token.k) <= 4) {
+          let beforeLevel = 0, beforeCount = 0, landingLevel = 0, landingCount = 0;
+          const beforeStart = Math.max(
+            Math.floor(token.t0 / hopSec),
+            landing.start - Math.max(3, Math.round(0.12 / hopSec))
+          );
+          for (let frame = beforeStart; frame < landing.start; frame++) {
+            if (Number.isFinite(rms[frame])) {
+              beforeLevel += rms[frame];
+              beforeCount++;
+            }
+          }
+          for (let frame = landing.start; frame < frameEnd; frame++) {
+            if (Number.isFinite(rms[frame])) {
+              landingLevel += rms[frame];
+              landingCount++;
+            }
+          }
+          beforeLevel = beforeCount ? beforeLevel / beforeCount : 0;
+          landingLevel = landingCount ? landingLevel / landingCount : 0;
+          const splitTime = landing.start * hopSec;
+          if (beforeLevel > 0 && landingLevel <= beforeLevel * 0.62 &&
+              splitTime >= token.t0 + 0.04 &&
+              token.t1 - splitTime >= minLandingFrames * hopSec) {
+            token.t1 = splitTime;
+            recovered = {
+              t0: splitTime,
+              t1: frameEnd * hopSec,
+              k: landing.k,
+              cents: landing.k * 100,
+              meend: false,
+              andolan: false,
+              meendFromPrev: true,
+              neural: true,
+              fadeLanding: true,
+            };
+          }
+        }
+        withFadeLandings.push(token);
+        if (recovered) withFadeLandings.push(recovered);
+      }
+      tokens = withFadeLandings;
     }
     for (const token of tokens) delete token._contour;
     return { tokens, phrases: groupPhrases(tokens, lineGapSec, clean) };
@@ -1944,8 +2342,11 @@
         continue;
       }
 
-      const leftArm = Math.min(0.28, (left.t1 - left.t0) * 0.42);
-      const rightArm = Math.min(0.28, (right.t1 - right.t0) * 0.42);
+      const leftArm = Math.min(0.28, (left.t1 - left.t0) * 0.55);
+      // Overshooting bends often settle late inside the destination region.
+      // Inspect enough of that region to see the return without spanning more
+      // than a compact 280 ms transition.
+      const rightArm = Math.min(0.28, (right.t1 - right.t0) * 0.75);
       const searchStart = Math.max(left.t0, boundary - leftArm);
       const searchEnd = Math.min(right.t1, boundary + rightArm);
       const frameStart = Math.max(0, Math.floor(searchStart / validHop));
@@ -1954,12 +2355,17 @@
       const explicitSlide = !!right.meendFromPrev;
 
       let firstTarget = -1;
+      const targetHoldFrames = Math.max(2, Math.round(0.025 / validHop));
       for (let frame = frameStart; frame <= frameEnd; frame++) {
         const value = contour[frame];
         if (!Number.isFinite(value) || Math.abs(value - c1) > tolerance) continue;
-        const next = contour[Math.min(frameEnd, frame + 1)];
-        if (frame === frameEnd || (Number.isFinite(next) &&
-            Math.abs(next - c1) <= tolerance * 1.35)) {
+        let settled = frame + targetHoldFrames - 1 <= frameEnd;
+        for (let lookahead = 1; settled && lookahead < targetHoldFrames; lookahead++) {
+          const next = contour[frame + lookahead];
+          settled = Number.isFinite(next) &&
+            Math.abs(next - c1) <= tolerance * 1.35;
+        }
+        if (settled) {
           firstTarget = frame;
           break;
         }
@@ -1976,6 +2382,7 @@
       }
 
       let detectedSlide = false;
+      let detectedMeend = false;
       if (lastSource >= 0 && firstTarget > lastSource) {
         const duration = (firstTarget - lastSource) * validHop;
         let intermediate = 0;
@@ -2001,10 +2408,43 @@
           }
           previous = value;
         }
-        detectedSlide = duration >= minSlideSec &&
-          intermediate >= Math.max(2, Math.round((firstTarget - lastSource) * 0.2)) &&
-          maxMissing * validHop <= 0.05 &&
-          (!comparisons || ordered / comparisons >= 0.65);
+        const orderedRatio = comparisons ? ordered / comparisons : 1;
+        const enoughIntermediate = intermediate >= Math.max(
+          2,
+          Math.round((firstTarget - lastSource) * 0.2)
+        );
+        const continuous = maxMissing * validHop <= 0.05;
+        detectedMeend = duration >= minSlideSec && enoughIntermediate &&
+          continuous && orderedRatio >= 0.65;
+        // A short sung bend often overshoots and returns, so it is not strictly
+        // monotonic. It still needs a continuous traversal through intermediate
+        // pitch frames; an abrupt note change has none and remains a clear step.
+        const detectedBend = duration >= Math.max(0.055, minSlideSec * 0.65) &&
+          enoughIntermediate && continuous;
+        detectedSlide = detectedMeend || detectedBend;
+      }
+      if (!detectedSlide &&
+          (left.meend || right.meend ||
+            left.hybridOrnament || right.hybridOrnament)) {
+        let intermediate = 0, missing = 0, maxMissing = 0, voicedFrames = 0;
+        for (let frame = frameStart; frame <= frameEnd; frame++) {
+          const value = contour[frame];
+          if (!Number.isFinite(value)) {
+            missing++;
+            maxMissing = Math.max(maxMissing, missing);
+            continue;
+          }
+          missing = 0;
+          voicedFrames++;
+          const progress = (value - c0) / (c1 - c0);
+          if (progress > 0.1 && progress < 0.9) intermediate++;
+        }
+        // Fast ornament regions may be too short to hold the destination for
+        // the normal 25 ms landing test. Their neural/frame gesture flags are
+        // still allowed to request a compact bend when the contour visibly
+        // traverses the interval and contains no real vocal pause.
+        detectedSlide = voicedFrames >= 4 && intermediate >= 2 &&
+          maxMissing * validHop <= 0.05;
       }
 
       if (explicitSlide || detectedSlide) {
@@ -2019,7 +2459,8 @@
         }
         transitions[index] = {
           kind: 'slide',
-          curve: explicitSlide || t1 - t0 >= meendSec ? 'meend' : 'bend',
+          curve: explicitSlide ||
+            (detectedMeend && t1 - t0 >= meendSec) ? 'meend' : 'bend',
           t0,
           t1,
           c0,
@@ -2034,6 +2475,27 @@
           c1,
         };
       }
+    }
+
+    // Two bends around a very short ornament can otherwise overlap and erase
+    // the note target between them. Reserve a small flat landing so each clearly
+    // hit swara remains visible and the two curves meet it cleanly.
+    for (let index = 1; index + 1 < source.length; index++) {
+      const previous = transitions[index - 1];
+      const next = transitions[index];
+      if (!previous || !next ||
+          previous.kind !== 'slide' || next.kind !== 'slide' ||
+          previous.t1 <= next.t0) {
+        continue;
+      }
+      const token = source[index];
+      const duration = token.t1 - token.t0;
+      const hold = Math.min(0.035, duration * 0.35);
+      const center = (token.t0 + token.t1) / 2;
+      const holdStart = Math.max(token.t0, center - hold / 2);
+      const holdEnd = Math.min(token.t1, center + hold / 2);
+      previous.t1 = Math.max(previous.t0, Math.min(previous.t1, holdStart));
+      next.t0 = Math.min(next.t1, Math.max(next.t0, holdEnd));
     }
 
     const segments = [];
