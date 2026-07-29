@@ -347,6 +347,29 @@ test('notateRegions: clean preserves a detected same-pitch re-articulation', () 
   assert.deepStrictEqual(tokens.map((token) => token.k), [4, 4]);
 });
 
+test('notateRegions: preserves a nearby articulation when GAME lags the boundary', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.35, frequency: st(2) },
+    { onset: 0.35, offset: 0.7, frequency: st(2) },
+  ];
+  const { tokens } = DSP.notateRegions(
+    regions,
+    new Float32Array(70).fill(st(2)),
+    new Float32Array(70).fill(0.9),
+    hopSec,
+    SA,
+    {
+      clean: true,
+      ornaments: true,
+      onsets: [30],
+      rms: new Float32Array(70).fill(0.5),
+    }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [2, 2]);
+});
+
 test('notateRegions: clean folds an unlanded passing region into a meend', () => {
   const hopSec = 0.01;
   const regions = [

@@ -1943,6 +1943,14 @@
         const continuousBoundary = (left, right) => {
           if (left.k !== right.k || right.t0 - left.t1 > 0.03) return false;
           const boundary = (left.t1 + right.t0) / 2;
+          const boundaryOnset = (opts.onsets || []).some((frame) =>
+            Math.abs(frame * hopSec - boundary) <= Math.max(0.06, 3 * hopSec)
+          );
+          // Server v4 onsets come from the isolated vocal articulation detector,
+          // independently of GAME. A nearby onset therefore means the singer
+          // re-struck the note even when GAME placed its boundary a few frames
+          // later.
+          if (boundaryOnset) return false;
           const spanningFrame = frameTokens.some((frameToken) =>
             frameToken.k === left.k &&
             frameToken.t0 <= boundary - 0.02 &&
