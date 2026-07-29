@@ -1710,6 +1710,33 @@
       Math.min(turn.t1, candidate.t1) - Math.max(turn.t0, candidate.t0) >= 0.02
     );
     let result = tokens.slice();
+    const insertTurn = (previous, candidate, next, flags) => {
+      const start = Math.max(previous.start * hopSec, candidate.t0 - 0.14);
+      const end = Math.min(next.end * hopSec, candidate.t1 + 0.14);
+      const replacements = [
+        { t0: start, t1: candidate.t0, k: previous.k },
+        candidate,
+        { t0: candidate.t1, t1: end, k: next.k },
+      ].map((token) => Object.assign({}, token, {
+        cents: token.k * 100,
+        hybridOrnament: true,
+        rawLandmark: true,
+      }, flags || {}));
+      const preserved = [];
+      for (const token of result) {
+        if (token.t1 <= start || token.t0 >= end) {
+          preserved.push(token);
+          continue;
+        }
+        if (token.t0 < start - 0.025) {
+          preserved.push(Object.assign({}, token, { t1: start }));
+        }
+        if (token.t1 > end + 0.025) {
+          preserved.push(Object.assign({}, token, { t0: end }));
+        }
+      }
+      result = preserved.concat(replacements).sort((a, b) => a.t0 - b.t0);
+    };
     for (let index = 1; index + 1 < runs.length; index++) {
       const previous = runs[index - 1];
       const run = runs[index];
@@ -1732,6 +1759,8 @@
         }
       }
       if (bestPlateau * hopSec < 0.025) continue;
+      const sortedValues = run.values.slice().sort((a, b) => a - b);
+      const landingMedian = sortedValues[sortedValues.length >> 1];
       const candidate = {
         t0: run.start * hopSec,
         t1: run.end * hopSec,
@@ -1746,38 +1775,128 @@
         }
         return Math.abs((token.t1 + following.t0) / 2 - center) <= 0.12;
       });
+      // GAME sometimes keeps a nuanced return turn inside one broad anchor
+      // note, so there is no neural boundary to confirm it. Accept containment
+      // as the independent evidence only when the raw target is tightly
+      // centred, both anchor sides are sustained, and the gesture is isolated
+      // rather than one cycle of recurring vibrato/andolan.
+      const anchorDuration = (
+        previous.end - previous.start +
+        next.end - next.start
+      ) * hopSec;
+      const leftAnchorDuration = (previous.end - previous.start) * hopSec;
+      const rightAnchorDuration = (next.end - next.start) * hopSec;
+      const containingAnchor = result.some((token) =>
+        !token.glide && !token.andolan && token.k === previous.k &&
+        token.t0 <= candidate.t0 - 0.04 &&
+        token.t1 >= candidate.t1 + 0.04
+      );
+      let nearbyMatchingTurns = 0;
+      for (let otherIndex = 1; otherIndex + 1 < runs.length; otherIndex++) {
+        const other = runs[otherIndex];
+        if (other.k !== run.k ||
+            runs[otherIndex - 1].k !== previous.k ||
+            runs[otherIndex + 1].k !== previous.k) {
+          continue;
+        }
+        const otherCenter = (other.start + other.end) * hopSec / 2;
+        if (Math.abs(otherCenter - center) <= 0.45) nearbyMatchingTurns++;
+      }
+      const containedPlateau = containingAnchor &&
+        duration >= 0.055 &&
+        duration <= 0.09 &&
+        Math.abs(run.k - previous.k) === 1 &&
+        bestPlateau * hopSec >= 0.045 &&
+        Math.abs(landingMedian - run.k * 100) <= 22 &&
+        anchorDuration >= 0.16 &&
+        leftAnchorDuration >= 0.08 &&
+        rightAnchorDuration >= 0.08 &&
+        nearbyMatchingTurns <= 1;
       const existingHit = result.some((token) =>
         token.k === candidate.k &&
         Math.min(token.t1, candidate.t1) -
           Math.max(token.t0, candidate.t0) >= 0.025
       );
-      if (!neuralBoundary || existingHit || wasSuppressed(candidate)) continue;
-
-      const start = Math.max(previous.start * hopSec, candidate.t0 - 0.14);
-      const end = Math.min(next.end * hopSec, candidate.t1 + 0.14);
-      const replacements = [
-        { t0: start, t1: candidate.t0, k: previous.k },
-        candidate,
-        { t0: candidate.t1, t1: end, k: next.k },
-      ].map((token) => Object.assign({}, token, {
-        cents: token.k * 100,
-        hybridOrnament: true,
-        rawLandmark: true,
-      }));
-      const preserved = [];
-      for (const token of result) {
-        if (token.t1 <= start || token.t0 >= end) {
-          preserved.push(token);
+      if ((!neuralBoundary && !containedPlateau) ||
+          existingHit || wasSuppressed(candidate)) {
+        continue;
+      }
+      insertTurn(previous, candidate, next);
+    }
+    // A nuanced turn can contain one still-smaller traversal, for example
+    // S-N-n-N-S. The 20 ms inner n is transition geometry, but the two N
+    // plateaus together form one clearly reached target. Recover only this
+    // symmetric nested shape inside a broad neural anchor; arbitrary multi-run
+    // movement remains untouched.
+    for (let first = 1; first + 3 < runs.length; first++) {
+      const previous = runs[first - 1];
+      for (let last = first + 2;
+        last <= Math.min(first + 3, runs.length - 2);
+        last++) {
+        const next = runs[last + 1];
+        const excursion = runs.slice(first, last + 1);
+        const targetK = excursion[0].k;
+        if (previous.k !== next.k || targetK !== excursion[excursion.length - 1].k ||
+            targetK === previous.k || Math.abs(targetK - previous.k) > 2) {
           continue;
         }
-        if (token.t0 < start - 0.025) {
-          preserved.push(Object.assign({}, token, { t1: start }));
+        const direction = Math.sign(targetK - previous.k);
+        const sameSide = excursion.every((part) =>
+          part.k !== previous.k &&
+          Math.sign(part.k - previous.k) === direction &&
+          Math.abs(part.k - previous.k) <= 2
+        );
+        let connected = true;
+        for (let part = 1; part < excursion.length; part++) {
+          if ((excursion[part].start - excursion[part - 1].end) * hopSec > 0.02) {
+            connected = false;
+            break;
+          }
         }
-        if (token.t1 > end + 0.025) {
-          preserved.push(Object.assign({}, token, { t0: end }));
+        if (!sameSide || !connected) continue;
+
+        const candidate = {
+          t0: excursion[0].start * hopSec,
+          t1: excursion[excursion.length - 1].end * hopSec,
+          k: targetK,
+        };
+        const duration = candidate.t1 - candidate.t0;
+        const targetValues = excursion
+          .filter((part) => part.k === targetK)
+          .flatMap((part) => part.values);
+        const targetFrames = excursion
+          .filter((part) => part.k === targetK)
+          .reduce((sum, part) => sum + part.end - part.start, 0);
+        const targetEntryFrames = excursion[0].end - excursion[0].start;
+        const targetReturnFrames =
+          excursion[excursion.length - 1].end -
+          excursion[excursion.length - 1].start;
+        const sortedValues = targetValues.slice().sort((a, b) => a - b);
+        const landingMedian = sortedValues[sortedValues.length >> 1];
+        const leftAnchor = (previous.end - previous.start) * hopSec;
+        const rightAnchor = (next.end - next.start) * hopSec;
+        const containingAnchor = result.some((token) =>
+          !token.glide && !token.andolan && token.k === previous.k &&
+          token.t0 <= candidate.t0 - 0.04 &&
+          token.t1 >= candidate.t1 + 0.04
+        );
+        const existingHit = result.some((token) =>
+          token.k === candidate.k &&
+          Math.min(token.t1, candidate.t1) -
+            Math.max(token.t0, candidate.t0) >= 0.025
+        );
+        if (!containingAnchor || duration < 0.09 || duration > 0.18 ||
+            targetFrames * hopSec < 0.07 ||
+            targetEntryFrames * hopSec < 0.04 ||
+            targetReturnFrames * hopSec < 0.04 ||
+            Math.abs(landingMedian - targetK * 100) > 24 ||
+            leftAnchor < 0.055 || rightAnchor < 0.055 ||
+            existingHit || wasSuppressed(candidate)) {
+          continue;
         }
+        insertTurn(previous, candidate, next, { nestedTurn: true });
+        break;
       }
-      result = preserved.concat(replacements).sort((a, b) => a.t0 - b.t0);
     }
     const joined = [];
     for (const token of result) {
