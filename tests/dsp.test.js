@@ -483,6 +483,33 @@ test('notateRegions: clean preserves a fast G R G murki', () => {
   assert.deepStrictEqual(tokens.map((token) => token.k), [4, 2, 4]);
 });
 
+test('notateRegions: a stable entry plateau wins over an averaged outgoing glide', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(1) },
+    { onset: 0.3, offset: 0.6, frequency: st(0) },
+  ];
+  const f0 = new Float32Array(60);
+  f0.fill(st(2), 0, 11);
+  for (let frame = 11; frame < 30; frame++) {
+    const cents = 200 - (frame - 10) / 20 * 200;
+    f0[frame] = SA * Math.pow(2, cents / 1200);
+  }
+  f0.fill(st(0), 30);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(60).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [2, 0]);
+  assert.strictEqual(tokens[0].entryPlateauSnap, true);
+});
+
 test('notateRegions: restores stable turning notes inside broad neural regions', () => {
   const hopSec = 0.01;
   const regions = [
@@ -496,12 +523,7 @@ test('notateRegions: restores stable turning notes inside broad neural regions',
   const put = (start, end, k) => {
     for (let i = start; i < end; i++) f0[i] = st(k);
   };
-  put(0, 11, 4);
-  for (let i = 11; i < 17; i++) {
-    // A fast trough can land close to the R/g midpoint; retain the turn even
-    // when tonic fine-tuning leaves it about 45 cents below komal ga.
-    f0[i] = SA * Math.pow(2, 255 / 1200);
-  }
+  put(0, 17, 4);
   put(17, 35, 9);
   put(35, 42, 7);
   put(42, 55, 11);
@@ -518,9 +540,243 @@ test('notateRegions: restores stable turning notes inside broad neural regions',
 
   assert.deepStrictEqual(
     tokens.map((token) => token.k),
-    [4, 3, 9, 7, 11, 9]
+    [4, 9, 7, 11, 9]
   );
-  assert.ok(tokens.every((token) => token.hybridOrnament));
+  assert.deepStrictEqual(
+    tokens.filter((token) => token.hybridOrnament).map((token) => token.k),
+    [9, 7, 11]
+  );
+  assert.ok(!tokens[0].hybridOrnament);
+  assert.ok(!tokens[tokens.length - 1].hybridOrnament);
+});
+
+test('notateRegions: local turn recovery cannot replace the rest of a phrase', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(0) },
+    { onset: 0.3, offset: 1.2, frequency: st(7) },
+    { onset: 1.2, offset: 1.5, frequency: st(9) },
+  ];
+  const f0 = new Float32Array(150);
+  const clarity = new Float32Array(150).fill(0.95);
+  const put = (start, end, k) => f0.fill(st(k), start, end);
+  put(0, 30, 0);
+  put(30, 55, 7);
+  put(55, 63, 9);
+  put(63, 71, 7);
+  put(71, 95, 7);
+  put(95, 103, 5);
+  put(103, 120, 7);
+  put(120, 150, 9);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [0, 7, 9, 7, 5, 7, 9]);
+  assert.strictEqual(tokens[0].neural, true);
+  assert.strictEqual(tokens[tokens.length - 1].neural, true);
+});
+
+test('notateRegions: rejects an octave-like micro-rebound from frame fusion', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.45, frequency: st(4) },
+    { onset: 0.45, offset: 0.9, frequency: st(2) },
+  ];
+  const f0 = new Float32Array(90);
+  f0.fill(st(4), 0, 36);
+  f0.fill(st(-1), 36, 43);
+  f0.fill(st(2), 43);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(90).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 2]);
+});
+
+test('notateRegions: treats an adjacent one-semitone rebound hook as a bend', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.45, frequency: st(4) },
+    { onset: 0.45, offset: 0.9, frequency: st(2) },
+  ];
+  const f0 = new Float32Array(90);
+  f0.fill(st(4), 0, 34);
+  f0.fill(st(5), 34, 43);
+  f0.fill(st(2), 43);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(90).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 2]);
+});
+
+test('notateRegions: folds a neural transition hook into a visual bend', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(4) },
+    { onset: 0.3, offset: 0.43, frequency: st(5) },
+    { onset: 0.43, offset: 0.8, frequency: st(2) },
+  ];
+  const f0 = new Float32Array(80);
+  f0.fill(st(4), 0, 30);
+  const hook = [430, 455, 490, 515, 505, 470, 420, 370, 330, 300, 270, 245, 225];
+  for (let i = 0; i < hook.length; i++) {
+    f0[30 + i] = SA * Math.pow(2, hook[i] / 1200);
+  }
+  f0.fill(st(2), 43);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(80).fill(0.95),
+    hopSec,
+    SA,
+    {
+      clean: true,
+      ornaments: true,
+      rms: new Float32Array(80).fill(0.5),
+    }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 2]);
+  assert.strictEqual(tokens[1].meendFromPrev, true);
+  assert.strictEqual(tokens[1].t0, 0.3);
+});
+
+test('notateRegions: bridges one lost pitch frame inside a fast murki landing', () => {
+  const hopSec = 0.01;
+  const regions = [{ onset: 0, offset: 0.8, frequency: st(9) }];
+  const f0 = new Float32Array(80).fill(st(9));
+  f0.fill(st(11), 32, 36);
+  f0[36] = 0;
+  f0.fill(st(11), 37, 41);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(80).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [9, 11, 9]);
+});
+
+test('notateRegions: recovers a stable entry hidden by a late neural onset', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0.2, offset: 0.65, frequency: st(4) },
+    { onset: 0.65, offset: 0.9, frequency: st(9) },
+  ];
+  const f0 = new Float32Array(90);
+  f0.fill(st(2), 0, 39);
+  f0.fill(st(4), 39, 65);
+  f0.fill(st(9), 65);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(90).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [2, 4, 9]);
+  assert.strictEqual(tokens[0].recoveredEntry, true);
+  assert.strictEqual(tokens[1].t0, 0.39);
+});
+
+test('notateRegions: preserves a plateau-confirmed adjacent neighbor murki', () => {
+  const hopSec = 0.01;
+  const regions = [{ onset: 0, offset: 0.8, frequency: st(9) }];
+  const f0 = new Float32Array(80).fill(st(9));
+  f0.fill(st(10), 32, 40);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(80).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [9, 10, 9]);
+});
+
+test('notateRegions: raw landmark restores a neighbor turn at a neural boundary', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.4, frequency: st(9) },
+    { onset: 0.4, offset: 0.8, frequency: st(9) },
+  ];
+  const f0 = new Float32Array(80).fill(st(9));
+  const turn = [962, 992, 1008, 1012, 1007, 993, 968];
+  for (let index = 0; index < turn.length; index++) {
+    f0[37 + index] = SA * Math.pow(2, turn[index] / 1200);
+  }
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(80).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [9, 10, 9]);
+  assert.strictEqual(tokens[1].rawLandmark, true);
+});
+
+test('notateRegions: recovers a stable target reached on a fading phrase tail', () => {
+  const hopSec = 0.01;
+  const regions = [{ onset: 0, offset: 0.78, frequency: st(2) }];
+  const f0 = new Float32Array(90);
+  const clarity = new Float32Array(90).fill(0);
+  const rms = new Float32Array(90).fill(0.01);
+  f0.fill(st(2), 0, 68);
+  clarity.fill(0.95, 0, 78);
+  rms.fill(0.5, 0, 68);
+  const tail = [170, 135, 105, 75, 42, 30, 20, 10, 2, -8];
+  for (let i = 0; i < tail.length; i++) {
+    f0[68 + i] = SA * Math.pow(2, tail[i] / 1200);
+    rms[68 + i] = Math.max(0.01, 0.22 - i * 0.025);
+  }
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, rms }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [2, 0]);
+  assert.strictEqual(tokens[1].fadeLanding, true);
+  assert.strictEqual(tokens[1].meendFromPrev, true);
 });
 
 test('notateRegions: monotonic neural meend does not gain passing-note labels', () => {
@@ -630,6 +886,75 @@ test('practice contour: a short traversal becomes a compact bend', () => {
   assert.strictEqual(bend.curve, 'bend');
   assert.ok(bend.t1 - bend.t0 >= 0.08);
   assert.ok(bend.t1 - bend.t0 < 0.15);
+});
+
+test('practice contour: a connected overshoot renders as a bend, not a step', () => {
+  const hopSec = 0.01;
+  const cents = new Float32Array(100);
+  cents.fill(400, 0, 42);
+  const turn = [430, 480, 560, 680, 790, 820, 770, 725, 700];
+  for (let index = 0; index < turn.length; index++) {
+    cents[42 + index] = turn[index];
+  }
+  cents.fill(700, 42 + turn.length);
+  const segments = DSP.buildPracticeContour(
+    [
+      { t0: 0, t1: 0.47, k: 4 },
+      { t0: 0.47, t1: 1, k: 7 },
+    ],
+    cents,
+    hopSec
+  );
+
+  const bend = segments.find((segment) => segment.kind === 'slide');
+  assert.ok(bend);
+  assert.strictEqual(bend.curve, 'bend');
+});
+
+test('practice contour: a short neural ornament traversal keeps a compact bend', () => {
+  const cents = new Float32Array(40);
+  cents.fill(400, 0, 17);
+  cents.set([430, 470, 535, 610, 680, 735, 780], 17);
+  cents.fill(800, 24);
+  const segments = DSP.buildPracticeContour(
+    [
+      { t0: 0, t1: 0.2, k: 4, meend: true },
+      { t0: 0.2, t1: 0.4, k: 8, hybridOrnament: true },
+    ],
+    cents,
+    0.01
+  );
+
+  const bend = segments.find((segment) => segment.kind === 'slide');
+  assert.ok(bend);
+  assert.strictEqual(bend.curve, 'bend');
+});
+
+test('practice contour: adjacent bends reserve a clear landing between them', () => {
+  const cents = Float32Array.from([
+    400, 400, 430, 500, 590, 680, 760, 800, 830, 870,
+    900, 900, 870, 820, 760, 700, 700, 700, 700, 700,
+  ]);
+  const segments = DSP.buildPracticeContour(
+    [
+      { t0: 0, t1: 0.07, k: 4, meend: true },
+      { t0: 0.07, t1: 0.13, k: 9, hybridOrnament: true },
+      { t0: 0.13, t1: 0.2, k: 7, meend: true },
+    ],
+    cents,
+    0.01
+  );
+  const middleHold = segments.find((segment) =>
+    segment.kind === 'hold' && segment.tokenIndex === 1
+  );
+
+  assert.ok(middleHold.t1 > middleHold.t0);
+  for (let index = 1; index < segments.length; index++) {
+    assert.ok(
+      segments[index].t0 >= segments[index - 1].t1 - 1e-9,
+      'practice segments must not overlap'
+    );
+  }
 });
 
 test('practice contour: a collapsed meend token remains one intentional slide', () => {

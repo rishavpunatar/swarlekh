@@ -51,7 +51,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=54';
+  const WORKER_URL = 'js/worker.js?v=55';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -170,7 +170,7 @@
   // BS-RoFormer + RMVPE/Praat/GAME server, which returns the separated-voice
   // pitch and note regions. Audio only ever goes to your own machine.
   const SERVER_URL = 'http://127.0.0.1:8765';
-  const REQUIRED_SERVER_ANALYSIS_VERSION = 3;
+  const REQUIRED_SERVER_ANALYSIS_VERSION = 4;
   let analyzeAbort = null;   // lets the Cancel button stop a long separation
   let serverIssue = '';
   async function analyzeViaServer() {
@@ -275,9 +275,9 @@
       // Keep the original channels for the separated-vocal server. The decoded
       // mono copy below remains useful for Fast mode and pitch transposition.
       state.fileBytes = ab.slice(0);
-      // v6 invalidates analyses made after the browser downmixed stereo uploads
-      // before vocal separation.
-      const hash = 'v6:' + await fileHash(ab.slice(0));
+      // v7 invalidates analyses whose GAME boundaries were incorrectly reused
+      // as vocal articulation onsets.
+      const hash = 'v7:' + await fileHash(ab.slice(0));
       const ctx = ensureCtx();
       let buf;
       try {

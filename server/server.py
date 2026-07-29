@@ -38,7 +38,7 @@ from demucs.pretrained import get_model
 from demucs.apply import apply_model
 
 PORT = 8765
-ANALYSIS_VERSION = 3  # Stereo transport + bounded RMVPE/GAME inference.
+ANALYSIS_VERSION = 4  # Independent vocal articulations + bounded neural inference.
 CREPE_HOP = 256      # 16 ms at 16 kHz; used only by the /transpose voice resynthesis
 PRAAT_HOP_SEC = 0.004
 SR = 16000
@@ -372,21 +372,21 @@ def analyze():
             print('[swarlekh] GAME inference failed for this recording: %s'
                   % error, flush=True)
 
-    if note_regions:
-        onsets = [note['onset'] for note in note_regions]
-    else:
-        try:
-            onsets = librosa.onset.onset_detect(
-                y=voc16.astype(np.float32),
-                sr=SR,
-                hop_length=160,
-                units='time',
-                backtrack=True,
-            )
-            onsets = [round(float(t), 3) for t in onsets]
-        except Exception as error:
-            print('[swarlekh] onset detect failed: %s' % error, flush=True)
-            onsets = []
+    # Articulation evidence must be independent of GAME. Treating every GAME
+    # note boundary as a syllable onset made downstream cleanup preserve the
+    # very duplicate/ornament splits it was meant to audit.
+    try:
+        onsets = librosa.onset.onset_detect(
+            y=voc16.astype(np.float32),
+            sr=SR,
+            hop_length=160,
+            units='time',
+            backtrack=True,
+        )
+        onsets = [round(float(t), 3) for t in onsets]
+    except Exception as error:
+        print('[swarlekh] onset detect failed: %s' % error, flush=True)
+        onsets = []
     rhythm = detect_rhythm(x, voc)
     print('[swarlekh] %.1fs sep + %.1fs total · %s · %d frames @ %.0fms hop · %d voiced · %d notes · rhythm=%s'
           % (t_sep, time.time() - t0, analyzer, n_frames, hop_sec * 1000,

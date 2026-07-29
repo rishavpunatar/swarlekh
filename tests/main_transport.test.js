@@ -10,5 +10,5 @@ test('Best analysis preserves original upload channels and invalidates mono cach
 
   assert.match(source, /state\.fileBytes = ab\.slice\(0\)/);
   assert.match(source, /const audio = state\.fileBytes \|\| encodeWav/);
-  assert.match(source, /const hash = 'v6:' \+ await fileHash/);
+  assert.match(source, /const hash = 'v7:' \+ await fileHash/);
 });
