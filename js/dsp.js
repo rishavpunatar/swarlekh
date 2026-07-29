@@ -1666,7 +1666,115 @@
     }
 
     tokens.sort((a, b) => a.t0 - b.t0);
+    let frameTokens = [];
+    if (ornaments && f0 && clarity && hopSec > 0) {
+      const frameOpts = Object.assign({}, opts, {
+        ornaments: true,
+        ornMinMs: Math.min(
+          opts.ornMinMs != null ? opts.ornMinMs : 30,
+          25
+        ),
+        landingCenterCents: opts.landingCenterCents != null
+          ? opts.landingCenterCents
+          : 45,
+      });
+      frameTokens = notate(
+        f0,
+        clarity,
+        hopSec,
+        saHz,
+        frameOpts
+      ).tokens;
+    }
     if (clean) {
+      // GAME occasionally inserts a boundary inside one held note. Merge it
+      // only when the source track stays voiced, close to the shared swara and
+      // energetic across the boundary. Re-articulations with a pitch/energy
+      // break remain separate notes.
+      if (rms && f0 && clarity && hopSec > 0) {
+        const merged = [];
+        const median = (values) => {
+          if (!values.length) return 0;
+          values.sort((a, b) => a - b);
+          return values[values.length >> 1];
+        };
+        const continuousBoundary = (left, right) => {
+          if (left.k !== right.k || right.t0 - left.t1 > 0.03) return false;
+          const boundary = (left.t1 + right.t0) / 2;
+          const boundaryOnset = (opts.onsets || []).some((frame) =>
+            Math.abs(frame * hopSec - boundary) <= Math.max(0.03, 2 * hopSec)
+          );
+          const spanningFrame = frameTokens.some((frameToken) =>
+            frameToken.k === left.k &&
+            frameToken.t0 <= boundary - 0.02 &&
+            frameToken.t1 >= boundary + 0.02
+          );
+          if (boundaryOnset || !spanningFrame) return false;
+          const center = Math.round(boundary / hopSec);
+          const radius = Math.max(2, Math.round(0.025 / hopSec));
+          let leftVoiced = 0, rightVoiced = 0, silentRun = 0, maxSilentRun = 0;
+          const leftRms = [], rightRms = [];
+          for (let frame = center - radius; frame <= center + radius; frame++) {
+            if (frame < 0 || frame >= f0.length) continue;
+            const voiced = f0[frame] > 0 &&
+              (!clarity || clarity[frame] >= thresh);
+            if (voiced) {
+              const cents = 1200 * Math.log2(f0[frame] / saHz);
+              if (Math.abs(cents - left.k * 100) > 70) return false;
+              if (frame < center) leftVoiced++;
+              else rightVoiced++;
+              silentRun = 0;
+            } else {
+              silentRun++;
+              maxSilentRun = Math.max(maxSilentRun, silentRun);
+            }
+            const level = Number(rms[frame]);
+            if (Number.isFinite(level) && level >= 0) {
+              (frame < center ? leftRms : rightRms).push(level);
+            }
+          }
+          if (leftVoiced < 2 || rightVoiced < 2 || maxSilentRun > 1) {
+            return false;
+          }
+          const sideLevel = Math.min(median(leftRms), median(rightRms));
+          const centerLevel = (
+            Number(rms[Math.max(0, center - 1)]) +
+            Number(rms[Math.min(rms.length - 1, center)])
+          ) / 2;
+          return sideLevel <= 0 ||
+            (Number.isFinite(centerLevel) && centerLevel >= sideLevel * 0.45);
+        };
+
+        for (const token of tokens) {
+          const previous = merged[merged.length - 1];
+          if (!previous || !continuousBoundary(previous, token)) {
+            merged.push(token);
+            continue;
+          }
+          const previousDuration = previous.t1 - previous.t0;
+          const tokenDuration = token.t1 - token.t0;
+          const totalDuration = previousDuration + tokenDuration;
+          previous.t1 = token.t1;
+          previous.cents = totalDuration > 0
+            ? (previous.cents * previousDuration +
+              token.cents * tokenDuration) / totalDuration
+            : previous.cents;
+          previous.meend = previous.meend || token.meend;
+          previous.andolan = previous.andolan || token.andolan;
+          previous._contour = (previous._contour || [])
+            .concat(token._contour || []);
+          if (Number.isFinite(previous.conf) && Number.isFinite(token.conf)) {
+            previous.conf = (previous.conf * previousDuration +
+              token.conf * tokenDuration) / totalDuration;
+          }
+          if (Number.isFinite(previous.loud) && Number.isFinite(token.loud)) {
+            previous.loud = (previous.loud * previousDuration +
+              token.loud * tokenDuration) / totalDuration;
+          }
+        }
+        tokens = merged;
+      }
+
       // GAME can split the bottom of one continuous rebound into a separate
       // note (for example G -> [dip to S] -> R). In Clean mode, fold that
       // overshoot into the target only when the robust contour enters from the
@@ -1721,25 +1829,61 @@
           i--;
         }
       }
+
+      // A short neural region can also be a pitch crossed during a one-way
+      // meend rather than a note the singer landed on. Fold that region into
+      // the destination only when its contour travels strongly in the same
+      // direction as both neighbours and the frame segmenter found no matching
+      // stable note. The geometry remains visible as a bend into the next note.
+      for (let i = 1; i + 1 < tokens.length; i++) {
+        const previous = tokens[i - 1];
+        const token = tokens[i];
+        const next = tokens[i + 1];
+        const direction = Math.sign(next.k - previous.k);
+        const strictlyBetween = direction !== 0 &&
+          (token.k - previous.k) * direction > 0 &&
+          (next.k - token.k) * direction > 0;
+        const connected = token.t0 - previous.t1 <= 0.035 &&
+          next.t0 - token.t1 <= 0.035;
+        const path = token._contour || [];
+        if (!strictlyBetween || !connected ||
+            token.t1 - token.t0 > 0.16 || path.length < 5) {
+          continue;
+        }
+
+        const matchingLanding = frameTokens.some((frameToken) => {
+          if (frameToken.k !== token.k) return false;
+          const overlap = Math.min(frameToken.t1, token.t1) -
+            Math.max(frameToken.t0, token.t0);
+          return overlap >= Math.min(0.04, (token.t1 - token.t0) * 0.35);
+        });
+        if (matchingLanding) continue;
+
+        let orderedSteps = 0, pathMin = path[0], pathMax = path[0];
+        for (let p = 1; p < path.length; p++) {
+          pathMin = Math.min(pathMin, path[p]);
+          pathMax = Math.max(pathMax, path[p]);
+          if ((path[p] - path[p - 1]) * direction >= -18) orderedSteps++;
+        }
+        const netTravel = (path[path.length - 1] - path[0]) * direction;
+        const orderedRatio = orderedSteps / (path.length - 1);
+        if (netTravel < 80 || pathMax - pathMin < 90 ||
+            orderedRatio < 0.68) {
+          continue;
+        }
+
+        suppressedTurns.push({
+          t0: token.t0,
+          t1: token.t1,
+          k: token.k,
+        });
+        next.t0 = token.t0;
+        next.meendFromPrev = true;
+        tokens.splice(i, 1);
+        i--;
+      }
     }
-    if (ornaments && f0 && clarity && hopSec > 0) {
-      const frameOpts = Object.assign({}, opts, {
-        ornaments: true,
-        ornMinMs: Math.min(
-          opts.ornMinMs != null ? opts.ornMinMs : 30,
-          25
-        ),
-        landingCenterCents: opts.landingCenterCents != null
-          ? opts.landingCenterCents
-          : 45,
-      });
-      const frameTokens = notate(
-        f0,
-        clarity,
-        hopSec,
-        saHz,
-        frameOpts
-      ).tokens;
+    if (frameTokens.length) {
       tokens = fuseTurningOrnaments(tokens, frameTokens, suppressedTurns);
     }
     for (const token of tokens) delete token._contour;
