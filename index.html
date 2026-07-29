@@ -9,7 +9,7 @@
   <title>SwarLekh — sargam notation from your recordings</title>
   <meta name="description" content="Upload a Hindustani vocal recording and get swara (sargam) notation. Runs entirely on your device — audio never leaves it.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=61">
+  <link rel="stylesheet" href="style.css?v=63">
 </head>
 <body>
   <header>
@@ -140,7 +140,8 @@
               <option value="detailed">Every nuance</option>
             </select>
           </label>
-          <button id="undoNoteBtn" class="mini-btn" title="Undo the last note correction" aria-label="Undo the last note correction" hidden>&#8630;</button>
+          <button id="addNoteBtn" class="mini-btn" title="Add a missing note" aria-label="Add a missing note" aria-pressed="false">+</button>
+          <button id="undoNoteBtn" class="mini-btn" title="Undo the last note edit" aria-label="Undo the last note edit" hidden>&#8630;</button>
           <button id="zoomOutBtn" class="mini-btn" title="Zoom out">−</button>
           <button id="zoomInBtn" class="mini-btn" title="Zoom in">+</button>
         </div>
@@ -212,9 +213,9 @@
   <div id="toast" hidden></div>
 
   <script src="js/fft.js?v=53"></script>
-  <script src="js/dsp.js?v=61"></script>
+  <script src="js/dsp.js?v=63"></script>
   <script src="js/ragas.js?v=53"></script>
   <script src="js/ragaId.js?v=53"></script>
-  <script src="js/main.js?v=62"></script>
+  <script src="js/main.js?v=63"></script>
 </body>
 </html>
