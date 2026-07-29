@@ -9,6 +9,9 @@ It analyzes the clean voice with three independent singing systems:
 - **Praat cross-correlation** confirms borderline voiced frames.
 - **GAME** predicts discrete sung-note boundaries and continuous note pitches,
   including short murkis and repeated notes at the same pitch.
+- **Beat This!** reconciles felt pulse and learned downbeats with the
+  accompaniment's fine percussion grid, resolving half/double tempo and
+  estimating the taal cycle and sam.
 - Long recordings use overlapping 30-second neural chunks, keeping full-song
   memory bounded without cutting musical transitions at chunk edges.
 
@@ -33,9 +36,11 @@ server/install-models.sh
 
 The model installer downloads checksum-verified RMVPE and GAME ONNX weights.
 GAME is MIT-licensed; RMVPE and its ONNX runtime wrapper are Apache-2.0 and
-MIT-licensed respectively. The first analysis also downloads the Demucs model. If
-`server/.venv-sep/bin/audio-separator` is present, the server automatically uses
-its higher-quality BS-RoFormer vocal model; otherwise it uses Demucs.
+MIT-licensed respectively. Beat This! is MIT-licensed and downloads its 8 MB
+small rhythm checkpoint on first use. The first analysis also downloads the
+Demucs model. If `server/.venv-sep/bin/audio-separator` is present, the server
+automatically uses its higher-quality BS-RoFormer vocal model; otherwise it uses
+Demucs.
 
 ## Run it
 

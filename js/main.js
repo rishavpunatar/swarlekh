@@ -53,7 +53,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=61';
+  const WORKER_URL = 'js/worker.js?v=62';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -173,7 +173,7 @@
   // BS-RoFormer + RMVPE/Praat/GAME server, which returns the separated-voice
   // pitch and note regions. Audio only ever goes to your own machine.
   const SERVER_URL = 'http://127.0.0.1:8765';
-  const REQUIRED_SERVER_ANALYSIS_VERSION = 4;
+  const REQUIRED_SERVER_ANALYSIS_VERSION = 5;
   let analyzeAbort = null;   // lets the Cancel button stop a long separation
   let serverIssue = '';
   async function analyzeViaServer() {
@@ -278,9 +278,8 @@
       // Keep the original channels for the separated-vocal server. The decoded
       // mono copy below remains useful for Fast mode and pitch transposition.
       state.fileBytes = ab.slice(0);
-      // v7 invalidates analyses whose GAME boundaries were incorrectly reused
-      // as vocal articulation onsets.
-      const hash = 'v7:' + await fileHash(ab.slice(0));
+      // v8 adds learned pulse/downbeat reconciliation and taal-cycle metadata.
+      const hash = 'v8:' + await fileHash(ab.slice(0));
       const ctx = ensureCtx();
       let buf;
       try {
@@ -484,11 +483,15 @@
     const r = state.rhythm;
     if (!r) { el.hidden = true; el.textContent = ''; return; }
     el.hidden = false;
+    const pulse = Math.round(r.bpm);
+    const matra = r.matraBpm && Math.abs(r.matraBpm - r.bpm) >= 8
+      ? ` \u00b7 matras \u2248 <b>${Math.round(r.matraBpm)}/min</b>`
+      : '';
     if (!r.taal) {
-      el.innerHTML = `\u2669 \u2248 <b>${Math.round(r.bpm)} BPM</b> \u00b7 no single repeating cycle stood out. Beats tick along the contour ruler.`;
+      el.innerHTML = `\u2669 \u2248 <b>${pulse} BPM</b>${matra} \u00b7 no single repeating cycle stood out. Beat ticks follow the contour ruler.`;
     } else {
       const alt = r.alt ? ` (or ${r.alt})` : '';
-      el.innerHTML = `\u2669 \u2248 <b>${Math.round(r.bpm)} BPM</b> \u00b7 ${r.cycle}-beat cycle \u2014 ${r.conf} <b>${r.taal}</b>${alt}. Beats tick along the contour ruler; the heavier ticks are the estimated sam.`;
+      el.innerHTML = `\u2669 \u2248 <b>${pulse} BPM</b>${matra} \u00b7 ${r.cycle}-matra cycle \u2014 ${r.conf} <b>${r.taal}</b>${alt}. The heavier contour ticks are the estimated sam.`;
     }
   }
 
@@ -2177,6 +2180,7 @@
   window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive,
     _loopPhrase: loopPhrase, _stepPhrase: stepPhrase, _startRamp: startRamp, _rampStep: rampStep,
     _editNote: commitManualNoteEdit, _undoNoteEdit: undoManualNoteEdit,
+    _renderRhythm: renderRhythm,
     _mic: {
       start: startMic, stop: stopMic, tick: micTick,
       inject(hz, sec) {              // feed a sine straight into the ring buffer (dev/testing)
