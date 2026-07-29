@@ -30,6 +30,7 @@ import parselmouth
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from singing_models import GameTranscriber, RobustPitchTracker
+from rhythm import TAALS, summarize_neural_rhythm
 
 # Ensure the Rubber Band CLI (Homebrew) is on PATH even under launchd, whose
 # LaunchAgents start with a minimal PATH that excludes /opt/homebrew/bin.
@@ -38,7 +39,7 @@ from demucs.pretrained import get_model
 from demucs.apply import apply_model
 
 PORT = 8765
-ANALYSIS_VERSION = 4  # Independent vocal articulations + bounded neural inference.
+ANALYSIS_VERSION = 5  # Learned pulse/downbeats + taal-cycle reconciliation.
 CREPE_HOP = 256      # 16 ms at 16 kHz; used only by the /transpose voice resynthesis
 PRAAT_HOP_SEC = 0.004
 SR = 16000
@@ -61,6 +62,8 @@ _robust_pitch = None
 _robust_pitch_failed = False
 _game = None
 _game_failed = False
+_rhythm_tracker = None
+_rhythm_tracker_failed = False
 
 
 def get_robust_pitch():
@@ -89,6 +92,24 @@ def get_game():
             print('[swarlekh] GAME unavailable (%s); using contour notation fallback'
                   % error, flush=True)
     return _game
+
+
+def get_rhythm_tracker():
+    global _rhythm_tracker, _rhythm_tracker_failed
+    if _rhythm_tracker is None and not _rhythm_tracker_failed:
+        try:
+            from beat_this.inference import Audio2Beats
+            print('[swarlekh] loading Beat This! rhythm model...', flush=True)
+            _rhythm_tracker = Audio2Beats(
+                checkpoint_path='small0',
+                device='cpu',
+                dbn=False,
+            )
+        except Exception as error:
+            _rhythm_tracker_failed = True
+            print('[swarlekh] learned rhythm model unavailable (%s); using signal fallback'
+                  % error, flush=True)
+    return _rhythm_tracker
 
 
 def get_demucs():
@@ -212,22 +233,15 @@ def separated_stems_44k(raw, x):
     return voc, drm
 
 
-# Common taal cycles. Several taals share a beat count — the primary name is
-# shown with an honest "likely/possibly", the alternative kept alongside.
-TAALS = {16: ('Teentaal', None), 14: ('Deepchandi', 'Dhamar/Jhoomra'), 12: ('Ektaal', 'Chautaal'),
-         10: ('Jhaptaal', None), 8: ('Keherwa', 'Bhajani theka'), 7: ('Rupak', None), 6: ('Dadra', None)}
-
-
 def detect_rhythm(x, voc):
-    """BPM + dominant taal cycle. Tempo/beats come from the ACCOMPANIMENT\'s
-    onset envelope (mix minus voice). The cycle length is scored by folding
-    per-beat BASS energy (the bayan — present in bhari, silent in khali, the
-    structural cue of a theka) onto the tracked beat grid and asking which
-    cycle length explains its variance best (adjusted, with a parsimony rule
-    so a repeated half-cycle isn\'t reported doubled). Tracked beats follow the
-    actual strokes, so tempo drift cancels. Returns None when there is no
-    clear, steady pulse; taal fields are None when the cycle is inconclusive
-    (the dominant BPM is still reported)."""
+    """BPM + dominant taal cycle from accompaniment ticks and learned downbeats.
+
+    Librosa supplies a fine percussion grid that stays useful when a tabla
+    articulates subdivisions. Beat This! independently estimates the felt pulse
+    and downbeats. Reconciliation resolves half/double-tempo ambiguity, while
+    repeated downbeat distances identify the cycle and sam. Bass-fold scoring
+    remains as an offline/model-failure fallback.
+    """
     try:
         from scipy.signal import butter, sosfilt
         acc = (x.mean(0) - voc[0]).cpu().numpy()
@@ -243,7 +257,30 @@ def detect_rhythm(x, voc):
         if iv.size == 0 or np.std(iv) / max(np.mean(iv), 1e-6) > 0.35:
             return None                                    # too unsteady to call
         base = {'bpm': round(tempo, 1), 'beats': [round(float(t), 3) for t in bt],
-                'cycle': None, 'taal': None, 'alt': None, 'conf': None, 'sam': None}
+                'matraBpm': round(tempo, 1), 'pulseSubdivision': 1,
+                'tempoRange': None, 'cycle': None, 'taal': None, 'alt': None,
+                'conf': None, 'sam': None, 'cycleConfidence': None,
+                'beatSource': 'librosa'}
+
+        rhythm_tracker = get_rhythm_tracker()
+        if rhythm_tracker is not None:
+            try:
+                mix = x.mean(0).cpu().numpy().astype(np.float32)
+                model_beats, model_downbeats = rhythm_tracker(mix, DEMUCS_SR)
+                learned = summarize_neural_rhythm(
+                    bt,
+                    tempo,
+                    model_beats,
+                    model_downbeats,
+                )
+                if learned:
+                    base.update(learned)
+                    if base['taal']:
+                        return base
+            except Exception as error:
+                print('[swarlekh] learned rhythm inference failed (%s); using signal fallback'
+                      % error, flush=True)
+
         # Per-beat bass energy (stroke lands in the first half-beat window).
         sos = butter(4, 200, 'low', fs=RSR, output='sos')
         bass2 = sosfilt(sos, acc); bass2 = bass2 * bass2
@@ -273,6 +310,7 @@ def detect_rhythm(x, voc):
         name, alt = TAALS[L]
         base.update(cycle=int(L), taal=name, alt=alt,
                     conf=('likely' if best >= 0.35 else 'possibly'),
+                    cycleConfidence=round(float(best), 3),
                     sam=[round(float(t), 3) for t in bt[phase::L]])
         return base
     except Exception as e:

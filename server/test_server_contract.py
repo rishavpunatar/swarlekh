@@ -11,7 +11,7 @@ class ServerContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["analysisVersion"], ANALYSIS_VERSION)
-        self.assertGreaterEqual(payload["analysisVersion"], 4)
+        self.assertGreaterEqual(payload["analysisVersion"], 5)
         self.assertEqual(payload["analyzer"], "rmvpe+praat+game")
 
 

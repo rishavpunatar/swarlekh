@@ -69,7 +69,9 @@ pitch ensemble, and GAME singing-to-MIDI inference. See
 
 - This is **predominant-melody extraction**, not studio-grade source separation. A harmonium shadowing the voice, or a loud sitar/sarangi lead, can be picked up as "the melody" — which is often still the line you want to learn, but worth knowing.
 - Long instrumental intros will be notated too: use the A–B loop to focus on the sung sections, or raise *voicing strictness* if accompaniment leaks in.
-- Notation is chromatic (any raga), but unmetered — there is no taal/beat alignment yet, so sustains are written in dashes of ~0.3 s rather than matras.
+- Notation is chromatic (any raga). Best local analysis estimates the felt BPM,
+  matra rate, likely taal cycle, beat ticks, and sam; notation sustains remain
+  time-proportional rather than being forced into a rigid matra transcription.
 - Heavy reverb, duets, and very noisy recordings degrade tracking.
 
 ## Tips for best results

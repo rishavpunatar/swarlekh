@@ -10,7 +10,10 @@ test('Best analysis preserves original upload channels and invalidates mono cach
 
   assert.match(source, /state\.fileBytes = ab\.slice\(0\)/);
   assert.match(source, /const audio = state\.fileBytes \|\| encodeWav/);
-  assert.match(source, /const hash = 'v7:' \+ await fileHash/);
+  assert.match(source, /const hash = 'v8:' \+ await fileHash/);
+  assert.match(source, /REQUIRED_SERVER_ANALYSIS_VERSION = 5/);
+  assert.match(source, /matras \\u2248 <b>/);
+  assert.match(source, /_renderRhythm: renderRhythm/);
 });
 
 test('canvas notes support persistent drag correction and undo', () => {
