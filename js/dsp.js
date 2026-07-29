@@ -2241,6 +2241,22 @@
           }
         }
         if (entry) {
+          // A short overshoot at the region entrance can look like an adjacent
+          // plateau even though GAME correctly labelled the longer pitch it
+          // resolves onto. Keep that neural target when frame evidence returns
+          // to it and remains there materially longer than the entry touch.
+          const entryOverlap = entry.overlap;
+          const returnPlateau = frameTokens.some((frameToken) => {
+            if (frameToken.k !== token.k ||
+                frameToken.t0 < entry.frameToken.t1 - 0.025) {
+              return false;
+            }
+            const overlap = Math.min(token.t1, frameToken.t1) -
+              Math.max(token.t0, frameToken.t0);
+            return overlap >= 0.09 &&
+              overlap >= entryOverlap + 0.025;
+          });
+          if (returnPlateau) continue;
           token.k = entry.frameToken.k;
           token.entryPlateauSnap = true;
           continue;
@@ -2535,6 +2551,50 @@
         next.meendFromPrev = true;
         tokens.splice(i, 1);
         i--;
+      }
+    }
+    if (clean && frameTokens.length >= 3) {
+      // Frame segmentation can read a compact overshoot at a neural boundary
+      // as a return murki: R -> [brief G-m-G] where the learned target is G.
+      // When the first target touch is brief, the excursion continues in the
+      // direction of arrival, and the return dominates, keep the whole shape
+      // as a bend into the target rather than inventing the outside swara.
+      for (let frameIndex = 1; frameIndex + 1 < frameTokens.length; frameIndex++) {
+        const lead = frameTokens[frameIndex - 1];
+        const excursion = frameTokens[frameIndex];
+        const returned = frameTokens[frameIndex + 1];
+        const leadDuration = lead.t1 - lead.t0;
+        const excursionDuration = excursion.t1 - excursion.t0;
+        const returnDuration = returned.t1 - returned.t0;
+        if (lead.k !== returned.k ||
+            Math.abs(excursion.k - lead.k) !== 1 ||
+            leadDuration > 0.055 ||
+            excursionDuration > 0.10 ||
+            returnDuration < 0.09 ||
+            excursion.t0 - lead.t1 > 0.025 ||
+            returned.t0 - excursion.t1 > 0.025) {
+          continue;
+        }
+        const targetIndex = tokens.findIndex((token) =>
+          token.k === lead.k &&
+          Math.abs(token.t0 - excursion.t0) <= 0.035 &&
+          token.t1 >= returned.t0 + 0.08
+        );
+        if (targetIndex < 1) continue;
+        const approach = tokens[targetIndex - 1];
+        const target = tokens[targetIndex];
+        const arrivalDirection = Math.sign(target.k - approach.k);
+        const overshootDirection = Math.sign(excursion.k - target.k);
+        if (arrivalDirection === 0 ||
+            arrivalDirection !== overshootDirection ||
+            target.t0 - approach.t1 > 0.035) {
+          continue;
+        }
+        suppressedTurns.push({
+          t0: excursion.t0,
+          t1: excursion.t1,
+          k: excursion.k,
+        });
       }
     }
     if (frameTokens.length) {
