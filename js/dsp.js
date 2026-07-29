@@ -2485,25 +2485,41 @@
       }
     }
 
-    // Two bends around a very short ornament can otherwise overlap and erase
-    // the note target between them. Reserve a small flat landing so each clearly
-    // hit swara remains visible and the two curves meet it cleanly.
+    // Bends around a fast ornament can consume most of the note target between
+    // them. Plateau-confirmed hybrid notes are analysis landmarks, not merely
+    // transition geometry, so reserve a readable flat landing even when the
+    // curves do not technically overlap. Ordinary bends keep the smaller
+    // overlap-only reservation.
     for (let index = 1; index + 1 < source.length; index++) {
       const previous = transitions[index - 1];
       const next = transitions[index];
-      if (!previous || !next ||
-          previous.kind !== 'slide' || next.kind !== 'slide' ||
-          previous.t1 <= next.t0) {
-        continue;
-      }
       const token = source[index];
       const duration = token.t1 - token.t0;
-      const hold = Math.min(0.035, duration * 0.35);
+      const left = source[index - 1];
+      const right = source[index + 1];
+      const connected = token.t0 - left.t1 <= maxGapSec &&
+        right.t0 - token.t1 <= maxGapSec;
+      const distinctTarget = token.k !== left.k && token.k !== right.k;
+      const confirmedFastTarget = connected && distinctTarget &&
+        duration <= 0.24 &&
+        !!(token.hybridOrnament || token.rawLandmark || token.murki);
+      const hasTwoSlides = previous && next &&
+        previous.kind === 'slide' && next.kind === 'slide';
+      const overlappingSlides = hasTwoSlides && previous.t1 > next.t0;
+      if (!confirmedFastTarget && !overlappingSlides) continue;
+
+      const hold = confirmedFastTarget
+        ? Math.min(duration * 0.72, Math.max(0.06, duration * 0.55))
+        : Math.min(0.035, duration * 0.35);
       const center = (token.t0 + token.t1) / 2;
       const holdStart = Math.max(token.t0, center - hold / 2);
       const holdEnd = Math.min(token.t1, center + hold / 2);
-      previous.t1 = Math.max(previous.t0, Math.min(previous.t1, holdStart));
-      next.t0 = Math.min(next.t1, Math.max(next.t0, holdEnd));
+      if (previous && previous.kind === 'slide') {
+        previous.t1 = Math.max(previous.t0, Math.min(previous.t1, holdStart));
+      }
+      if (next && next.kind === 'slide') {
+        next.t0 = Math.min(next.t1, Math.max(next.t0, holdEnd));
+      }
     }
 
     const segments = [];
