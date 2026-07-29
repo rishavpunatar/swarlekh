@@ -533,6 +533,36 @@ test('notateRegions: a stable entry plateau wins over an averaged outgoing glide
   assert.strictEqual(tokens[0].entryPlateauSnap, true);
 });
 
+test('notateRegions: a brief entry overshoot cannot replace its longer return target', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(2) },
+    { onset: 0.3, offset: 0.6, frequency: st(4) },
+    { onset: 0.6, offset: 0.9, frequency: st(7) },
+  ];
+  const f0 = new Float32Array(90);
+  f0.fill(st(2), 0, 30);
+  f0.fill(st(5), 30, 38);
+  f0.fill(st(4), 38, 60);
+  f0.fill(st(7), 60);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(90).fill(0.95),
+    hopSec,
+    SA,
+    {
+      clean: true,
+      ornaments: true,
+      rms: new Float32Array(90).fill(0.5),
+    }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [2, 4, 7]);
+  assert.strictEqual(tokens[1].entryPlateauSnap, undefined);
+});
+
 test('notateRegions: restores stable turning notes inside broad neural regions', () => {
   const hopSec = 0.01;
   const regions = [
