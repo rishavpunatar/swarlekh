@@ -826,6 +826,93 @@ test('notateRegions: combines a nested traversal into its stable return target',
   assert.strictEqual(tokens[1].nestedTurn, true);
 });
 
+test('notateRegions: restores a plateau-confirmed multi-turn murki cluster', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 1.05, frequency: st(2) },
+  ];
+  const cents = new Float32Array(105).fill(0);
+  cents.set([50, 100, 150, 200, 250, 300, 350, 400], 18);
+  cents.fill(400, 26, 37);
+  cents.fill(200, 37, 45);
+  cents.fill(400, 45, 51);
+  cents.set([350, 300, 250, 200, 150, 100, 50, 0], 51);
+  cents.fill(0, 59, 66);
+  cents.set([80, 140], 66);
+  cents.fill(200, 68, 74);
+  cents.set([130, 60], 74);
+  const f0 = Float32Array.from(
+    cents,
+    value => SA * Math.pow(2, value / 1200)
+  );
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(105).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  const recovered = tokens.filter((token) => token.rawMurkiCluster);
+  assert.deepStrictEqual(
+    recovered.map((token) => token.k),
+    [0, 4, 2, 4, 0, 2, 0]
+  );
+  assert.ok(recovered.every((token) => token.rawLandmark));
+  assert.ok(!recovered.some((token) => token.k === 1 || token.k === 3));
+});
+
+test('notateRegions: restores both outer notes of a compressed fast return', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(7) },
+    { onset: 0.4, offset: 0.7, frequency: st(5) },
+  ];
+  const f0 = new Float32Array(70);
+  f0.fill(st(8), 5, 11);
+  f0.fill(st(7), 11, 20);
+  f0.fill(st(8), 20, 25);
+  f0.fill(st(5), 40);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(70).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(
+    tokens
+      .filter((token) => token.rawMurkiCluster)
+      .map((token) => token.k),
+    [8, 7, 8]
+  );
+});
+
+test('notateRegions: uncertain pitch frames cannot replace a neural phrase', () => {
+  const hopSec = 0.01;
+  const f0 = new Float32Array(60).fill(st(0));
+  f0.fill(st(4), 5, 15);
+  f0.fill(st(2), 15, 23);
+  f0.fill(st(4), 23, 29);
+  f0.fill(st(0), 29, 38);
+
+  const { tokens } = DSP.notateRegions(
+    [{ onset: 0, offset: 0.6, frequency: st(2) }],
+    f0,
+    new Float32Array(60).fill(0.89),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.ok(!tokens.some((token) => token.rawMurkiCluster));
+});
+
 test('notateRegions: recurring vibrato inside one neural note is not split into a murki', () => {
   const hopSec = 0.01;
   const regions = [{ onset: 0, offset: 1, frequency: st(12) }];

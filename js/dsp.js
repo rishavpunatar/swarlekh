@@ -1683,15 +1683,7 @@
     return joined;
   }
 
-  /**
-   * Recover a very short adjacent-neighbour turn (for example D-n-D) directly
-   * from the raw contour when neural hysteresis has merged it into two same-note
-   * regions. A nearby neural boundary is required as independent evidence, which
-   * keeps ordinary vibrato from becoming a stream of one-semitone murki labels.
-   */
-  function fuseRawNeighborTurns(tokens, f0, clarity, hopSec, saHz, thresh,
-    suppressedTurns) {
-    if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
+  function rawPitchRuns(f0, clarity, hopSec, saHz, thresh) {
     const runs = [];
     for (let frame = 0; frame < f0.length; frame++) {
       if (!(f0[frame] > 0) || clarity[frame] < thresh) continue;
@@ -1701,10 +1693,30 @@
       if (previous && previous.k === k && frame - previous.end <= 2) {
         previous.end = frame + 1;
         previous.values.push(cents);
+        previous.confidences.push(clarity[frame]);
       } else {
-        runs.push({ k, start: frame, end: frame + 1, values: [cents] });
+        runs.push({
+          k,
+          start: frame,
+          end: frame + 1,
+          values: [cents],
+          confidences: [clarity[frame]],
+        });
       }
     }
+    return runs;
+  }
+
+  /**
+   * Recover a very short adjacent-neighbour turn (for example D-n-D) directly
+   * from the raw contour when neural hysteresis has merged it into two same-note
+   * regions. A nearby neural boundary is required as independent evidence, which
+   * keeps ordinary vibrato from becoming a stream of one-semitone murki labels.
+   */
+  function fuseRawNeighborTurns(tokens, f0, clarity, hopSec, saHz, thresh,
+    suppressedTurns) {
+    if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
+    const runs = rawPitchRuns(f0, clarity, hopSec, saHz, thresh);
     const wasSuppressed = (candidate) => (suppressedTurns || []).some((turn) =>
       turn.k === candidate.k &&
       Math.min(turn.t1, candidate.t1) - Math.max(turn.t0, candidate.t0) >= 0.02
@@ -1907,6 +1919,217 @@
         previous.t1 = Math.max(previous.t1, token.t1);
         previous.rawLandmark = true;
         previous.hybridOrnament = true;
+      } else {
+        joined.push(token);
+      }
+    }
+    return joined;
+  }
+
+  /**
+   * Recover a compact sequence of stable pitch landings when GAME compresses a
+   * whole fast murki into one or two broad regions. Quantized crossing frames
+   * are deliberately excluded: a candidate must spend at least 30 ms centred
+   * on the swara and must not drift straight through it. The sequence also
+   * needs either multiple varied reversals or one compact return, plus a broad
+   * non-andolan neural region that independently proves model compression.
+   */
+  function fuseRawMurkiClusters(tokens, f0, clarity, hopSec, saHz, thresh,
+    suppressedTurns) {
+    if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
+    const runs = rawPitchRuns(f0, clarity, hopSec, saHz, thresh);
+    const wasSuppressed = (candidate) => (suppressedTurns || []).some((turn) =>
+      turn.k === candidate.k &&
+      Math.min(turn.t1, candidate.t1) - Math.max(turn.t0, candidate.t0) >= 0.02
+    );
+    const landings = [];
+    for (const run of runs) {
+      const duration = (run.end - run.start) * hopSec;
+      if (duration < 0.045 || duration > 0.32) continue;
+      const sorted = run.values.slice().sort((a, b) => a - b);
+      const median = sorted[sorted.length >> 1];
+      if (Math.abs(median - run.k * 100) > 34) continue;
+      let centeredFrames = 0;
+      for (const cents of run.values) {
+        if (Math.abs(cents - run.k * 100) <= 35) centeredFrames++;
+      }
+      if (centeredFrames * hopSec <
+          Math.max(0.03, duration * 0.55) - 1e-9) {
+        continue;
+      }
+      // A run that enters one side and leaves the other is a crossing even if
+      // its median happens to sit on the swara.
+      if (Math.abs(run.values[run.values.length - 1] - run.values[0]) > 65) {
+        continue;
+      }
+      const candidate = {
+        t0: run.start * hopSec,
+        t1: run.end * hopSec,
+        k: run.k,
+        minClarity: Math.min(...run.confidences),
+      };
+      candidate.suppressed = wasSuppressed(candidate);
+      landings.push(candidate);
+    }
+    if (landings.length < 3) return tokens;
+
+    const chains = [];
+    for (const landing of landings) {
+      const chain = chains[chains.length - 1];
+      const previous = chain && chain[chain.length - 1];
+      if (previous &&
+          landing.t0 - previous.t1 <= 0.10 &&
+          Math.abs(landing.k - previous.k) <= 6) {
+        chain.push(landing);
+      } else {
+        chains.push([landing]);
+      }
+    }
+
+    const recoveries = [];
+    for (const chain of chains) {
+      if (chain.length < 3) continue;
+      const turns = [];
+      for (let index = 1; index + 1 < chain.length; index++) {
+        const incoming = chain[index].k - chain[index - 1].k;
+        const outgoing = chain[index + 1].k - chain[index].k;
+        if (incoming * outgoing < 0 &&
+            Math.abs(incoming) <= 5 &&
+            Math.abs(outgoing) <= 5) {
+          turns.push(index);
+        }
+      }
+      const components = [];
+      for (const turn of turns) {
+        const first = turn - 1;
+        const last = turn + 1;
+        const previous = components[components.length - 1];
+        if (previous && first <= previous.last + 1) {
+          previous.last = Math.max(previous.last, last);
+          previous.turns++;
+        } else {
+          components.push({ first, last, turns: 1 });
+        }
+      }
+
+      for (const component of components) {
+        const sequence = chain.slice(component.first, component.last + 1);
+        const classicReturn = sequence.length === 3 &&
+          component.turns === 1 &&
+          sequence[0].k === sequence[2].k &&
+          Math.abs(sequence[1].k - sequence[0].k) <= 2 &&
+          sequence.every((landing) => landing.t1 - landing.t0 <= 0.14);
+        const variedCluster = sequence.length >= 4 &&
+          component.turns >= 2 &&
+          new Set(sequence.map((landing) => landing.k)).size >= 3;
+        if (!classicReturn && !variedCluster) continue;
+        // A cluster replaces several learned neural boundaries at once, so
+        // every proposed target must have unusually strong frame-level pitch
+        // evidence. One uncertain landing rejects the whole sequence.
+        const highConfidenceFloor = Math.max(0.90, thresh);
+        if (sequence.some((landing) =>
+          landing.minClarity < highConfidenceFloor)) {
+          continue;
+        }
+        if (classicReturn &&
+            sequence.some((landing) => landing.suppressed)) {
+          continue;
+        }
+        const centers = sequence.map((landing) =>
+          (landing.t0 + landing.t1) / 2
+        );
+        if (centers[centers.length - 1] - centers[0] > 0.90) continue;
+        if (classicReturn &&
+            centers[centers.length - 1] - centers[0] > 0.24) {
+          continue;
+        }
+        const intervals = [];
+        for (let index = 1; index < centers.length; index++) {
+          intervals.push(centers[index] - centers[index - 1]);
+        }
+        intervals.sort((a, b) => a - b);
+        if (intervals[intervals.length >> 1] > 0.18) continue;
+
+        const start = sequence[0].t0;
+        const end = sequence[sequence.length - 1].t1;
+        const overlapping = tokens.filter((token) =>
+          token.t1 > start && token.t0 < end
+        );
+        if (!overlapping.length ||
+            overlapping.some((token) => token.andolan)) {
+          continue;
+        }
+        const compressed = overlapping.some((token) => {
+          if (token.t1 - token.t0 < 0.16) return false;
+          let coveredLandings = 0;
+          for (const landing of sequence) {
+            const center = (landing.t0 + landing.t1) / 2;
+            if (center >= token.t0 && center <= token.t1) coveredLandings++;
+          }
+          return coveredLandings >= 2;
+        });
+        if (!compressed) continue;
+        const missing = sequence.filter((landing) => !tokens.some((token) => {
+          if (token.k !== landing.k) return false;
+          const overlap = Math.min(token.t1, landing.t1) -
+            Math.max(token.t0, landing.t0);
+          return overlap >= Math.min(
+            0.025,
+            (landing.t1 - landing.t0) * 0.4
+          );
+        }));
+        if (!missing.length || (classicReturn && missing.length < 2)) continue;
+        recoveries.push(sequence);
+      }
+    }
+    if (!recoveries.length) return tokens;
+
+    let result = tokens.slice();
+    for (const sequence of recoveries) {
+      const rawStart = sequence[0].t0;
+      const rawEnd = sequence[sequence.length - 1].t1;
+      const replacements = sequence.map((landing) => ({
+        t0: landing.t0,
+        t1: landing.t1,
+        k: landing.k,
+        cents: landing.k * 100,
+        hybridOrnament: true,
+        rawLandmark: true,
+        rawMurkiCluster: true,
+      }));
+      for (let index = 1; index < replacements.length; index++) {
+        const boundary = (
+          sequence[index - 1].t1 + sequence[index].t0
+        ) / 2;
+        replacements[index - 1].t1 = boundary;
+        replacements[index].t0 = boundary;
+      }
+      const preserved = [];
+      for (const token of result) {
+        if (token.t1 <= rawStart || token.t0 >= rawEnd) {
+          preserved.push(token);
+          continue;
+        }
+        if (token.t0 < rawStart - 0.025) {
+          preserved.push(Object.assign({}, token, { t1: rawStart }));
+        }
+        if (token.t1 > rawEnd + 0.025) {
+          preserved.push(Object.assign({}, token, { t0: rawEnd }));
+        }
+      }
+      result = preserved.concat(replacements).sort((a, b) => a.t0 - b.t0);
+    }
+
+    const joined = [];
+    for (const token of result) {
+      const previous = joined[joined.length - 1];
+      if (previous && previous.k === token.k &&
+          token.t0 - previous.t1 <= 0.03 &&
+          (previous.rawMurkiCluster || token.rawMurkiCluster)) {
+        previous.t1 = Math.max(previous.t1, token.t1);
+        previous.rawLandmark = true;
+        previous.hybridOrnament = true;
+        previous.rawMurkiCluster = true;
       } else {
         joined.push(token);
       }
@@ -2319,6 +2542,15 @@
     }
     if (ornaments) {
       tokens = fuseRawNeighborTurns(
+        tokens,
+        f0,
+        clarity,
+        hopSec,
+        saHz,
+        thresh,
+        suppressedTurns
+      );
+      tokens = fuseRawMurkiClusters(
         tokens,
         f0,
         clarity,
