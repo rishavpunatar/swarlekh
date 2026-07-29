@@ -2553,6 +2553,91 @@
         i--;
       }
     }
+    if (clean && f0 && clarity && hopSec > 0) {
+      // A compact U-shaped bend can overshoot below Sa/Pa (or above it) for a
+      // few frames even though the singer enters and returns through that fixed
+      // swara. GAME may isolate only the extreme and label it as a separate
+      // note. Keep the invariant Sa/Pa anchor when the extreme has no sustained
+      // plateau and the following contour completes the return.
+      for (let index = 0; index + 1 < tokens.length; index++) {
+        const token = tokens[index];
+        const next = tokens[index + 1];
+        const duration = token.t1 - token.t0;
+        const direction = Math.sign(next.k - token.k);
+        if (duration < 0.055 || duration > 0.12 ||
+            direction === 0 || Math.abs(next.k - token.k) < 2 ||
+            (Number.isFinite(token.conf) && token.conf < 0.84) ||
+            next.t0 - token.t1 > 0.035) {
+          continue;
+        }
+
+        const lo = Math.min(token.k, next.k);
+        const hi = Math.max(token.k, next.k);
+        const fixedAnchors = [];
+        for (let k = Math.floor((lo - 12) / 12) * 12;
+          k <= Math.ceil((hi + 12) / 12) * 12;
+          k++) {
+          const pc = ((k % 12) + 12) % 12;
+          if ((pc === 0 || pc === 7) && k > lo && k < hi) {
+            fixedAnchors.push(k);
+          }
+        }
+        if (!fixedAnchors.length) continue;
+
+        const frameStart = Math.max(0, Math.floor(token.t0 / hopSec));
+        const frameEnd = Math.min(
+          f0.length,
+          Math.ceil(Math.min(next.t1, token.t1 + 0.12) / hopSec)
+        );
+        const path = [];
+        for (let frame = frameStart; frame < frameEnd; frame++) {
+          if (!(f0[frame] > 0) || clarity[frame] < thresh) continue;
+          path.push(1200 * Math.log2(f0[frame] / saHz));
+        }
+        if (path.length < 8) continue;
+
+        const entryCents = path[0];
+        fixedAnchors.sort((a, b) =>
+          Math.abs(entryCents - a * 100) -
+          Math.abs(entryCents - b * 100)
+        );
+        const anchorK = fixedAnchors[0];
+        const anchorCents = anchorK * 100;
+        if (Math.abs(entryCents - anchorCents) > 100) continue;
+
+        let extremeIndex = 0;
+        for (let point = 1; point < path.length; point++) {
+          if ((direction > 0 && path[point] < path[extremeIndex]) ||
+              (direction < 0 && path[point] > path[extremeIndex])) {
+            extremeIndex = point;
+          }
+        }
+        const excursion = Math.abs(path[extremeIndex] - anchorCents);
+        const returned = path.slice(extremeIndex + 1).some((cents) =>
+          Math.abs(cents - anchorCents) <= 85
+        );
+        let centeredFrames = 0;
+        for (let frame = frameStart;
+          frame < Math.min(frameEnd, Math.ceil(token.t1 / hopSec));
+          frame++) {
+          if (!(f0[frame] > 0) || clarity[frame] < thresh) continue;
+          const cents = 1200 * Math.log2(f0[frame] / saHz);
+          if (Math.abs(cents - token.k * 100) <= 45) centeredFrames++;
+        }
+        if (extremeIndex === 0 || !returned || excursion < 160 ||
+            centeredFrames * hopSec >
+              Math.min(0.05, duration * 0.60) + 1e-9) {
+          continue;
+        }
+
+        suppressedTurns.push({ t0: token.t0, t1: token.t1, k: token.k });
+        token.k = anchorK;
+        token.cents = anchorCents;
+        token.meend = true;
+        token.andolan = false;
+        token.fixedAnchorBend = true;
+      }
+    }
     if (clean && frameTokens.length >= 3) {
       // Frame segmentation can read a compact overshoot at a neural boundary
       // as a return murki: R -> [brief G-m-G] where the learned target is G.

@@ -15,6 +15,7 @@
     tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'),
     saAtPlayheadBtn: $('saAtPlayheadBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
+    undoNoteBtn: $('undoNoteBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
     micBtn: $('micBtn'), micReadout: $('micReadout'),
@@ -42,6 +43,7 @@
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
     raga: null, highlightPc: null, ragaMatches: [], script: 'latin', rhythm: null,
     engine: 'yin', file: null,
+    manualEdits: [], noteEditHistory: [],
     opts: {
       clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45,
       onsetMinMs: 100, clean: true, onsets: [],
@@ -51,7 +53,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=60';
+  const WORKER_URL = 'js/worker.js?v=61';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -124,6 +126,7 @@
   // analysis, then the dashboard. Pitch is changed there — each change asks the
   // server to re-shift the voice and remix the music into the chosen key.
   function startUpload(file) {
+    clearManualNoteEdits();
     state.engine = 'server';
     const eSel = $('engineSel'); if (eSel) eSel.value = 'server';
     processFile(file);
@@ -654,6 +657,7 @@
         opts
       )
       : DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
+    applyManualNoteEdits(res.tokens);
     state.tokens = res.tokens;
     state.phrases = res.phrases;
     state.raga = DSP.analyzeRaga(res.tokens, res.phrases);
@@ -665,6 +669,106 @@
     renderRaga();
     drawCanvas();
     updateStats();
+  }
+
+  function updateUndoNoteButton() {
+    if (els.undoNoteBtn) {
+      els.undoNoteBtn.hidden = state.noteEditHistory.length === 0;
+    }
+  }
+
+  function clearManualNoteEdits() {
+    state.manualEdits = [];
+    state.noteEditHistory = [];
+    updateUndoNoteButton();
+  }
+
+  function editOverlap(edit, token) {
+    return Math.min(edit.t1, token.t1) - Math.max(edit.t0, token.t0);
+  }
+
+  function matchingManualEdit(token) {
+    let best = null;
+    for (let index = 0; index < state.manualEdits.length; index++) {
+      const edit = state.manualEdits[index];
+      const overlap = editOverlap(edit, token);
+      const centerDistance = Math.abs(
+        edit.time - (token.t0 + token.t1) / 2
+      );
+      if (overlap < 0.025 && centerDistance > 0.10) continue;
+      const score = overlap - centerDistance * 0.2;
+      if (!best || score > best.score) best = { index, edit, score };
+    }
+    return best;
+  }
+
+  function applyManualTarget(token, k) {
+    token.k = k;
+    token.cents = k * 100;
+    token.manualCorrection = true;
+    token.glide = false;
+    token.meend = false;
+    token.andolan = false;
+    delete token.via;
+    delete token.orn;
+    delete token.kan;
+    delete token.murki;
+    delete token.graceAfter;
+    delete token.andolanLo;
+    delete token.andolanHi;
+  }
+
+  function applyManualNoteEdits(tokens) {
+    for (const edit of state.manualEdits) {
+      let best = null;
+      for (const token of tokens) {
+        const overlap = editOverlap(edit, token);
+        const centerDistance = Math.abs(
+          edit.time - (token.t0 + token.t1) / 2
+        );
+        if (overlap < 0.025 && centerDistance > 0.10) continue;
+        const score = overlap - centerDistance * 0.2;
+        if (!best || score > best.score) best = { token, score };
+      }
+      if (best) applyManualTarget(best.token, edit.k);
+    }
+  }
+
+  function commitManualNoteEdit(tokenIndex, targetK) {
+    const token = state.tokens[tokenIndex];
+    if (!token || targetK === token.k) return;
+    state.noteEditHistory.push(
+      state.manualEdits.map((edit) => Object.assign({}, edit))
+    );
+    const match = matchingManualEdit(token);
+    const edit = {
+      t0: token.t0,
+      t1: token.t1,
+      time: (token.t0 + token.t1) / 2,
+      k: targetK,
+      originalK: match ? match.edit.originalK : token.k,
+    };
+    if (match && targetK === match.edit.originalK) {
+      state.manualEdits.splice(match.index, 1);
+    } else if (match) {
+      state.manualEdits[match.index] = edit;
+    } else {
+      state.manualEdits.push(edit);
+    }
+    updateUndoNoteButton();
+    renotateNow();
+    toast(`Note corrected to ${tokenGlyph(targetK)}.`);
+  }
+
+  function undoManualNoteEdit() {
+    if (!state.noteEditHistory.length) return;
+    state.manualEdits = state.noteEditHistory.pop();
+    updateUndoNoteButton();
+    renotateNow();
+    toast('Note correction undone.');
+  }
+  if (els.undoNoteBtn) {
+    els.undoNoteBtn.addEventListener('click', undoManualNoteEdit);
   }
 
   // Precompute contour cents once per analysis/Sa/threshold change. This track
@@ -1756,6 +1860,12 @@
       cctx.fillStyle = isActive || emphasized ? colors.accent : colors.contour;
       cctx.globalAlpha = isActive || emphasized ? 1 : 0.8;
       cctx.beginPath(); cctx.arc(cx, cy, r, 0, 2 * Math.PI); cctx.fill();
+      if (tk.manualCorrection) {
+        cctx.strokeStyle = colors.accent;
+        cctx.lineWidth = 1.5;
+        cctx.globalAlpha = 0.9;
+        cctx.beginPath(); cctx.arc(cx, cy, r + 3.5, 0, 2 * Math.PI); cctx.stroke();
+      }
       cctx.globalAlpha = 1;
     }
 
@@ -1779,7 +1889,9 @@
       const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
       const big = isActive || (tk.t1 - tk.t0) >= 0.28 ||
         !!(tk.hybridOrnament || tk.rawLandmark || tk.murki);
-      const col = isActive ? colors.accent : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
+      const col = isActive || tk.manualCorrection
+        ? colors.accent
+        : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
       labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);
     }
     cctx.globalAlpha = 1;
@@ -1841,6 +1953,52 @@
     const rect = cvs.getBoundingClientRect();
     return state.scrollSec + (clientX - rect.left - GUTTER) / state.pxPerSec;
   };
+  const canvasYToK = (clientY) => {
+    const rect = cvs.getBoundingClientRect();
+    const y = Math.max(RULER, Math.min(rect.height - 10, clientY - rect.top));
+    const cents = state.centsHi -
+      (y - RULER) / Math.max(1, rect.height - RULER - 10) *
+      (state.centsHi - state.centsLo);
+    return Math.max(
+      Math.ceil(state.centsLo / 100),
+      Math.min(Math.floor(state.centsHi / 100), Math.round(cents / 100))
+    );
+  };
+  function noteAt(clientX, clientY) {
+    if (!state.tokens.length) return -1;
+    const rect = cvs.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x <= GUTTER || y < RULER) return -1;
+    const coarsePointer = window.matchMedia &&
+      window.matchMedia('(pointer: coarse)').matches;
+    const hitRadius = coarsePointer ? 20 : 14;
+    const time = state.scrollSec + (x - GUTTER) / state.pxPerSec;
+    const pitchHeight = Math.max(1, rect.height - RULER - 10);
+    let best = null;
+    for (let index = 0; index < state.tokens.length; index++) {
+      const token = state.tokens[index];
+      if (time < token.t0 - 0.08 || time > token.t1 + 0.08) continue;
+      const noteY = RULER +
+        (state.centsHi - token.k * 100) /
+        (state.centsHi - state.centsLo) * pitchHeight;
+      const yDistance = Math.abs(y - noteY);
+      if (yDistance > hitRadius) continue;
+      const x0 = GUTTER + (token.t0 - state.scrollSec) * state.pxPerSec;
+      const x1 = GUTTER + (token.t1 - state.scrollSec) * state.pxPerSec;
+      const xDistance = x < x0 ? x0 - x : x > x1 ? x - x1 : 0;
+      if (xDistance > hitRadius) continue;
+      const centerX = (x0 + x1) / 2;
+      const score = yDistance * 2 + xDistance +
+        Math.abs(x - centerX) * 0.02;
+      if (!best || score < best.score) best = { index, score };
+    }
+    return best ? best.index : -1;
+  }
+  function restoreDraggedToken(token, original) {
+    for (const key of Object.keys(token)) delete token[key];
+    Object.assign(token, original);
+  }
   // Hit-test the loop-edge grab handles (±6 px, any height).
   function loopEdgeAt(clientX) {
     if (state.loopA == null || state.loopB == null) return null;
@@ -1862,14 +2020,45 @@
       dragInfo = { mode: 'loop', t0: Math.max(0, Math.min(state.duration, xToT(e.clientX))),
                    prevA: state.loopA, prevB: state.loopB, moved: false };
     } else {
-      dragInfo = { mode: 'pan', x: e.clientX, scroll0: state.scrollSec, moved: false };
+      const tokenIndex = noteAt(e.clientX, e.clientY);
+      if (tokenIndex >= 0) {
+        if (state.playing) pause();
+        const token = state.tokens[tokenIndex];
+        dragInfo = {
+          mode: 'note',
+          tokenIndex,
+          original: Object.assign({}, token),
+          targetK: token.k,
+          y: e.clientY,
+          moved: false,
+        };
+        cvs.style.cursor = 'ns-resize';
+      } else {
+        dragInfo = { mode: 'pan', x: e.clientX, scroll0: state.scrollSec, moved: false };
+      }
     }
     cvs.setPointerCapture(e.pointerId);
   });
   cvs.addEventListener('pointermove', (e) => {
     if (!dragInfo) {   // idle: cursor affordances so the ruler invites the drag
       const y = e.clientY - cvs.getBoundingClientRect().top;
-      cvs.style.cursor = loopEdgeAt(e.clientX) ? 'ew-resize' : (y < RULER ? 'crosshair' : '');
+      cvs.style.cursor = loopEdgeAt(e.clientX)
+        ? 'ew-resize'
+        : (y < RULER
+          ? 'crosshair'
+          : (noteAt(e.clientX, e.clientY) >= 0 ? 'ns-resize' : ''));
+      return;
+    }
+    if (dragInfo.mode === 'note') {
+      if (Math.abs(e.clientY - dragInfo.y) > 3) dragInfo.moved = true;
+      const targetK = canvasYToK(e.clientY);
+      if (targetK !== dragInfo.targetK) {
+        dragInfo.targetK = targetK;
+        const token = state.tokens[dragInfo.tokenIndex];
+        applyManualTarget(token, targetK);
+        computeSmoothedCents();
+        drawCanvas();
+      }
       return;
     }
     if (dragInfo.mode === 'pan') {
@@ -1896,7 +2085,16 @@
   });
   cvs.addEventListener('pointerup', (e) => {
     if (dragInfo) {
-      if (dragInfo.mode === 'loop') {
+      if (dragInfo.mode === 'note') {
+        const token = state.tokens[dragInfo.tokenIndex];
+        const midpoint = (dragInfo.original.t0 + dragInfo.original.t1) / 2;
+        const targetK = dragInfo.targetK;
+        const changed = dragInfo.moved && targetK !== dragInfo.original.k;
+        restoreDraggedToken(token, dragInfo.original);
+        if (changed) commitManualNoteEdit(dragInfo.tokenIndex, targetK);
+        else seek(midpoint);
+        cvs.style.cursor = '';
+      } else if (dragInfo.mode === 'loop') {
         // A sub-150 ms "loop" is just a click: restore what was there and seek.
         if (dragInfo.moved && state.loopB - state.loopA < 0.15) {
           state.loopA = dragInfo.prevA; state.loopB = dragInfo.prevB;
@@ -1915,6 +2113,16 @@
       }
     }
     dragInfo = null;
+  });
+  cvs.addEventListener('pointercancel', () => {
+    if (dragInfo && dragInfo.mode === 'note') {
+      const token = state.tokens[dragInfo.tokenIndex];
+      if (token) restoreDraggedToken(token, dragInfo.original);
+      computeSmoothedCents();
+      drawCanvas();
+    }
+    dragInfo = null;
+    cvs.style.cursor = '';
   });
   cvs.addEventListener('dblclick', (e) => {
     if (e.clientY - cvs.getBoundingClientRect().top < RULER) clearLoop();
@@ -1968,6 +2176,7 @@
   /* test/debug hook */
   window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive,
     _loopPhrase: loopPhrase, _stepPhrase: stepPhrase, _startRamp: startRamp, _rampStep: rampStep,
+    _editNote: commitManualNoteEdit, _undoNoteEdit: undoManualNoteEdit,
     _mic: {
       start: startMic, stop: stopMic, tick: micTick,
       inject(hz, sec) {              // feed a sine straight into the ring buffer (dev/testing)
