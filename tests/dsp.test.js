@@ -276,6 +276,136 @@ test('notateRegions: repeated same pitch remains one token per articulation', ()
   assert.deepStrictEqual(tokens.map((token) => token.k), [7, 7, 7]);
 });
 
+test('notateRegions: clean merges an unsupported boundary inside a held note', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(4) },
+    { onset: 0.3, offset: 0.6, frequency: st(4) },
+  ];
+  const { tokens } = DSP.notateRegions(
+    regions,
+    new Float32Array(60).fill(st(4)),
+    new Float32Array(60).fill(0.9),
+    hopSec,
+    SA,
+    {
+      clean: true,
+      ornaments: true,
+      rms: new Float32Array(60).fill(0.5),
+    }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4]);
+  assert.strictEqual(tokens[0].t0, 0);
+  assert.strictEqual(tokens[0].t1, 0.6);
+});
+
+test('notateRegions: clean preserves re-articulation across a voicing gap', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(4) },
+    { onset: 0.3, offset: 0.6, frequency: st(4) },
+  ];
+  const f0 = new Float32Array(60).fill(st(4));
+  const rms = new Float32Array(60).fill(0.5);
+  for (let i = 29; i <= 31; i++) {
+    f0[i] = 0;
+    rms[i] = 0.03;
+  }
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(60).fill(0.9),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, rms }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 4]);
+});
+
+test('notateRegions: clean preserves a detected same-pitch re-articulation', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(4) },
+    { onset: 0.3, offset: 0.6, frequency: st(4) },
+  ];
+  const { tokens } = DSP.notateRegions(
+    regions,
+    new Float32Array(60).fill(st(4)),
+    new Float32Array(60).fill(0.9),
+    hopSec,
+    SA,
+    {
+      clean: true,
+      ornaments: true,
+      onsets: [30],
+      rms: new Float32Array(60).fill(0.5),
+    }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 4]);
+});
+
+test('notateRegions: clean folds an unlanded passing region into a meend', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(4) },
+    { onset: 0.3, offset: 0.41, frequency: st(3) },
+    { onset: 0.41, offset: 0.7, frequency: st(2) },
+  ];
+  const f0 = new Float32Array(70);
+  const clarity = new Float32Array(70).fill(0.95);
+  const rms = new Float32Array(70).fill(0.5);
+  for (let i = 0; i < 30; i++) f0[i] = st(4);
+  for (let i = 30; i < 41; i++) {
+    const cents = 400 - 200 * (i - 30) / 10;
+    f0[i] = SA * Math.pow(2, cents / 1200);
+  }
+  for (let i = 41; i < 70; i++) f0[i] = st(2);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130, rms }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 2]);
+  assert.strictEqual(tokens[1].t0, 0.3);
+  assert.strictEqual(tokens[1].meendFromPrev, true);
+});
+
+test('notateRegions: clean preserves a frame-confirmed fast passing note', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(4) },
+    { onset: 0.3, offset: 0.41, frequency: st(3) },
+    { onset: 0.41, offset: 0.7, frequency: st(2) },
+  ];
+  const f0 = new Float32Array(70);
+  f0.fill(st(4), 0, 30);
+  f0.fill(st(3), 30, 41);
+  f0.fill(st(2), 41);
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(70).fill(0.95),
+    hopSec,
+    SA,
+    {
+      clean: true,
+      ornaments: true,
+      minNoteMs: 130,
+      rms: new Float32Array(70).fill(0.5),
+    }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [4, 3, 2]);
+});
+
 test('notateRegions: clean folds a short rebound overshoot into its target', () => {
   const hopSec = 0.01;
   const regions = [
