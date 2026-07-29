@@ -586,6 +586,7 @@ input[type="range"]::-moz-range-thumb {
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 16px; line-height: 1;
 }
+.canvas-toolbar .mini-btn[hidden] { display: none; }
 #contour {
   width: 100%; height: 560px; display: block;
   border-radius: 0;
@@ -740,7 +741,11 @@ input[type="range"]::-moz-range-thumb {
   .player-row, .tonic-row, .settings-row { gap: 10px 14px; }
   .tok { font-size: 17px; }
   #dropzone { padding: 30px 15px; }
-  .canvas-toolbar { padding: 12px 15px 10px; }
+  .canvas-toolbar { padding: 12px 15px 10px; gap: 6px; }
+  .canvas-toolbar .spacer { display: none; }
+  .canvas-toolbar .card-label { margin-right: auto; }
+  .canvas-toolbar .ctl { max-width: 150px; }
+  .canvas-toolbar .ctl select { max-width: 128px; }
   #canvasCard .hint { padding: 10px 15px 13px; }
   #contour { height: 400px; }
   .swar-cell { min-width: 36px; height: 60px; }

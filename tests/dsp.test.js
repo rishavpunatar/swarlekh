@@ -563,6 +563,53 @@ test('notateRegions: a brief entry overshoot cannot replace its longer return ta
   assert.strictEqual(tokens[1].entryPlateauSnap, undefined);
 });
 
+test('notateRegions: a compact U-bend keeps its fixed Pa anchor', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(0) },
+    { onset: 0.3, offset: 0.39, frequency: st(-8) },
+    { onset: 0.39, offset: 0.62, frequency: st(-3) },
+    { onset: 0.62, offset: 0.9, frequency: st(0) },
+  ];
+  const f0 = new Float32Array(90);
+  f0.fill(st(0), 0, 30);
+  const dip = [-580, -650, -730, -790, -805, -780, -720, -650, -580];
+  for (let frame = 0; frame < dip.length; frame++) {
+    f0[30 + frame] = SA * Math.pow(2, dip[frame] / 1200);
+  }
+  for (let frame = 39; frame < 62; frame++) {
+    const cents = frame < 47 ? -520 + (frame - 39) * 35 : -275;
+    f0[frame] = SA * Math.pow(2, cents / 1200);
+  }
+  f0.fill(st(0), 62);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(90).fill(0.95),
+    hopSec,
+    SA,
+    {
+      clean: true,
+      ornaments: true,
+      rms: new Float32Array(90).fill(0.5),
+    }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [0, -5, -3, 0]);
+  assert.strictEqual(tokens[1].fixedAnchorBend, true);
+
+  const uncertain = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(90).fill(0.75),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true }
+  );
+  assert.deepStrictEqual(uncertain.tokens.map((token) => token.k), [0, -8, -3, 0]);
+});
+
 test('notateRegions: restores stable turning notes inside broad neural regions', () => {
   const hopSec = 0.01;
   const regions = [

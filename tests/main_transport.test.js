@@ -12,3 +12,13 @@ test('Best analysis preserves original upload channels and invalidates mono cach
   assert.match(source, /const audio = state\.fileBytes \|\| encodeWav/);
   assert.match(source, /const hash = 'v7:' \+ await fileHash/);
 });
+
+test('canvas notes support persistent drag correction and undo', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../js/main.js'), 'utf8');
+
+  assert.match(source, /applyManualNoteEdits\(res\.tokens\)/);
+  assert.match(source, /mode: 'note'/);
+  assert.match(source, /applyManualTarget\(token, targetK\)/);
+  assert.match(source, /commitManualNoteEdit\(dragInfo\.tokenIndex, targetK\)/);
+  assert.match(source, /undoNoteBtn\.addEventListener\('click', undoManualNoteEdit\)/);
+});
