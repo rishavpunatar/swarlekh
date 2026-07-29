@@ -563,6 +563,69 @@ test('notateRegions: a brief entry overshoot cannot replace its longer return ta
   assert.strictEqual(tokens[1].entryPlateauSnap, undefined);
 });
 
+test('notateRegions: a late stable learned target beats an entry crossing', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.3, frequency: st(9) },
+    { onset: 0.3, offset: 0.86, frequency: st(12) },
+  ];
+  const cents = new Float32Array(86);
+  cents.fill(900, 0, 30);
+  for (let frame = 30; frame < 54; frame++) {
+    cents[frame] = 980 + (frame - 30) * 7;
+  }
+  cents.fill(1200, 54);
+  const f0 = Float32Array.from(
+    cents,
+    value => SA * Math.pow(2, value / 1200)
+  );
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(86).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [9, 12]);
+  assert.strictEqual(tokens[1].learnedK, 12);
+});
+
+test('notateRegions: a weak continuous overshoot is bend geometry, not notes', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.25, frequency: st(2) },
+    { onset: 0.25, offset: 0.58, frequency: st(4) },
+    { onset: 0.58, offset: 0.85, frequency: st(7) },
+  ];
+  const cents = new Float32Array(85);
+  cents.fill(200, 0, 25);
+  cents.set([
+    280, 370, 455, 535, 580, 565, 540, 510, 480, 450, 425, 410,
+    420, 445, 500, 580, 650,
+  ], 25);
+  cents.fill(700, 42);
+  const f0 = Float32Array.from(
+    cents,
+    value => SA * Math.pow(2, value / 1200)
+  );
+  const clarity = new Float32Array(85).fill(0.95);
+  clarity.fill(0.7, 28, 34);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [2, 4, 7]);
+});
+
 test('notateRegions: a compact U-bend keeps its fixed Pa anchor', () => {
   const hopSec = 0.01;
   const regions = [
@@ -941,6 +1004,43 @@ test('notateRegions: restores a plateau-confirmed multi-turn murki cluster', () 
   assert.ok(!recovered.some((token) => token.k === 1 || token.k === 3));
 });
 
+test('notateRegions: robust confidence preserves a fast compressed murki', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.28, frequency: st(4) },
+    { onset: 0.28, offset: 0.82, frequency: st(8) },
+    { onset: 0.82, offset: 1.1, frequency: st(12) },
+  ];
+  const cents = new Float32Array(110);
+  cents.fill(400, 0, 28);
+  cents.fill(900, 28, 40);
+  cents.fill(700, 40, 47);
+  cents.fill(900, 47, 67);
+  for (let frame = 67; frame < 82; frame++) {
+    cents[frame] = 930 + (frame - 67) * 18;
+  }
+  cents.fill(1200, 82);
+  const f0 = Float32Array.from(
+    cents,
+    value => SA * Math.pow(2, value / 1200)
+  );
+  const clarity = new Float32Array(110).fill(0.95);
+  clarity[31] = 0.86;
+  clarity[43] = 0.85;
+  clarity[52] = 0.87;
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+
+  assert.ok(tokens.some((token) => token.k === 7));
+});
+
 test('notateRegions: restores both outer notes of a compressed fast return', () => {
   const hopSec = 0.01;
   const regions = [
@@ -1012,6 +1112,37 @@ test('notateRegions: recurring vibrato inside one neural note is not split into 
 
   assert.strictEqual(tokens.length, 1);
   assert.ok(!tokens[0].rawLandmark);
+});
+
+test('repeated murki consensus keeps faster renditions on one target sequence', () => {
+  const motif = [11, 12, 9, 12, 11, 14, 12];
+  const make = (start, duration, pitches, raw) =>
+    pitches.map((k, index) => ({
+      t0: start + duration * index / pitches.length,
+      t1: start + duration * (index + 0.75) / pitches.length,
+      k,
+      cents: k * 100,
+      hybridOrnament: true,
+      rawMurkiCluster: raw,
+    }));
+  const tokens = [
+    ...make(0, 0.9, motif, false),
+    ...make(0.9, 0.75, [11, 12, 9, 11, 14, 12], true),
+    ...make(1.65, 0.65, [11, 12, 9, 10, 11, 12], true),
+  ];
+
+  const harmonized = DSP._internal.harmonizeRepeatedMurkiMotifs(tokens);
+  const sequences = [0, 0.9, 1.65].map((start, index) => {
+    const end = index < 2 ? [0.9, 1.65][index] : 2.35;
+    return harmonized
+      .filter((token) => token.t0 >= start - 1e-6 && token.t0 < end)
+      .map((token) => token.k);
+  });
+
+  assert.deepStrictEqual(sequences[0], motif);
+  assert.deepStrictEqual(sequences[1], motif);
+  assert.deepStrictEqual(sequences[2], motif);
+  assert.ok(harmonized.some((token) => token.repeatedMurkiConsensus));
 });
 
 test('notateRegions: recovers a stable target reached on a fading phrase tail', () => {
@@ -1247,6 +1378,30 @@ test('practice contour: a sparse glide path is restored as note steps', () => {
     2
   );
   assert.ok(!segments.some((segment) => segment.kind === 'slide'));
+});
+
+test('display pitch range collapses octave rows that the song does not use', () => {
+  const oneOctave = DSP.displayPitchRange([
+    { t0: 0, t1: 0.4, k: 0, conf: 0.9 },
+    { t0: 0.4, t1: 0.8, k: 4, conf: 0.9 },
+    { t0: 0.8, t1: 1.2, k: 7, conf: 0.9 },
+    { t0: 1.2, t1: 1.6, k: 9, conf: 0.9 },
+  ]);
+  assert.deepStrictEqual(oneOctave.octaves, [0]);
+  assert.ok(oneOctave.hi - oneOctave.lo < 1200);
+
+  const twoOctaves = DSP.displayPitchRange([
+    { t0: 0, t1: 0.4, k: 4, conf: 0.9 },
+    { t0: 0.4, t1: 0.8, k: 12, conf: 0.9 },
+  ]);
+  assert.deepStrictEqual(twoOctaves.octaves, [0, 1]);
+
+  const withWeakOutlier = DSP.displayPitchRange([
+    { t0: 0, t1: 0.5, k: 2, conf: 0.9 },
+    { t0: 0.5, t1: 1, k: 7, conf: 0.9 },
+    { t0: 1, t1: 1.03, k: 19, conf: 0.3 },
+  ]);
+  assert.deepStrictEqual(withWeakOutlier.octaves, [0]);
 });
 
 test('practice contour: a vocal pause never bridges two notes', () => {

@@ -25,3 +25,13 @@ test('canvas notes support persistent drag correction and undo', () => {
   assert.match(source, /commitManualNoteEdit\(dragInfo\.tokenIndex, targetK\)/);
   assert.match(source, /undoNoteBtn\.addEventListener\('click', undoManualNoteEdit\)/);
 });
+
+test('canvas supports persistent missing-note insertion with regenerated lines', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../js/main.js'), 'utf8');
+
+  assert.match(source, /mode: 'add-note'/);
+  assert.match(source, /commitManualNoteInsertion\(preview\.t0, preview\.t1, preview\.k\)/);
+  assert.match(source, /type: 'insert'/);
+  assert.match(source, /manualAddition: true/);
+  assert.match(source, /DSP\.buildPracticeContour\(state\.tokens, out, hopSec\)/);
+});

@@ -1210,6 +1210,70 @@
   }
 
   /**
+   * Choose a singer-facing pitch range without reserving octave rows that the
+   * performance never uses. Weak micro-outliers are ignored, while recovered
+   * ornament targets and manual edits always remain visible.
+   */
+  function displayPitchRange(tokens, opts) {
+    opts = opts || {};
+    const minSpan = opts.minSpanSemitones != null
+      ? opts.minSpanSemitones
+      : 7;
+    const usable = (tokens || []).filter((token) => {
+      if (!Number.isFinite(token.k) ||
+          !Number.isFinite(token.t0) || !(token.t1 > token.t0)) {
+        return false;
+      }
+      if (token.manualAddition || token.manualCorrection ||
+          token.rawLandmark || token.hybridOrnament) {
+        return true;
+      }
+      const duration = token.t1 - token.t0;
+      return duration >= 0.06 &&
+        (!Number.isFinite(token.conf) || token.conf >= 0.55);
+    });
+    if (!usable.length) return { lo: -100, hi: 1200, octaves: [0] };
+
+    const ordered = usable.slice().sort((a, b) => a.k - b.k);
+    let weight = 0;
+    for (const token of ordered) {
+      weight += Math.max(0.04, token.t1 - token.t0);
+    }
+    let cumulative = 0;
+    let medianK = ordered[0].k;
+    for (const token of ordered) {
+      cumulative += Math.max(0.04, token.t1 - token.t0);
+      if (cumulative >= weight / 2) {
+        medianK = token.k;
+        break;
+      }
+    }
+
+    let minK = Infinity, maxK = -Infinity;
+    for (const token of usable) {
+      minK = Math.min(minK, token.k);
+      maxK = Math.max(maxK, token.k);
+    }
+    const nearestSa = Math.round(medianK / 12) * 12;
+    minK = Math.min(minK, nearestSa);
+    maxK = Math.max(maxK, nearestSa);
+    let loK = minK - 1;
+    let hiK = maxK + 1;
+    if (hiK - loK < minSpan) {
+      const missing = minSpan - (hiK - loK);
+      loK -= Math.floor(missing / 2);
+      hiK += Math.ceil(missing / 2);
+    }
+    const octaves = [];
+    for (let octave = Math.floor(minK / 12);
+      octave <= Math.floor(maxK / 12);
+      octave++) {
+      octaves.push(octave);
+    }
+    return { lo: loK * 100, hi: hiK * 100, octaves };
+  }
+
+  /**
    * Quantize an f0 track to swara tokens relative to saHz.
    *
    * opts: clarityThresh (0..1), minNoteMs (stable-note threshold),
@@ -1616,12 +1680,14 @@
       // tracker glitches. A one-semitone hook just outside two adjacent targets
       // is transition geometry, so it belongs in the bend rather than as a note.
       const implausibleSpike = duration <= 0.10 && totalLeap >= 7;
+      const weakExtreme = duration <= 0.08 &&
+        Number.isFinite(token.conf) && token.conf < 0.78;
       const classicNeighborTurn = previous.k === next.k && duration >= 0.065;
       const adjacentHook = duration <= 0.14 && neighborSpan <= 2 &&
         outside === 1 && !classicNeighborTurn;
       if (duration >= 0.025 && duration <= maxTurnSec &&
           leftGap <= maxNeighborGapSec && rightGap <= maxNeighborGapSec &&
-          reverses && !implausibleSpike && !adjacentHook &&
+          reverses && !implausibleSpike && !weakExtreme && !adjacentHook &&
           !existingHit(token) && !wasSuppressed(token)) {
         missingTurns.push(i);
       }
@@ -1934,18 +2000,13 @@
    * needs either multiple varied reversals or one compact return, plus a broad
    * non-andolan neural region that independently proves model compression.
    */
-  function fuseRawMurkiClusters(tokens, f0, clarity, hopSec, saHz, thresh,
-    suppressedTurns) {
+  function fuseRawMurkiClusters(tokens, f0, clarity, hopSec, saHz, thresh) {
     if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
     const runs = rawPitchRuns(f0, clarity, hopSec, saHz, thresh);
-    const wasSuppressed = (candidate) => (suppressedTurns || []).some((turn) =>
-      turn.k === candidate.k &&
-      Math.min(turn.t1, candidate.t1) - Math.max(turn.t0, candidate.t0) >= 0.02
-    );
     const landings = [];
     for (const run of runs) {
       const duration = (run.end - run.start) * hopSec;
-      if (duration < 0.045 || duration > 0.32) continue;
+      if (duration < 0.04 || duration > 0.32) continue;
       const sorted = run.values.slice().sort((a, b) => a - b);
       const median = sorted[sorted.length >> 1];
       if (Math.abs(median - run.k * 100) > 34) continue;
@@ -1966,9 +2027,18 @@
         t0: run.start * hopSec,
         t1: run.end * hopSec,
         k: run.k,
-        minClarity: Math.min(...run.confidences),
       };
-      candidate.suppressed = wasSuppressed(candidate);
+      const sortedClarity = run.confidences.slice().sort((a, b) => a - b);
+      candidate.clarityFloor = sortedClarity[
+        Math.floor((sortedClarity.length - 1) * 0.2)
+      ];
+      candidate.clarityMedian = sortedClarity[
+        Math.floor(sortedClarity.length / 2)
+      ];
+      if (candidate.clarityFloor < Math.max(0.84, thresh) ||
+          candidate.clarityMedian < Math.max(0.90, thresh)) {
+        continue;
+      }
       landings.push(candidate);
     }
     if (landings.length < 3) return tokens;
@@ -1978,7 +2048,7 @@
       const chain = chains[chains.length - 1];
       const previous = chain && chain[chain.length - 1];
       if (previous &&
-          landing.t0 - previous.t1 <= 0.10 &&
+          landing.t0 - previous.t1 <= 0.15 &&
           Math.abs(landing.k - previous.k) <= 6) {
         chain.push(landing);
       } else {
@@ -2004,7 +2074,11 @@
         const first = turn - 1;
         const last = turn + 1;
         const previous = components[components.length - 1];
-        if (previous && first <= previous.last + 1) {
+        const mergedSpan = previous
+          ? (chain[last].t0 + chain[last].t1) / 2 -
+            (chain[previous.first].t0 + chain[previous.first].t1) / 2
+          : 0;
+        if (previous && first <= previous.last + 1 && mergedSpan <= 0.95) {
           previous.last = Math.max(previous.last, last);
           previous.turns++;
         } else {
@@ -2018,29 +2092,18 @@
           component.turns === 1 &&
           sequence[0].k === sequence[2].k &&
           Math.abs(sequence[1].k - sequence[0].k) <= 2 &&
-          sequence.every((landing) => landing.t1 - landing.t0 <= 0.14);
+          sequence.every((landing) => landing.t1 - landing.t0 <= 0.24);
         const variedCluster = sequence.length >= 4 &&
           component.turns >= 2 &&
           new Set(sequence.map((landing) => landing.k)).size >= 3;
         if (!classicReturn && !variedCluster) continue;
-        // A cluster replaces several learned neural boundaries at once, so
-        // every proposed target must have unusually strong frame-level pitch
-        // evidence. One uncertain landing rejects the whole sequence.
-        const highConfidenceFloor = Math.max(0.90, thresh);
-        if (sequence.some((landing) =>
-          landing.minClarity < highConfidenceFloor)) {
-          continue;
-        }
-        if (classicReturn &&
-            sequence.some((landing) => landing.suppressed)) {
-          continue;
-        }
         const centers = sequence.map((landing) =>
           (landing.t0 + landing.t1) / 2
         );
-        if (centers[centers.length - 1] - centers[0] > 0.90) continue;
+        const sequenceSpan = centers[centers.length - 1] - centers[0];
+        if (sequenceSpan > (variedCluster ? 1.00 : 0.90)) continue;
         if (classicReturn &&
-            centers[centers.length - 1] - centers[0] > 0.24) {
+            sequenceSpan > 0.55) {
           continue;
         }
         const intervals = [];
@@ -2048,7 +2111,10 @@
           intervals.push(centers[index] - centers[index - 1]);
         }
         intervals.sort((a, b) => a - b);
-        if (intervals[intervals.length >> 1] > 0.18) continue;
+        if (intervals[intervals.length >> 1] >
+            (classicReturn ? 0.30 : 0.18)) {
+          continue;
+        }
 
         const start = sequence[0].t0;
         const end = sequence[sequence.length - 1].t1;
@@ -2138,6 +2204,148 @@
   }
 
   /**
+   * Keep repeated, time-compressed murkis structurally consistent. The same
+   * three-note entry must occur at least three times, and the first (usually
+   * slowest) rendition must expose a varied ornament sequence. Later renditions
+   * inherit those targets at normalized times; their own contour still decides
+   * whether each connector is a step, bend or meend.
+   */
+  function harmonizeRepeatedMurkiMotifs(tokens) {
+    if (!tokens || tokens.length < 12) return tokens || [];
+    const source = tokens.slice().sort((a, b) => a.t0 - b.t0);
+    const seedGroups = new Map();
+    for (let index = 0; index + 2 < source.length; index++) {
+      const seed = source.slice(index, index + 3);
+      const span = seed[2].t1 - seed[0].t0;
+      const connected = seed[1].t0 - seed[0].t1 <= 0.12 &&
+        seed[2].t0 - seed[1].t1 <= 0.12;
+      if (!connected || span > 0.48 ||
+          seed.some((token) => token.t1 - token.t0 > 0.30) ||
+          new Set(seed.map((token) => token.k)).size < 3) {
+        continue;
+      }
+      const key = seed.map((token) => token.k).join(',');
+      if (!seedGroups.has(key)) seedGroups.set(key, []);
+      seedGroups.get(key).push(index);
+    }
+
+    const candidates = [];
+    for (const indexes of seedGroups.values()) {
+      const spaced = [];
+      for (const index of indexes) {
+        const previous = spaced[spaced.length - 1];
+        if (previous == null ||
+            source[index].t0 - source[previous].t0 >= 0.35) {
+          spaced.push(index);
+        }
+      }
+      if (spaced.length < 3) continue;
+      for (let start = 0; start + 2 < spaced.length; start++) {
+        const group = spaced.slice(start, start + 3);
+        const starts = group.map((index) => source[index].t0);
+        const periods = [starts[1] - starts[0], starts[2] - starts[1]];
+        if (periods.some((period) => period < 0.35 || period > 1.60) ||
+            Math.max(...periods) / Math.min(...periods) > 1.45) {
+          continue;
+        }
+        candidates.push({ indexes: group, starts, periods });
+      }
+    }
+    if (!candidates.length) return source;
+
+    let result = source;
+    const used = [];
+    for (const candidate of candidates) {
+      const templateStart = candidate.starts[0];
+      const templateEnd = candidate.starts[1];
+      if (used.some((range) =>
+        templateStart < range.t1 && candidate.starts[2] > range.t0)) {
+        continue;
+      }
+      const template = source.filter((token) =>
+        token.t0 >= templateStart - 1e-6 &&
+        token.t0 < templateEnd - 1e-6
+      );
+      const uniqueTargets = new Set(template.map((token) => token.k));
+      let turns = 0;
+      for (let index = 1; index + 1 < template.length; index++) {
+        if ((template[index].k - template[index - 1].k) *
+            (template[index + 1].k - template[index].k) < 0) {
+          turns++;
+        }
+      }
+      const rawEvidence = source.some((token) =>
+        token.t0 >= templateStart &&
+        token.t0 < candidate.starts[2] + candidate.periods[1] &&
+        token.rawMurkiCluster
+      );
+      if (template.length < 6 || template.length > 12 ||
+          uniqueTargets.size < 3 || turns < 3 || !rawEvidence) {
+        continue;
+      }
+
+      for (let repeat = 1; repeat < 3; repeat++) {
+        const repeatStart = candidate.starts[repeat];
+        let repeatEnd = repeat < 2
+          ? candidate.starts[repeat + 1]
+          : repeatStart + candidate.periods[1];
+        if (repeat === 2) {
+          const expected = candidate.periods[1];
+          const finalK = template[template.length - 1].k;
+          const ending = source
+            .filter((token) =>
+              token.k === finalK &&
+              token.t1 >= repeatStart + expected * 0.55 &&
+              token.t1 <= repeatStart + expected * 1.25
+            )
+            .sort((a, b) =>
+              Math.abs((a.t1 - repeatStart) - expected) -
+              Math.abs((b.t1 - repeatStart) - expected)
+            )[0];
+          if (ending) repeatEnd = ending.t1;
+        }
+        if (repeatEnd - repeatStart < 0.30) continue;
+
+        const templateDuration = templateEnd - templateStart;
+        const repeatDuration = repeatEnd - repeatStart;
+        const replacements = template.map((token) => {
+          const t0 = repeatStart +
+            (token.t0 - templateStart) / templateDuration * repeatDuration;
+          const t1 = repeatStart +
+            (token.t1 - templateStart) / templateDuration * repeatDuration;
+          return Object.assign({}, token, {
+            t0,
+            t1: Math.max(t0 + 0.025, t1),
+            cents: token.k * 100,
+            hybridOrnament: true,
+            repeatedMurkiConsensus: true,
+          });
+        });
+        const preserved = [];
+        for (const token of result) {
+          if (token.t1 <= repeatStart || token.t0 >= repeatEnd) {
+            preserved.push(token);
+            continue;
+          }
+          if (token.t0 < repeatStart - 0.025) {
+            preserved.push(Object.assign({}, token, { t1: repeatStart }));
+          }
+          if (token.t1 > repeatEnd + 0.025) {
+            preserved.push(Object.assign({}, token, { t0: repeatEnd }));
+          }
+        }
+        result = preserved.concat(replacements)
+          .sort((a, b) => a.t0 - b.t0);
+      }
+      used.push({
+        t0: templateStart,
+        t1: candidate.starts[2] + candidate.periods[1],
+      });
+    }
+    return result;
+  }
+
+  /**
    * Convert singing-specific neural note regions to swara tokens. GAME already
    * supplies the primary boundaries. A conservative frame-level fusion restores
    * only stable turning notes that GAME hid inside a broad ornament region.
@@ -2181,6 +2389,7 @@
         t0,
         t1,
         k: Math.round(noteCents / 100),
+        learnedK: Math.round(noteCents / 100),
         cents: contour.length ? character.mean : noteCents,
         meend: !!character.meend,
         andolan: !!character.andolan,
@@ -2261,6 +2470,16 @@
           token.entryPlateauSnap = true;
           continue;
         }
+        const learnedReturn = frameTokens.some((frameToken) => {
+          if (frameToken.k !== token.learnedK ||
+              frameToken.t1 < token.t0 + 0.12) {
+            return false;
+          }
+          const overlap = Math.min(token.t1, frameToken.t1) -
+            Math.max(token.t0, frameToken.t0);
+          return overlap >= 0.09;
+        });
+        if (learnedReturn) continue;
         const startFrame = Math.max(0, Math.floor(token.t0 / hopSec));
         const endFrame = Math.min(
           f0 ? f0.length : 0,
@@ -2701,9 +2920,9 @@
         clarity,
         hopSec,
         saHz,
-        thresh,
-        suppressedTurns
+        thresh
       );
+      tokens = harmonizeRepeatedMurkiMotifs(tokens);
     }
 
     // If a phrase audibly fades onto a new swara, keep the last stable target
@@ -3486,10 +3705,16 @@
   }
 
   return {
-    preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets, detectTonic, notate, notateRegions, buildPracticeContour, notationText, analyzeRaga,
+    preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets,
+    detectTonic, notate, notateRegions, buildPracticeContour,
+    displayPitchRange, notationText, analyzeRaga,
+    regroupPhrases: groupPhrases,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     pitchShift, timeStretch, resampleLinear, formantCorrect,
     SWARA_LETTERS,
-    _internal: { biquadCoefs, applyBiquad, viterbiSelect, postProcess, VIT, YIN, isMeendChain },
+    _internal: {
+      biquadCoefs, applyBiquad, viterbiSelect, postProcess, VIT, YIN,
+      isMeendChain, harmonizeRepeatedMurkiMotifs,
+    },
   };
 }));

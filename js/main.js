@@ -15,7 +15,7 @@
     tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'),
     saAtPlayheadBtn: $('saAtPlayheadBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
-    undoNoteBtn: $('undoNoteBtn'),
+    addNoteBtn: $('addNoteBtn'), undoNoteBtn: $('undoNoteBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
     micBtn: $('micBtn'), micReadout: $('micReadout'),
@@ -43,7 +43,7 @@
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
     raga: null, highlightPc: null, ragaMatches: [], script: 'latin', rhythm: null,
     engine: 'yin', file: null,
-    manualEdits: [], noteEditHistory: [],
+    manualEdits: [], noteEditHistory: [], addNoteMode: false,
     opts: {
       clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45,
       onsetMinMs: 100, clean: true, onsets: [],
@@ -53,7 +53,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=62';
+  const WORKER_URL = 'js/worker.js?v=63';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -662,8 +662,12 @@
       : DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
     applyManualNoteEdits(res.tokens);
     state.tokens = res.tokens;
-    state.phrases = res.phrases;
-    state.raga = DSP.analyzeRaga(res.tokens, res.phrases);
+    state.phrases = DSP.regroupPhrases(
+      state.tokens,
+      opts.lineGapSec != null ? opts.lineGapSec : (opts.clean ? 1.0 : 0.6),
+      opts.clean === true
+    );
+    state.raga = DSP.analyzeRaga(state.tokens, state.phrases);
     state.ragaMatches = (state.raga && window.RagaId && window.RAGAS)
       ? RagaId.rankRagas(state.raga, RAGAS).filter((m) => m.score > 0.05).slice(0, 4) : [];
     computeScale();
@@ -694,6 +698,7 @@
     let best = null;
     for (let index = 0; index < state.manualEdits.length; index++) {
       const edit = state.manualEdits[index];
+      if (edit.type === 'insert') continue;
       const overlap = editOverlap(edit, token);
       const centerDistance = Math.abs(
         edit.time - (token.t0 + token.t1) / 2
@@ -723,6 +728,7 @@
 
   function applyManualNoteEdits(tokens) {
     for (const edit of state.manualEdits) {
+      if (edit.type === 'insert') continue;
       let best = null;
       for (const token of tokens) {
         const overlap = editOverlap(edit, token);
@@ -735,6 +741,32 @@
       }
       if (best) applyManualTarget(best.token, edit.k);
     }
+    for (const edit of state.manualEdits) {
+      if (edit.type !== 'insert') continue;
+      const preserved = [];
+      for (const token of tokens) {
+        if (token.t1 <= edit.t0 || token.t0 >= edit.t1) {
+          preserved.push(token);
+          continue;
+        }
+        if (edit.t0 - token.t0 >= 0.025) {
+          preserved.push(Object.assign({}, token, { t1: edit.t0 }));
+        }
+        if (token.t1 - edit.t1 >= 0.025) {
+          preserved.push(Object.assign({}, token, { t0: edit.t1 }));
+        }
+      }
+      preserved.push({
+        t0: edit.t0,
+        t1: edit.t1,
+        k: edit.k,
+        cents: edit.k * 100,
+        conf: 1,
+        manualAddition: true,
+        manualCorrection: true,
+      });
+      tokens.splice(0, tokens.length, ...preserved.sort((a, b) => a.t0 - b.t0));
+    }
   }
 
   function commitManualNoteEdit(tokenIndex, targetK) {
@@ -745,6 +777,7 @@
     );
     const match = matchingManualEdit(token);
     const edit = {
+      type: 'move',
       t0: token.t0,
       t1: token.t1,
       time: (token.t0 + token.t1) / 2,
@@ -763,15 +796,49 @@
     toast(`Note corrected to ${tokenGlyph(targetK)}.`);
   }
 
+  function commitManualNoteInsertion(t0, t1, k) {
+    const start = Math.max(0, Math.min(t0, t1));
+    const end = Math.min(
+      state.duration,
+      Math.max(start + 0.05, Math.max(t0, t1))
+    );
+    if (!(end > start)) return;
+    state.noteEditHistory.push(
+      state.manualEdits.map((edit) => Object.assign({}, edit))
+    );
+    state.manualEdits.push({
+      type: 'insert',
+      t0: start,
+      t1: end,
+      time: (start + end) / 2,
+      k,
+    });
+    updateUndoNoteButton();
+    renotateNow();
+    toast(`Added ${tokenGlyph(k)}.`);
+  }
+
   function undoManualNoteEdit() {
     if (!state.noteEditHistory.length) return;
     state.manualEdits = state.noteEditHistory.pop();
     updateUndoNoteButton();
     renotateNow();
-    toast('Note correction undone.');
+    toast('Note edit undone.');
   }
   if (els.undoNoteBtn) {
     els.undoNoteBtn.addEventListener('click', undoManualNoteEdit);
+  }
+  function setAddNoteMode(on) {
+    state.addNoteMode = !!on;
+    if (els.addNoteBtn) {
+      els.addNoteBtn.setAttribute('aria-pressed', String(state.addNoteMode));
+    }
+    cvs.style.cursor = state.addNoteMode ? 'crosshair' : '';
+  }
+  if (els.addNoteBtn) {
+    els.addNoteBtn.addEventListener('click', () => {
+      setAddNoteMode(!state.addNoteMode);
+    });
   }
 
   // Precompute contour cents once per analysis/Sa/threshold change. This track
@@ -819,14 +886,9 @@
   function renotate() { renotateNow(); }
 
   function computeCentsRange() {
-    if (!state.tokens.length) { state.centsLo = -700; state.centsHi = 1900; return; }
-    let lo = Infinity, hi = -Infinity;
-    for (const t of state.tokens) { if (t.k * 100 < lo) lo = t.k * 100; if (t.k * 100 > hi) hi = t.k * 100; }
-    lo = Math.min(lo, 0) - 200;
-    hi = Math.max(hi, 0) + 250;
-    if (hi - lo < 1200) { const pad = (1200 - (hi - lo)) / 2; lo -= pad; hi += pad; }
-    state.centsLo = Math.floor(lo / 100) * 100;
-    state.centsHi = Math.ceil(hi / 100) * 100;
+    const range = DSP.displayPitchRange(state.tokens);
+    state.centsLo = range.lo;
+    state.centsHi = range.hi;
   }
 
   const swLetter = (pc) => DSP.swaraInfo(((pc % 12) + 12) % 12).letter;
@@ -1863,7 +1925,7 @@
       cctx.fillStyle = isActive || emphasized ? colors.accent : colors.contour;
       cctx.globalAlpha = isActive || emphasized ? 1 : 0.8;
       cctx.beginPath(); cctx.arc(cx, cy, r, 0, 2 * Math.PI); cctx.fill();
-      if (tk.manualCorrection) {
+      if (tk.manualCorrection || tk.manualAddition) {
         cctx.strokeStyle = colors.accent;
         cctx.lineWidth = 1.5;
         cctx.globalAlpha = 0.9;
@@ -1892,7 +1954,7 @@
       const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
       const big = isActive || (tk.t1 - tk.t0) >= 0.28 ||
         !!(tk.hybridOrnament || tk.rawLandmark || tk.murki);
-      const col = isActive || tk.manualCorrection
+      const col = isActive || tk.manualCorrection || tk.manualAddition
         ? colors.accent
         : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
       labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);
@@ -2017,7 +2079,32 @@
     const rect = cvs.getBoundingClientRect();
     const y = e.clientY - rect.top, x = e.clientX - rect.left;
     const edge = loopEdgeAt(e.clientX);
-    if (edge) {
+    if (state.addNoteMode && y >= RULER && x > GUTTER) {
+      if (state.playing) pause();
+      const time = Math.max(0, Math.min(state.duration, xToT(e.clientX)));
+      const k = canvasYToK(e.clientY);
+      const preview = {
+        t0: Math.max(0, time - 0.09),
+        t1: Math.min(state.duration, time + 0.09),
+        k,
+        cents: k * 100,
+        conf: 1,
+        manualAddition: true,
+        manualCorrection: true,
+      };
+      dragInfo = {
+        mode: 'add-note',
+        anchorTime: time,
+        anchorX: e.clientX,
+        preview,
+        moved: false,
+      };
+      state.tokens.push(preview);
+      state.tokens.sort((a, b) => a.t0 - b.t0);
+      computeCentsRange();
+      computeSmoothedCents();
+      drawCanvas();
+    } else if (edge) {
       dragInfo = { mode: 'edge', edge, moved: false };
     } else if (y < RULER && x > GUTTER) {
       dragInfo = { mode: 'loop', t0: Math.max(0, Math.min(state.duration, xToT(e.clientX))),
@@ -2045,11 +2132,36 @@
   cvs.addEventListener('pointermove', (e) => {
     if (!dragInfo) {   // idle: cursor affordances so the ruler invites the drag
       const y = e.clientY - cvs.getBoundingClientRect().top;
-      cvs.style.cursor = loopEdgeAt(e.clientX)
+      cvs.style.cursor = state.addNoteMode && y >= RULER
+        ? 'crosshair'
+        : (loopEdgeAt(e.clientX)
         ? 'ew-resize'
         : (y < RULER
           ? 'crosshair'
-          : (noteAt(e.clientX, e.clientY) >= 0 ? 'ns-resize' : ''));
+          : (noteAt(e.clientX, e.clientY) >= 0 ? 'ns-resize' : '')));
+      return;
+    }
+    if (dragInfo.mode === 'add-note') {
+      const currentTime = Math.max(
+        0,
+        Math.min(state.duration, xToT(e.clientX))
+      );
+      const horizontalDrag = Math.abs(e.clientX - dragInfo.anchorX) > 4;
+      dragInfo.moved = dragInfo.moved || horizontalDrag ||
+        canvasYToK(e.clientY) !== dragInfo.preview.k;
+      if (horizontalDrag) {
+        dragInfo.preview.t0 = Math.min(dragInfo.anchorTime, currentTime);
+        dragInfo.preview.t1 = Math.max(
+          dragInfo.preview.t0 + 0.05,
+          Math.max(dragInfo.anchorTime, currentTime)
+        );
+      }
+      dragInfo.preview.k = canvasYToK(e.clientY);
+      dragInfo.preview.cents = dragInfo.preview.k * 100;
+      state.tokens.sort((a, b) => a.t0 - b.t0);
+      computeCentsRange();
+      computeSmoothedCents();
+      drawCanvas();
       return;
     }
     if (dragInfo.mode === 'note') {
@@ -2088,7 +2200,13 @@
   });
   cvs.addEventListener('pointerup', (e) => {
     if (dragInfo) {
-      if (dragInfo.mode === 'note') {
+      if (dragInfo.mode === 'add-note') {
+        const preview = dragInfo.preview;
+        const index = state.tokens.indexOf(preview);
+        if (index >= 0) state.tokens.splice(index, 1);
+        commitManualNoteInsertion(preview.t0, preview.t1, preview.k);
+        cvs.style.cursor = 'crosshair';
+      } else if (dragInfo.mode === 'note') {
         const token = state.tokens[dragInfo.tokenIndex];
         const midpoint = (dragInfo.original.t0 + dragInfo.original.t1) / 2;
         const targetK = dragInfo.targetK;
@@ -2118,14 +2236,18 @@
     dragInfo = null;
   });
   cvs.addEventListener('pointercancel', () => {
-    if (dragInfo && dragInfo.mode === 'note') {
+    if (dragInfo && dragInfo.mode === 'add-note') {
+      const index = state.tokens.indexOf(dragInfo.preview);
+      if (index >= 0) state.tokens.splice(index, 1);
+      renotateNow();
+    } else if (dragInfo && dragInfo.mode === 'note') {
       const token = state.tokens[dragInfo.tokenIndex];
       if (token) restoreDraggedToken(token, dragInfo.original);
       computeSmoothedCents();
       drawCanvas();
     }
     dragInfo = null;
-    cvs.style.cursor = '';
+    cvs.style.cursor = state.addNoteMode ? 'crosshair' : '';
   });
   cvs.addEventListener('dblclick', (e) => {
     if (e.clientY - cvs.getBoundingClientRect().top < RULER) clearLoop();
@@ -2174,12 +2296,14 @@
     else if (e.key === 'l' || e.key === 'L') clearLoop();
     else if (e.key === ',') stepPhrase(-1);
     else if (e.key === '.') stepPhrase(1);
+    else if (e.key === 'Escape' && state.addNoteMode) setAddNoteMode(false);
   });
 
   /* test/debug hook */
   window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive,
     _loopPhrase: loopPhrase, _stepPhrase: stepPhrase, _startRamp: startRamp, _rampStep: rampStep,
-    _editNote: commitManualNoteEdit, _undoNoteEdit: undoManualNoteEdit,
+    _editNote: commitManualNoteEdit, _addNote: commitManualNoteInsertion,
+    _undoNoteEdit: undoManualNoteEdit,
     _renderRhythm: renderRhythm,
     _mic: {
       start: startMic, stop: stopMic, tick: micTick,
