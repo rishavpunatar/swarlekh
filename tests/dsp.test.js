@@ -1044,6 +1044,35 @@ test('practice contour: a fast murki stays as distinct note targets', () => {
   assert.ok(!segments.some((segment) => segment.kind === 'slide'));
 });
 
+test('practice contour: bend-linked hybrid murki keeps readable target landings', () => {
+  const tokens = [
+    { t0: 0, t1: 0.51, k: 12 },
+    { t0: 0.51, t1: 1.02, k: 9, hybridOrnament: true, meendFromPrev: true },
+    { t0: 1.02, t1: 1.11, k: 7, hybridOrnament: true, meendFromPrev: true },
+    { t0: 1.14, t1: 1.34, k: 9, hybridOrnament: true, meendFromPrev: true },
+    { t0: 1.34, t1: 1.71, k: 12, meendFromPrev: true },
+  ];
+  const segments = DSP.buildPracticeContour(
+    tokens,
+    new Float32Array(180).fill(NaN),
+    0.01
+  );
+  const holds = segments.filter((segment) => segment.kind === 'hold');
+  const center = holds.find((segment) => segment.c0 === 700);
+  const returnNote = holds.find((segment) =>
+    segment.c0 === 900 && segment.t0 >= 1.1
+  );
+
+  assert.ok(center && center.t1 - center.t0 >= 0.059,
+    'the 90 ms turning note needs a visible flat target');
+  assert.ok(returnNote && returnNote.t1 - returnNote.t0 >= 0.109,
+    'the return note must remain distinct between its two bends');
+  assert.strictEqual(
+    segments.filter((segment) => segment.kind === 'slide').length,
+    4
+  );
+});
+
 test('notationText: renders timestamps and sustain dashes', () => {
   const phrases = [{
     t0: 62.2, t1: 64,

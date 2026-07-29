@@ -51,7 +51,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=56';
+  const WORKER_URL = 'js/worker.js?v=57';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -1748,17 +1748,25 @@
       // intonation remains in the analysis panel instead of making the practice
       // instruction look out of tune.
       const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
+      const fastTarget = !!(tk.hybridOrnament || tk.rawLandmark || tk.murki);
       const held = dur >= 0.28;
-      const r = isActive ? 6 : (held ? 4.5 : 3);
+      const emphasized = held || fastTarget;
+      const r = isActive ? 6 : (emphasized ? 4.5 : 3);
       if (isActive) { cctx.fillStyle = colors.accentSoft; cctx.beginPath(); cctx.arc(cx, cy, r + 5, 0, 2 * Math.PI); cctx.fill(); }
-      cctx.fillStyle = isActive || held ? colors.accent : colors.contour;
-      cctx.globalAlpha = isActive || held ? 1 : 0.8;
+      cctx.fillStyle = isActive || emphasized ? colors.accent : colors.contour;
+      cctx.globalAlpha = isActive || emphasized ? 1 : 0.8;
       cctx.beginPath(); cctx.arc(cx, cy, r, 0, 2 * Math.PI); cctx.fill();
       cctx.globalAlpha = 1;
     }
 
     // Pass 2 — names, important notes first so they always win a lane.
-    const prio = (ti) => { const t = state.tokens[ti]; return ti === activeTokIdx ? 3 : (t.t1 - t.t0) >= 0.28 ? 2 : isGlide(t) || t.andolan ? 1.5 : 1; };
+    const prio = (ti) => {
+      const t = state.tokens[ti];
+      if (ti === activeTokIdx) return 3;
+      if (t.hybridOrnament || t.rawLandmark || t.murki) return 2.5;
+      if ((t.t1 - t.t0) >= 0.28) return 2;
+      return isGlide(t) || t.andolan ? 1.5 : 1;
+    };
     for (const ti of vis.slice().sort((a, b) => prio(b) - prio(a) || state.tokens[a].t0 - state.tokens[b].t0)) {
       const tk = state.tokens[ti];
       const isActive = ti === activeTokIdx;
@@ -1769,7 +1777,8 @@
         continue;
       }
       const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
-      const big = isActive || (tk.t1 - tk.t0) >= 0.28;
+      const big = isActive || (tk.t1 - tk.t0) >= 0.28 ||
+        !!(tk.hybridOrnament || tk.rawLandmark || tk.murki);
       const col = isActive ? colors.accent : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
       labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);
     }
