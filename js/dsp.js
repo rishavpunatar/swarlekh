@@ -1843,6 +1843,111 @@
   }
 
   /**
+   * Restore a soft phrase entry that GAME omitted even though the vocal pitch
+   * tracker heard a stable note growing out of silence. The independent vocal
+   * onset, quiet lead-in, rising energy and robust periodicity are all required;
+   * a steady accompaniment residual therefore cannot create a note by itself.
+   */
+  function fuseSoftSwellEntries(tokens, frameTokens, clarity, rms, hopSec,
+    onsets, thresh) {
+    if (!frameTokens.length || !clarity || !rms || !(hopSec > 0) ||
+        !onsets || !onsets.length) {
+      return tokens;
+    }
+    const onsetTimes = onsets
+      .map((frame) => Number(frame) * hopSec)
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    if (!onsetTimes.length) return tokens;
+
+    const windowQuantile = (values, t0, t1, quantile) => {
+      const start = Math.max(0, Math.floor(t0 / hopSec));
+      const end = Math.min(values.length, Math.ceil(t1 / hopSec));
+      const selected = [];
+      for (let frame = start; frame < end; frame++) {
+        const value = Number(values[frame]);
+        if (Number.isFinite(value) && value >= 0) selected.push(value);
+      }
+      if (!selected.length) return 0;
+      selected.sort((a, b) => a - b);
+      return selected[
+        Math.floor((selected.length - 1) * quantile)
+      ];
+    };
+
+    const recovered = [];
+    for (const candidate of frameTokens) {
+      const duration = candidate.t1 - candidate.t0;
+      if (duration < 0.28 || duration > 4.5 ||
+          candidate.glide || candidate.meend || candidate.andolan ||
+          !Number.isFinite(candidate.conf) ||
+          candidate.conf < Math.max(0.86, thresh + 0.20)) {
+        continue;
+      }
+      let represented = 0;
+      for (const token of tokens) {
+        represented += Math.max(
+          0,
+          Math.min(token.t1, candidate.t1) -
+            Math.max(token.t0, candidate.t0)
+        );
+      }
+      if (represented >= Math.min(0.06, duration * 0.15)) continue;
+
+      let vocalOnset = null;
+      for (const onset of onsetTimes) {
+        if (onset < candidate.t0 - 0.18) continue;
+        if (onset > candidate.t0 + 0.08) break;
+        if (vocalOnset == null ||
+            Math.abs(onset - candidate.t0) <
+              Math.abs(vocalOnset - candidate.t0)) {
+          vocalOnset = onset;
+        }
+      }
+      if (vocalOnset == null) continue;
+
+      const earlyEnd = candidate.t0 + Math.min(0.30, duration * 0.28);
+      const bodyEnd = Math.min(
+        candidate.t1,
+        candidate.t0 + Math.max(0.65, Math.min(1.25, duration * 0.75))
+      );
+      const beforeLevel = windowQuantile(
+        rms,
+        vocalOnset - 0.16,
+        vocalOnset,
+        0.50
+      );
+      const entryLevel = windowQuantile(
+        rms,
+        candidate.t0,
+        earlyEnd,
+        0.50
+      );
+      const bodyLevel = windowQuantile(rms, earlyEnd, bodyEnd, 0.75);
+      const clarityFloor = windowQuantile(
+        clarity,
+        candidate.t0,
+        candidate.t1,
+        0.20
+      );
+      if (!(entryLevel > 0) ||
+          beforeLevel > entryLevel * 0.35 ||
+          bodyLevel < entryLevel * 1.20 ||
+          clarityFloor < Math.max(0.82, thresh + 0.20)) {
+        continue;
+      }
+
+      recovered.push(Object.assign({}, candidate, {
+        cents: candidate.k * 100,
+        hybridRecovery: true,
+        softSwellEntry: true,
+      }));
+    }
+    if (!recovered.length) return tokens;
+    return tokens.concat(recovered).sort((a, b) => a.t0 - b.t0);
+  }
+
+  /**
    * Split a broad destination region when its entrance contains a deliberate,
    * stable plateau several swaras away from the learned destination. Straight
    * monotonic crossings fail the endpoint-drift and centred-frame tests.
@@ -3341,6 +3446,18 @@
         thresh
       );
       tokens = harmonizeRepeatedMurkiMotifs(tokens);
+    }
+
+    if (clean && frameTokens.length && clarity && rms && hopSec > 0) {
+      tokens = fuseSoftSwellEntries(
+        tokens,
+        frameTokens,
+        clarity,
+        rms,
+        hopSec,
+        opts.onsets,
+        thresh
+      );
     }
 
     // If a phrase audibly fades onto a new swara, keep the last stable target
