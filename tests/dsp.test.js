@@ -1114,6 +1114,136 @@ test('notateRegions: recurring vibrato inside one neural note is not split into 
   assert.ok(!tokens[0].rawLandmark);
 });
 
+test('notateRegions: restores one missing middle landing between broad return anchors', () => {
+  const hopSec = 0.01;
+  const f0 = new Float32Array(80).fill(st(9));
+  f0.fill(st(7), 30, 38);
+
+  const { tokens } = DSP.notateRegions(
+    [{ onset: 0, offset: 0.8, frequency: st(9) }],
+    f0,
+    new Float32Array(80).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true }
+  );
+
+  assert.deepStrictEqual(tokens.map((token) => token.k), [9, 7, 9]);
+  assert.ok(tokens[1].hybridOrnament);
+});
+
+test('notateRegions: repeated two-step extrema become murki targets, not vibrato', () => {
+  const hopSec = 0.01;
+  const f0 = new Float32Array(120).fill(st(14));
+  for (const start of [28, 53, 76]) {
+    f0.fill(st(13), start, start + 3);
+    f0.fill(st(12), start + 3, start + 7);
+    f0.fill(st(13), start + 7, start + 10);
+  }
+
+  const { tokens } = DSP.notateRegions(
+    [{ onset: 0, offset: 1.2, frequency: st(14) }],
+    f0,
+    new Float32Array(120).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true }
+  );
+
+  const extrema = tokens.filter((token) =>
+    token.k === 12 && (token.rawMurkiCluster || token.repeatedExtremumConsensus)
+  );
+  assert.strictEqual(extrema.length, 3);
+});
+
+test('notateRegions: a learned apex touched on both sides survives overshoot cleanup', () => {
+  const hopSec = 0.01;
+  const cents = new Float32Array(73).fill(900);
+  cents.set([
+    950, 1020, 1100, 1150, 1185, 1220, 1250, 1260,
+    1250, 1215, 1185, 1140, 1080, 1030, 1000,
+  ], 40);
+  cents.fill(1000, 55);
+  const f0 = Float32Array.from(
+    cents,
+    value => SA * Math.pow(2, value / 1200)
+  );
+
+  const { tokens } = DSP.notateRegions(
+    [
+      { onset: 0, offset: 0.4, frequency: st(9) },
+      { onset: 0.4, offset: 0.55, frequency: st(12) },
+      { onset: 0.55, offset: 0.73, frequency: st(10) },
+    ],
+    f0,
+    new Float32Array(73).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true }
+  );
+
+  assert.ok(tokens.some((token) => token.k === 12));
+});
+
+test('notateRegions: splits a stable entry landmark from a broad destination note', () => {
+  const hopSec = 0.01;
+  const f0 = new Float32Array(120).fill(st(12));
+  f0.fill(st(7), 0, 40);
+  f0.fill(st(9), 42, 57);
+
+  const { tokens } = DSP.notateRegions(
+    [
+      { onset: 0, offset: 0.4, frequency: st(7) },
+      { onset: 0.4, offset: 1.2, frequency: st(12) },
+    ],
+    f0,
+    new Float32Array(120).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true }
+  );
+
+  const entry = tokens.find((token) => token.compressedEntryLanding);
+  assert.ok(entry);
+  assert.strictEqual(entry.k, 9);
+  assert.ok(tokens.some((token) => token.k === 12 && token.t0 >= entry.t1));
+});
+
+test('notateRegions: rejects repeated low-energy accompaniment leakage in a vocal gap', () => {
+  const hopSec = 0.01;
+  const f0 = new Float32Array(600);
+  const clarity = new Float32Array(600);
+  const rms = new Float32Array(600);
+  const regions = [];
+  for (let index = 0; index < 12; index++) {
+    const onset = index * 0.3;
+    const offset = onset + 0.18;
+    const k = index % 2 ? 4 : 2;
+    regions.push({ onset, offset, frequency: st(k) });
+    f0.fill(st(k), Math.round(onset / hopSec), Math.round(offset / hopSec));
+    clarity.fill(0.95, Math.round(onset / hopSec), Math.round(offset / hopSec));
+    rms.fill(0.2, Math.round(onset / hopSec), Math.round(offset / hopSec));
+  }
+  for (const onset of [4.0, 4.6]) {
+    const offset = onset + 0.2;
+    regions.push({ onset, offset, frequency: st(7) });
+    f0.fill(st(7), Math.round(onset / hopSec), Math.round(offset / hopSec));
+    clarity.fill(0.95, Math.round(onset / hopSec), Math.round(offset / hopSec));
+    rms.fill(0.008, Math.round(onset / hopSec), Math.round(offset / hopSec));
+  }
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, rms }
+  );
+
+  assert.ok(!tokens.some((token) => token.t0 >= 3.9 && token.k === 7));
+});
+
 test('repeated murki consensus keeps faster renditions on one target sequence', () => {
   const motif = [11, 12, 9, 12, 11, 14, 12];
   const make = (start, duration, pitches, raw) =>
@@ -1415,6 +1545,57 @@ test('practice contour: a vocal pause never bridges two notes', () => {
   );
   assert.strictEqual(segments.length, 2);
   assert.ok(segments.every((segment) => segment.kind === 'hold'));
+});
+
+test('practice contour: manual connector modes override automatic geometry', () => {
+  const cents = new Float32Array(100);
+  cents.fill(0, 0, 50);
+  cents.fill(400, 50);
+  const bend = DSP.buildPracticeContour(
+    [
+      { t0: 0, t1: 0.5, k: 0, manualOutgoing: 'bend', manualOutgoingRevision: 1 },
+      { t0: 0.5, t1: 1, k: 4 },
+    ],
+    cents,
+    0.01
+  );
+  assert.ok(bend.some((segment) =>
+    segment.kind === 'slide' && segment.curve === 'bend' && segment.manual
+  ));
+
+  const none = DSP.buildPracticeContour(
+    [
+      { t0: 0, t1: 0.5, k: 0, manualOutgoing: 'none', manualOutgoingRevision: 2 },
+      { t0: 0.5, t1: 1, k: 4 },
+    ],
+    cents,
+    0.01
+  );
+  assert.ok(!none.some((segment) =>
+    segment.c0 === 0 && segment.c1 === 400 && segment.kind !== 'hold'
+  ));
+});
+
+test('practice contour: a free bend honors its pitch endpoint and length', () => {
+  const segments = DSP.buildPracticeContour(
+    [{
+      t0: 0,
+      t1: 0.5,
+      k: 4,
+      manualOutgoing: 'free',
+      manualOutgoingRevision: 1,
+      manualFreeTargetK: 9,
+      manualFreeDuration: 0.65,
+    }],
+    new Float32Array(100).fill(400),
+    0.01
+  );
+  const free = segments.find((segment) => segment.free);
+  assert.ok(free);
+  assert.strictEqual(free.curve, 'bend');
+  assert.strictEqual(free.c0, 400);
+  assert.strictEqual(free.c1, 900);
+  assert.ok(Math.abs(free.t1 - free.t0 - 0.65) < 1e-9);
 });
 
 test('practice contour: a fast murki stays as distinct note targets', () => {

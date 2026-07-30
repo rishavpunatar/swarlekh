@@ -9,7 +9,7 @@
   <title>SwarLekh — sargam notation from your recordings</title>
   <meta name="description" content="Upload a Hindustani vocal recording and get swara (sargam) notation. Runs entirely on your device — audio never leaves it.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=63">
+  <link rel="stylesheet" href="style.css?v=64">
 </head>
 <body>
   <header>
@@ -140,10 +140,38 @@
               <option value="detailed">Every nuance</option>
             </select>
           </label>
-          <button id="addNoteBtn" class="mini-btn" title="Add a missing note" aria-label="Add a missing note" aria-pressed="false">+</button>
+          <button id="addNoteBtn" class="mini-btn" title="Add a missing note" aria-label="Add a missing note" aria-pressed="false">&#9834;</button>
           <button id="undoNoteBtn" class="mini-btn" title="Undo the last note edit" aria-label="Undo the last note edit" hidden>&#8630;</button>
           <button id="zoomOutBtn" class="mini-btn" title="Zoom out">−</button>
           <button id="zoomInBtn" class="mini-btn" title="Zoom in">+</button>
+        </div>
+        <div id="connectorToolbar" class="connector-toolbar" hidden>
+          <strong id="selectedNoteLabel" class="selected-note-label"></strong>
+          <label class="ctl" title="Connector from the previous note into the selected note">Into
+            <select id="incomingConnector">
+              <option value="auto">Auto</option>
+              <option value="step">Step</option>
+              <option value="bend">Bend</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+          <label class="ctl" title="Connector from the selected note to the next note, or a free ending">Out
+            <select id="outgoingConnector">
+              <option value="auto">Auto</option>
+              <option value="step">Step</option>
+              <option value="bend">Bend</option>
+              <option value="free">Free bend</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+          <label id="freeTargetCtl" class="ctl" title="Pitch where the free bend ends" hidden>End
+            <select id="freeTarget"></select>
+          </label>
+          <label id="freeLengthCtl" class="ctl connector-length" title="Length of the free bend" hidden>Length
+            <input id="freeLength" type="range" min="0.05" max="2" step="0.05" value="0.4">
+            <output id="freeLengthValue" for="freeLength">0.40s</output>
+          </label>
+          <button id="closeConnectorBtn" class="mini-btn" title="Close connector controls" aria-label="Close connector controls">&times;</button>
         </div>
         <canvas id="contour"></canvas>
         <details class="legend-details">
@@ -213,9 +241,9 @@
   <div id="toast" hidden></div>
 
   <script src="js/fft.js?v=53"></script>
-  <script src="js/dsp.js?v=63"></script>
+  <script src="js/dsp.js?v=64"></script>
   <script src="js/ragas.js?v=53"></script>
   <script src="js/ragaId.js?v=53"></script>
-  <script src="js/main.js?v=63"></script>
+  <script src="js/main.js?v=64"></script>
 </body>
 </html>

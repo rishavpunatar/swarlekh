@@ -35,3 +35,18 @@ test('canvas supports persistent missing-note insertion with regenerated lines',
   assert.match(source, /manualAddition: true/);
   assert.match(source, /DSP\.buildPracticeContour\(state\.tokens, out, hopSec\)/);
 });
+
+test('selected notes support persistent incoming, outgoing, and free connectors', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../js/main.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.match(source, /type: 'connector'/);
+  assert.match(source, /manualIncoming = edit\.incoming/);
+  assert.match(source, /manualOutgoing = edit\.outgoing/);
+  assert.match(source, /commitManualConnectorEdit\('freeDuration'/);
+  assert.match(source, /noteEditHistory\.push/);
+  assert.match(html, /id="incomingConnector"/);
+  assert.match(html, /id="outgoingConnector"/);
+  assert.match(html, /id="freeLength"/);
+  assert.match(html, /id="addNoteBtn"[^>]*>&#9834;<\/button>/);
+});

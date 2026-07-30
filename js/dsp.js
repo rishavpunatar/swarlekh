@@ -1774,13 +1774,156 @@
   }
 
   /**
+   * Remove note regions that are characteristic of accompaniment leaking into
+   * an otherwise quiet vocal stem. A repeated residual tone must be both among
+   * the quietest events in a long recording and isolated from normal vocal
+   * energy; soft sung phrases with changing notes are left alone.
+   */
+  function rejectInstrumentalPitchLeakage(tokens, thresh) {
+    if (!tokens || !tokens.length) return tokens || [];
+    let result = tokens.filter((token) => {
+      const duration = token.t1 - token.t0;
+      return !(duration >= 1.0 &&
+        Number.isFinite(token.conf) &&
+        token.conf < Math.max(0.12, thresh * 0.30));
+    });
+    const reference = result
+      .filter((token) =>
+        token.t1 - token.t0 >= 0.08 &&
+        token.t1 - token.t0 <= 4.0 &&
+        Number.isFinite(token.loud) &&
+        Number.isFinite(token.conf) &&
+        token.conf >= Math.max(0.70, thresh)
+      )
+      .map((token) => token.loud)
+      .sort((a, b) => a - b);
+    if (reference.length < 12) return result;
+
+    const vocalFloor = reference[
+      Math.floor((reference.length - 1) * 0.20)
+    ];
+    const leakageCeiling = Math.max(1e-5, vocalFloor * 0.16);
+    const quiet = result
+      .map((token, index) => ({ token, index }))
+      .filter(({ token }) =>
+        token.t1 - token.t0 >= 0.08 &&
+        token.t1 - token.t0 <= 0.45 &&
+        token.conf >= 0.75 &&
+        token.loud <= leakageCeiling
+      );
+    const rejected = new Set();
+    for (let first = 0; first < quiet.length; first++) {
+      const group = [quiet[first]];
+      let previous = quiet[first].token;
+      for (let next = first + 1; next < quiet.length; next++) {
+        const candidate = quiet[next].token;
+        const gap = candidate.t0 - previous.t1;
+        if (candidate.t0 - quiet[first].token.t0 > 2.5) break;
+        if (candidate.k === quiet[first].token.k &&
+            gap >= 0.08 && gap <= 1.0 &&
+            Math.abs(candidate.cents - quiet[first].token.cents) <= 24) {
+          group.push(quiet[next]);
+          previous = candidate;
+        }
+      }
+      if (group.length < 2) continue;
+      const start = group[0].token.t0;
+      const end = group[group.length - 1].token.t1;
+      const nearbyVocal = result.some((token) =>
+        token.t1 > start - 0.15 &&
+        token.t0 < end + 0.15 &&
+        token.loud > leakageCeiling * 2.4 &&
+        token.k !== group[0].token.k
+      );
+      if (nearbyVocal) continue;
+      for (const item of group) rejected.add(item.index);
+    }
+    if (!rejected.size) return result;
+    return result.filter((token, index) => !rejected.has(index));
+  }
+
+  /**
+   * Split a broad destination region when its entrance contains a deliberate,
+   * stable plateau several swaras away from the learned destination. Straight
+   * monotonic crossings fail the endpoint-drift and centred-frame tests.
+   */
+  function fuseBroadEntryLandings(tokens, f0, clarity, hopSec, saHz, thresh) {
+    if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
+    const runs = rawPitchRuns(f0, clarity, hopSec, saHz, thresh);
+    const result = [];
+    for (const token of tokens) {
+      const duration = token.t1 - token.t0;
+      if (duration < 0.45) {
+        result.push(token);
+        continue;
+      }
+      let entry = null;
+      for (const run of runs) {
+        const runStart = run.start * hopSec;
+        const runEnd = run.end * hopSec;
+        const runDuration = runEnd - runStart;
+        const pitchDistance = Math.abs(run.k - token.k);
+        if (runStart < token.t0 - 0.015 ||
+            runStart > token.t0 + 0.09 ||
+            runEnd > token.t0 + 0.32 ||
+            runDuration < 0.10 || runDuration > 0.24 ||
+            pitchDistance < 2 || pitchDistance > 6 ||
+            Math.abs(run.values[run.values.length - 1] - run.values[0]) > 50) {
+          continue;
+        }
+        const centered = run.values.filter((cents) =>
+          Math.abs(cents - run.k * 100) <= 35
+        ).length * hopSec;
+        const sortedClarity = run.confidences.slice().sort((a, b) => a - b);
+        const clarityFloor = sortedClarity[
+          Math.floor((sortedClarity.length - 1) * 0.20)
+        ];
+        if (centered < 0.075 || clarityFloor < Math.max(0.86, thresh)) {
+          continue;
+        }
+        const targetReturn = runs.some((later) =>
+          later.k === token.k &&
+          later.start * hopSec >= runEnd &&
+          later.start * hopSec <= token.t0 + 0.55 &&
+          (later.end - later.start) * hopSec >= 0.18
+        );
+        if (!targetReturn) continue;
+        entry = { run, runStart, runEnd };
+        break;
+      }
+      if (!entry) {
+        result.push(token);
+        continue;
+      }
+      if (entry.runStart - token.t0 >= 0.09) {
+        result.push(Object.assign({}, token, { t1: entry.runStart }));
+      }
+      result.push({
+        t0: entry.runStart,
+        t1: entry.runEnd,
+        k: entry.run.k,
+        cents: entry.run.k * 100,
+        neural: true,
+        hybridOrnament: true,
+        rawLandmark: true,
+        compressedEntryLanding: true,
+      });
+      result.push(Object.assign({}, token, {
+        t0: entry.runEnd,
+        meendFromPrev: true,
+      }));
+    }
+    return result.sort((a, b) => a.t0 - b.t0);
+  }
+
+  /**
    * Recover a very short adjacent-neighbour turn (for example D-n-D) directly
    * from the raw contour when neural hysteresis has merged it into two same-note
    * regions. A nearby neural boundary is required as independent evidence, which
    * keeps ordinary vibrato from becoming a stream of one-semitone murki labels.
    */
   function fuseRawNeighborTurns(tokens, f0, clarity, hopSec, saHz, thresh,
-    suppressedTurns) {
+    suppressedTurns, onsets) {
     if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
     const runs = rawPitchRuns(f0, clarity, hopSec, saHz, thresh);
     const wasSuppressed = (candidate) => (suppressedTurns || []).some((turn) =>
@@ -1882,14 +2025,16 @@
       }
       const containedPlateau = containingAnchor &&
         duration >= 0.055 &&
-        duration <= 0.09 &&
+        duration <= 0.12 &&
         Math.abs(run.k - previous.k) === 1 &&
         bestPlateau * hopSec >= 0.045 &&
         Math.abs(landingMedian - run.k * 100) <= 22 &&
         anchorDuration >= 0.16 &&
-        leftAnchorDuration >= 0.08 &&
-        rightAnchorDuration >= 0.08 &&
-        nearbyMatchingTurns <= 1;
+        leftAnchorDuration >= 0.025 &&
+        rightAnchorDuration >= 0.025 &&
+        (nearbyMatchingTurns <= 1 || (onsets || []).some((time) =>
+          Math.abs(time * hopSec - center) <= 0.12
+        ));
       const existingHit = result.some((token) =>
         token.k === candidate.k &&
         Math.min(token.t1, candidate.t1) -
@@ -2078,7 +2223,7 @@
           ? (chain[last].t0 + chain[last].t1) / 2 -
             (chain[previous.first].t0 + chain[previous.first].t1) / 2
           : 0;
-        if (previous && first <= previous.last + 1 && mergedSpan <= 0.95) {
+        if (previous && first <= previous.last + 1 && mergedSpan <= 1.35) {
           previous.last = Math.max(previous.last, last);
           previous.turns++;
         } else {
@@ -2092,16 +2237,27 @@
           component.turns === 1 &&
           sequence[0].k === sequence[2].k &&
           Math.abs(sequence[1].k - sequence[0].k) <= 2 &&
-          sequence.every((landing) => landing.t1 - landing.t0 <= 0.24);
+          sequence[1].t1 - sequence[1].t0 <= 0.18 &&
+          sequence[0].t1 - sequence[0].t0 <= 0.45 &&
+          sequence[2].t1 - sequence[2].t0 <= 0.45;
         const variedCluster = sequence.length >= 4 &&
           component.turns >= 2 &&
           new Set(sequence.map((landing) => landing.k)).size >= 3;
-        if (!classicReturn && !variedCluster) continue;
+        const repeatedReturn = sequence.length >= 5 &&
+          component.turns >= 3 &&
+          new Set(sequence.map((landing) => landing.k)).size === 2 &&
+          Math.abs(sequence[1].k - sequence[0].k) >= 2 &&
+          sequence.every((landing, index) =>
+            index === 0 || landing.k !== sequence[index - 1].k
+          );
+        if (!classicReturn && !variedCluster && !repeatedReturn) continue;
         const centers = sequence.map((landing) =>
           (landing.t0 + landing.t1) / 2
         );
         const sequenceSpan = centers[centers.length - 1] - centers[0];
-        if (sequenceSpan > (variedCluster ? 1.00 : 0.90)) continue;
+        if (sequenceSpan > (repeatedReturn ? 1.30 : (variedCluster ? 1.00 : 0.90))) {
+          continue;
+        }
         if (classicReturn &&
             sequenceSpan > 0.55) {
           continue;
@@ -2112,7 +2268,7 @@
         }
         intervals.sort((a, b) => a - b);
         if (intervals[intervals.length >> 1] >
-            (classicReturn ? 0.30 : 0.18)) {
+            (classicReturn ? 0.30 : (repeatedReturn ? 0.22 : 0.18))) {
           continue;
         }
 
@@ -2144,7 +2300,27 @@
             (landing.t1 - landing.t0) * 0.4
           );
         }));
-        if (!missing.length || (classicReturn && missing.length < 2)) continue;
+        if (!missing.length) continue;
+        if (classicReturn && missing.length === 1) {
+          const middle = sequence[1];
+          if (!missing.includes(middle)) continue;
+          const representedFlank = (landing) => tokens.some((token) =>
+            token.k === landing.k &&
+            Math.min(token.t1, landing.t1) -
+              Math.max(token.t0, landing.t0) >= 0.025
+          );
+          if (!representedFlank(sequence[0]) ||
+              !representedFlank(sequence[2])) {
+            continue;
+          }
+          const conflictingTarget = tokens.some((token) =>
+            token.k !== middle.k &&
+            token.k !== sequence[0].k &&
+            Math.min(token.t1, middle.t1) -
+              Math.max(token.t0, middle.t0) >= 0.025
+          );
+          if (conflictingTarget) continue;
+        }
         recoveries.push(sequence);
       }
     }
@@ -2201,6 +2377,204 @@
       }
     }
     return joined;
+  }
+
+  function insertRawLandmark(tokens, candidate, flags) {
+    const existing = tokens.some((token) =>
+      token.k === candidate.k &&
+      Math.min(token.t1, candidate.t1) -
+        Math.max(token.t0, candidate.t0) >= 0.015
+    );
+    if (existing) return tokens;
+    const preserved = [];
+    for (const token of tokens) {
+      if (token.t1 <= candidate.t0 || token.t0 >= candidate.t1) {
+        preserved.push(token);
+        continue;
+      }
+      if (candidate.t0 - token.t0 >= 0.025) {
+        preserved.push(Object.assign({}, token, { t1: candidate.t0 }));
+      }
+      if (token.t1 - candidate.t1 >= 0.025) {
+        preserved.push(Object.assign({}, token, { t0: candidate.t1 }));
+      }
+    }
+    preserved.push(Object.assign({
+      t0: candidate.t0,
+      t1: candidate.t1,
+      k: candidate.k,
+      cents: candidate.k * 100,
+      hybridOrnament: true,
+      rawLandmark: true,
+    }, flags || {}));
+    return preserved.sort((a, b) => a.t0 - b.t0);
+  }
+
+  /**
+   * A rapidly repeated turn can make each extreme too short for the ordinary
+   * landing threshold. Three recurring, same-pitch reversals inside one broad
+   * neural note provide stronger evidence than any individual 20–40 ms touch.
+   * Requiring a two-semitone excursion keeps normal adjacent-note vibrato out.
+   */
+  function fuseRepeatedRawExtrema(tokens, f0, clarity, hopSec, saHz, thresh) {
+    if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
+    const runs = rawPitchRuns(f0, clarity, hopSec, saHz, thresh);
+    const extrema = [];
+    for (let index = 1; index + 1 < runs.length; index++) {
+      const previous = runs[index - 1];
+      const run = runs[index];
+      const next = runs[index + 1];
+      const duration = (run.end - run.start) * hopSec;
+      const connected = (run.start - previous.end) * hopSec <= 0.02 &&
+        (next.start - run.end) * hopSec <= 0.02;
+      const turning = (
+        run.k < previous.k && run.k < next.k
+      ) || (
+        run.k > previous.k && run.k > next.k
+      );
+      if (!connected || !turning || duration < 0.025 || duration > 0.11) {
+        continue;
+      }
+      const t0 = run.start * hopSec;
+      const t1 = run.end * hopSec;
+      const container = tokens.find((token) =>
+        !token.andolan &&
+        token.t1 - token.t0 >= 0.40 &&
+        token.t0 <= t0 - 0.015 &&
+        token.t1 >= t1 + 0.015 &&
+        Math.abs(token.k - run.k) >= 2 &&
+        Math.abs(token.k - run.k) <= 4
+      );
+      if (!container) continue;
+      const centered = run.values.filter((cents) =>
+        Math.abs(cents - run.k * 100) <= 35
+      ).length * hopSec;
+      const sortedClarity = run.confidences.slice().sort((a, b) => a - b);
+      const clarityFloor = sortedClarity[
+        Math.floor((sortedClarity.length - 1) * 0.20)
+      ];
+      if (centered + 1e-9 < 0.01 ||
+          clarityFloor < Math.max(0.88, thresh)) {
+        continue;
+      }
+      extrema.push({
+        t0,
+        t1,
+        k: run.k,
+        centered,
+        container,
+      });
+    }
+    let result = tokens.slice();
+    for (let first = 0; first < extrema.length; first++) {
+      const seed = extrema[first];
+      const group = extrema.filter((candidate) =>
+        candidate.container === seed.container &&
+        candidate.k === seed.k &&
+        candidate.t0 >= seed.t0 - 1e-9 &&
+        candidate.t1 - seed.t0 <= 1.35
+      );
+      const strong = group.filter((candidate) =>
+        candidate.centered + 1e-9 >= 0.02
+      );
+      if (group.length < 3 || strong.length < 2) continue;
+      let regular = true;
+      for (let index = 1; index < strong.length; index++) {
+        const interval = (
+          strong[index].t0 + strong[index].t1 -
+          strong[index - 1].t0 - strong[index - 1].t1
+        ) / 2;
+        if (interval < 0.10 || interval > 0.38) {
+          regular = false;
+          break;
+        }
+      }
+      if (!regular) continue;
+      for (const candidate of group) {
+        result = insertRawLandmark(result, candidate, {
+          rawMurkiCluster: true,
+          repeatedExtremumConsensus: true,
+        });
+      }
+      first += group.length - 1;
+    }
+    return result;
+  }
+
+  /**
+   * Preserve the reached pitch around one still-smaller inner traversal, such
+   * as r-S-N-S-r, even when the surrounding neural anchor is one semitone away.
+   * The two target plateaus are combined into one readable murki landmark.
+   */
+  function fuseNestedRawLandmarks(tokens, f0, clarity, hopSec, saHz, thresh) {
+    if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
+    const runs = rawPitchRuns(f0, clarity, hopSec, saHz, thresh);
+    let result = tokens.slice();
+    for (let first = 1; first + 3 < runs.length; first++) {
+      const sideIn = runs[first - 1];
+      const targetIn = runs[first];
+      const inner = runs[first + 1];
+      const targetOut = runs[first + 2];
+      const sideOut = runs[first + 3];
+      if (targetIn.k !== targetOut.k ||
+          sideIn.k !== sideOut.k ||
+          Math.abs(targetIn.k - sideIn.k) !== 1 ||
+          Math.abs(inner.k - targetIn.k) !== 1 ||
+          Math.sign(inner.k - targetIn.k) !==
+            Math.sign(targetIn.k - sideIn.k)) {
+        continue;
+      }
+      const parts = [targetIn, inner, targetOut];
+      let connected = true;
+      for (let index = 1; index < parts.length; index++) {
+        if ((parts[index].start - parts[index - 1].end) * hopSec > 0.02) {
+          connected = false;
+          break;
+        }
+      }
+      const t0 = targetIn.start * hopSec;
+      const t1 = targetOut.end * hopSec;
+      const span = t1 - t0;
+      const targetDuration = (
+        targetIn.end - targetIn.start +
+        targetOut.end - targetOut.start
+      ) * hopSec;
+      if (!connected || span < 0.06 || span > 0.14 ||
+          targetDuration < 0.045 ||
+          (targetIn.end - targetIn.start) * hopSec < 0.02 ||
+          (targetOut.end - targetOut.start) * hopSec < 0.02) {
+        continue;
+      }
+      const targetValues = targetIn.values.concat(targetOut.values);
+      const centered = targetValues.filter((cents) =>
+        Math.abs(cents - targetIn.k * 100) <= 40
+      ).length * hopSec;
+      const confidences = targetIn.confidences
+        .concat(inner.confidences, targetOut.confidences)
+        .sort((a, b) => a - b);
+      const clarityFloor = confidences[
+        Math.floor((confidences.length - 1) * 0.20)
+      ];
+      const containing = result.some((token) =>
+        !token.andolan &&
+        token.t1 - token.t0 >= 0.28 &&
+        token.t0 <= t0 - 0.025 &&
+        token.t1 >= t1 + 0.025 &&
+        Math.abs(token.k - sideIn.k) <= 1
+      );
+      if (!containing || centered < 0.025 ||
+          clarityFloor < Math.max(0.88, thresh)) {
+        continue;
+      }
+      result = insertRawLandmark(result, {
+        t0,
+        t1,
+        k: targetIn.k,
+      }, {
+        rawNestedLandmark: true,
+      });
+    }
+    return result;
   }
 
   /**
@@ -2408,6 +2782,9 @@
     }
 
     tokens.sort((a, b) => a.t0 - b.t0);
+    if (clean && rms && clarity) {
+      tokens = rejectInstrumentalPitchLeakage(tokens, thresh);
+    }
     let frameTokens = [];
     if (ornaments && f0 && clarity && hopSec > 0) {
       const frameOpts = Object.assign({}, opts, {
@@ -2678,6 +3055,20 @@
             token.t1 - token.t0 > 0.18 || path.length < 5) {
           continue;
         }
+        const centeredFrames = path.filter((cents) =>
+          Math.abs(cents - token.k * 100) <= 45
+        ).length;
+        const beyondTarget = token.k > next.k
+          ? Math.max(...path) - token.k * 100
+          : token.k * 100 - Math.min(...path);
+        const neuralLanding = token.neural &&
+          (!Number.isFinite(token.conf) || token.conf >= 0.76) &&
+          beyondTarget >= 35 &&
+          centeredFrames * hopSec + 1e-9 >= Math.min(
+            0.04,
+            (token.t1 - token.t0) * 0.28
+          );
+        if (neuralLanding) continue;
 
         let extreme = path[0], extremeIndex = 0;
         let pathMin = path[0], pathMax = path[0];
@@ -2771,6 +3162,16 @@
         tokens.splice(i, 1);
         i--;
       }
+    }
+    if (clean && f0 && clarity && hopSec > 0) {
+      tokens = fuseBroadEntryLandings(
+        tokens,
+        f0,
+        clarity,
+        hopSec,
+        saHz,
+        thresh
+      );
     }
     if (clean && f0 && clarity && hopSec > 0) {
       // A compact U-shaped bend can overshoot below Sa/Pa (or above it) for a
@@ -2912,9 +3313,26 @@
         hopSec,
         saHz,
         thresh,
-        suppressedTurns
+        suppressedTurns,
+        opts.onsets
       );
       tokens = fuseRawMurkiClusters(
+        tokens,
+        f0,
+        clarity,
+        hopSec,
+        saHz,
+        thresh
+      );
+      tokens = fuseRepeatedRawExtrema(
+        tokens,
+        f0,
+        clarity,
+        hopSec,
+        saHz,
+        thresh
+      );
+      tokens = fuseNestedRawLandmarks(
         tokens,
         f0,
         clarity,
@@ -3046,12 +3464,66 @@
       const left = source[index];
       const right = source[index + 1];
       const gap = right.t0 - left.t1;
-      if (gap > maxGapSec) continue;
-
       const c0 = exitCents(left);
       const c1 = entryCents(right);
       const boundary = (left.t1 + right.t0) / 2;
       const delta = Math.abs(c1 - c0);
+      const incomingMode = right.manualIncoming;
+      const outgoingMode = left.manualOutgoing;
+      const incomingRevision = right.manualIncomingRevision || 0;
+      const outgoingRevision = left.manualOutgoingRevision || 0;
+      let manualMode = null;
+      if (incomingMode && incomingMode !== 'auto') {
+        manualMode = {
+          mode: incomingMode,
+          revision: incomingRevision,
+        };
+      }
+      if (outgoingMode && outgoingMode !== 'auto' &&
+          (!manualMode || outgoingRevision >= manualMode.revision)) {
+        manualMode = {
+          mode: outgoingMode,
+          revision: outgoingRevision,
+        };
+      }
+      if (manualMode) {
+        if (manualMode.mode === 'none' || manualMode.mode === 'free') {
+          continue;
+        }
+        if (manualMode.mode === 'step' || delta < 50) {
+          transitions[index] = {
+            kind: delta < 50 ? 'hold' : 'step',
+            t0: boundary,
+            t1: boundary,
+            c0,
+            c1,
+            manual: true,
+          };
+          continue;
+        }
+        if (manualMode.mode === 'bend') {
+          const arm = Math.max(
+            0.035,
+            Math.min(
+              0.12,
+              (left.t1 - left.t0) * 0.45,
+              (right.t1 - right.t0) * 0.45
+            )
+          );
+          transitions[index] = {
+            kind: 'slide',
+            curve: 'bend',
+            t0: Math.max(left.t0, boundary - arm),
+            t1: Math.min(right.t1, boundary + arm),
+            c0,
+            c1,
+            manual: true,
+          };
+          continue;
+        }
+      }
+      if (gap > maxGapSec) continue;
+
       if (delta < 50) {
         if (gap > 0) {
           transitions[index] = {
@@ -3302,6 +3774,26 @@
         });
       }
       if (next) segments.push({ ...next, tokenIndex: index });
+      if (token.manualOutgoing === 'free') {
+        const freeDuration = Math.max(
+          0.05,
+          Math.min(2.0, Number(token.manualFreeDuration) || 0.4)
+        );
+        const targetK = Number.isFinite(token.manualFreeTargetK)
+          ? token.manualFreeTargetK
+          : token.k;
+        segments.push({
+          kind: 'slide',
+          curve: 'bend',
+          t0: token.t1,
+          t1: token.t1 + freeDuration,
+          c0: exitCents(token),
+          c1: targetK * 100,
+          tokenIndex: index,
+          manual: true,
+          free: true,
+        });
+      }
     }
     return segments;
   }

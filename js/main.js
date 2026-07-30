@@ -16,6 +16,14 @@
     saAtPlayheadBtn: $('saAtPlayheadBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
     addNoteBtn: $('addNoteBtn'), undoNoteBtn: $('undoNoteBtn'),
+    connectorToolbar: $('connectorToolbar'),
+    selectedNoteLabel: $('selectedNoteLabel'),
+    incomingConnector: $('incomingConnector'),
+    outgoingConnector: $('outgoingConnector'),
+    freeTargetCtl: $('freeTargetCtl'), freeTarget: $('freeTarget'),
+    freeLengthCtl: $('freeLengthCtl'), freeLength: $('freeLength'),
+    freeLengthValue: $('freeLengthValue'),
+    closeConnectorBtn: $('closeConnectorBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
     micBtn: $('micBtn'), micReadout: $('micReadout'),
@@ -44,6 +52,7 @@
     raga: null, highlightPc: null, ragaMatches: [], script: 'latin', rhythm: null,
     engine: 'yin', file: null,
     manualEdits: [], noteEditHistory: [], addNoteMode: false,
+    selectedNoteTime: null, noteEditRevision: 0,
     opts: {
       clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45,
       onsetMinMs: 100, clean: true, onsets: [],
@@ -53,7 +62,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=63';
+  const WORKER_URL = 'js/worker.js?v=64';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -673,6 +682,7 @@
     computeScale();
     computeCentsRange();
     computeSmoothedCents();
+    syncConnectorEditor();
     renderRaga();
     drawCanvas();
     updateStats();
@@ -687,18 +697,21 @@
   function clearManualNoteEdits() {
     state.manualEdits = [];
     state.noteEditHistory = [];
+    state.selectedNoteTime = null;
     updateUndoNoteButton();
+    syncConnectorEditor();
   }
 
   function editOverlap(edit, token) {
     return Math.min(edit.t1, token.t1) - Math.max(edit.t0, token.t0);
   }
 
-  function matchingManualEdit(token) {
+  function matchingManualEdit(token, type) {
     let best = null;
     for (let index = 0; index < state.manualEdits.length; index++) {
       const edit = state.manualEdits[index];
-      if (edit.type === 'insert') continue;
+      if (type && edit.type !== type) continue;
+      if (!type && edit.type === 'insert') continue;
       const overlap = editOverlap(edit, token);
       const centerDistance = Math.abs(
         edit.time - (token.t0 + token.t1) / 2
@@ -728,7 +741,7 @@
 
   function applyManualNoteEdits(tokens) {
     for (const edit of state.manualEdits) {
-      if (edit.type === 'insert') continue;
+      if (edit.type !== 'move') continue;
       let best = null;
       for (const token of tokens) {
         const overlap = editOverlap(edit, token);
@@ -767,15 +780,41 @@
       });
       tokens.splice(0, tokens.length, ...preserved.sort((a, b) => a.t0 - b.t0));
     }
+    for (const edit of state.manualEdits) {
+      if (edit.type !== 'connector') continue;
+      let best = null;
+      for (const token of tokens) {
+        const overlap = editOverlap(edit, token);
+        const centerDistance = Math.abs(
+          edit.time - (token.t0 + token.t1) / 2
+        );
+        if (overlap < 0.025 && centerDistance > 0.10) continue;
+        const score = overlap - centerDistance * 0.2;
+        if (!best || score > best.score) best = { token, score };
+      }
+      if (!best) continue;
+      best.token.manualIncoming = edit.incoming || 'auto';
+      best.token.manualOutgoing = edit.outgoing || 'auto';
+      best.token.manualIncomingRevision = edit.incomingRevision || 0;
+      best.token.manualOutgoingRevision = edit.outgoingRevision || 0;
+      best.token.manualFreeTargetK = Number.isFinite(edit.freeTargetK)
+        ? edit.freeTargetK
+        : best.token.k;
+      best.token.manualFreeDuration = Number.isFinite(edit.freeDuration)
+        ? edit.freeDuration
+        : 0.4;
+      best.token.manualConnector = true;
+    }
   }
 
   function commitManualNoteEdit(tokenIndex, targetK) {
     const token = state.tokens[tokenIndex];
     if (!token || targetK === token.k) return;
+    state.selectedNoteTime = (token.t0 + token.t1) / 2;
     state.noteEditHistory.push(
       state.manualEdits.map((edit) => Object.assign({}, edit))
     );
-    const match = matchingManualEdit(token);
+    const match = matchingManualEdit(token, 'move');
     const edit = {
       type: 'move',
       t0: token.t0,
@@ -813,9 +852,163 @@
       time: (start + end) / 2,
       k,
     });
+    state.selectedNoteTime = (start + end) / 2;
     updateUndoNoteButton();
     renotateNow();
     toast(`Added ${tokenGlyph(k)}.`);
+  }
+
+  function selectedTokenIndex() {
+    if (!Number.isFinite(state.selectedNoteTime) || !state.tokens.length) {
+      return -1;
+    }
+    let bestIndex = -1;
+    let bestDistance = Infinity;
+    for (let index = 0; index < state.tokens.length; index++) {
+      const token = state.tokens[index];
+      const center = (token.t0 + token.t1) / 2;
+      const contains = state.selectedNoteTime >= token.t0 - 0.025 &&
+        state.selectedNoteTime <= token.t1 + 0.025;
+      const distance = Math.abs(center - state.selectedNoteTime) -
+        (contains ? 0.2 : 0);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    }
+    return bestDistance <= 0.35 ? bestIndex : -1;
+  }
+
+  function selectNoteForConnectors(tokenIndex) {
+    const token = state.tokens[tokenIndex];
+    if (!token) return;
+    state.selectedNoteTime = (token.t0 + token.t1) / 2;
+    syncConnectorEditor();
+    drawCanvas();
+  }
+
+  function updateFreeConnectorControls(outgoing) {
+    const visible = outgoing === 'free';
+    if (els.freeTargetCtl) els.freeTargetCtl.hidden = !visible;
+    if (els.freeLengthCtl) els.freeLengthCtl.hidden = !visible;
+  }
+
+  function syncConnectorEditor() {
+    if (!els.connectorToolbar) return;
+    const tokenIndex = selectedTokenIndex();
+    const token = tokenIndex >= 0 ? state.tokens[tokenIndex] : null;
+    els.connectorToolbar.hidden = !token;
+    if (!token) return;
+
+    const editMatch = matchingManualEdit(token, 'connector');
+    const edit = editMatch && editMatch.edit;
+    const incoming = edit ? edit.incoming || 'auto' : 'auto';
+    const outgoing = edit ? edit.outgoing || 'auto' : 'auto';
+    const targetK = edit && Number.isFinite(edit.freeTargetK)
+      ? edit.freeTargetK
+      : token.k;
+    const duration = edit && Number.isFinite(edit.freeDuration)
+      ? edit.freeDuration
+      : 0.4;
+    els.selectedNoteLabel.textContent =
+      `${tokenGlyph(token.k)} ${fmtTime((token.t0 + token.t1) / 2)}`;
+    els.incomingConnector.value = incoming;
+    els.outgoingConnector.value = outgoing;
+
+    const lowK = Math.min(
+      token.k - 12,
+      Math.ceil(state.centsLo / 100)
+    );
+    const highK = Math.max(
+      token.k + 12,
+      Math.floor(state.centsHi / 100)
+    );
+    els.freeTarget.textContent = '';
+    for (let k = lowK; k <= highK; k++) {
+      const option = document.createElement('option');
+      option.value = String(k);
+      option.textContent = tokenGlyph(k);
+      els.freeTarget.appendChild(option);
+    }
+    els.freeTarget.value = String(targetK);
+    els.freeLength.value = String(duration);
+    els.freeLengthValue.value = `${duration.toFixed(2)}s`;
+    updateFreeConnectorControls(outgoing);
+  }
+
+  function commitManualConnectorEdit(field, value) {
+    const tokenIndex = selectedTokenIndex();
+    const token = tokenIndex >= 0 ? state.tokens[tokenIndex] : null;
+    if (!token) return;
+    const match = matchingManualEdit(token, 'connector');
+    const current = match
+      ? Object.assign({}, match.edit)
+      : {
+        type: 'connector',
+        t0: token.t0,
+        t1: token.t1,
+        time: (token.t0 + token.t1) / 2,
+        incoming: 'auto',
+        outgoing: 'auto',
+        freeTargetK: token.k,
+        freeDuration: 0.4,
+      };
+    if (current[field] === value) return;
+    state.noteEditHistory.push(
+      state.manualEdits.map((edit) => Object.assign({}, edit))
+    );
+    current[field] = value;
+    current.t0 = token.t0;
+    current.t1 = token.t1;
+    current.time = (token.t0 + token.t1) / 2;
+    if (field === 'incoming') {
+      current.incomingRevision = ++state.noteEditRevision;
+    } else if (field === 'outgoing') {
+      current.outgoingRevision = ++state.noteEditRevision;
+    }
+    const isDefault = current.incoming === 'auto' &&
+      current.outgoing === 'auto';
+    if (match && isDefault) {
+      state.manualEdits.splice(match.index, 1);
+    } else if (match) {
+      state.manualEdits[match.index] = current;
+    } else if (!isDefault) {
+      state.manualEdits.push(current);
+    }
+    state.selectedNoteTime = current.time;
+    updateUndoNoteButton();
+    renotateNow();
+  }
+
+  if (els.incomingConnector) {
+    els.incomingConnector.addEventListener('change', () => {
+      commitManualConnectorEdit('incoming', els.incomingConnector.value);
+    });
+  }
+  if (els.outgoingConnector) {
+    els.outgoingConnector.addEventListener('change', () => {
+      commitManualConnectorEdit('outgoing', els.outgoingConnector.value);
+    });
+  }
+  if (els.freeTarget) {
+    els.freeTarget.addEventListener('change', () => {
+      commitManualConnectorEdit('freeTargetK', Number(els.freeTarget.value));
+    });
+  }
+  if (els.freeLength) {
+    els.freeLength.addEventListener('input', () => {
+      els.freeLengthValue.value = `${Number(els.freeLength.value).toFixed(2)}s`;
+    });
+    els.freeLength.addEventListener('change', () => {
+      commitManualConnectorEdit('freeDuration', Number(els.freeLength.value));
+    });
+  }
+  if (els.closeConnectorBtn) {
+    els.closeConnectorBtn.addEventListener('click', () => {
+      state.selectedNoteTime = null;
+      syncConnectorEditor();
+      drawCanvas();
+    });
   }
 
   function undoManualNoteEdit() {
@@ -830,6 +1023,10 @@
   }
   function setAddNoteMode(on) {
     state.addNoteMode = !!on;
+    if (state.addNoteMode) {
+      state.selectedNoteTime = null;
+      syncConnectorEditor();
+    }
     if (els.addNoteBtn) {
       els.addNoteBtn.setAttribute('aria-pressed', String(state.addNoteMode));
     }
@@ -1882,11 +2079,13 @@
     // so each place it appears jumps out.
     const spotPc = state.highlightPc;
     const dimmed = (tk) => spotPc != null && ((tk.k % 12) + 12) % 12 !== spotPc;
+    const selectedIndex = selectedTokenIndex();
 
     // Pass 1 — dots & gesture bands: every note is marked, even where its name won't fit.
     for (const ti of vis) {
       const tk = state.tokens[ti];
       const isActive = ti === activeTokIdx;
+      const isSelected = ti === selectedIndex;
       if (dimmed(tk)) {   // spotlight mode: non-matching notes become faint specks
         cctx.fillStyle = colors.muted; cctx.globalAlpha = 0.25;
         cctx.beginPath();
@@ -1920,10 +2119,15 @@
       const fastTarget = !!(tk.hybridOrnament || tk.rawLandmark || tk.murki);
       const held = dur >= 0.28;
       const emphasized = held || fastTarget;
-      const r = isActive ? 6 : (emphasized ? 4.5 : 3);
-      if (isActive) { cctx.fillStyle = colors.accentSoft; cctx.beginPath(); cctx.arc(cx, cy, r + 5, 0, 2 * Math.PI); cctx.fill(); }
-      cctx.fillStyle = isActive || emphasized ? colors.accent : colors.contour;
-      cctx.globalAlpha = isActive || emphasized ? 1 : 0.8;
+      const r = isActive ? 6 : (isSelected ? 5 : (emphasized ? 4.5 : 3));
+      if (isActive || isSelected) {
+        cctx.fillStyle = colors.accentSoft;
+        cctx.beginPath();
+        cctx.arc(cx, cy, r + 5, 0, 2 * Math.PI);
+        cctx.fill();
+      }
+      cctx.fillStyle = isActive || isSelected || emphasized ? colors.accent : colors.contour;
+      cctx.globalAlpha = isActive || isSelected || emphasized ? 1 : 0.8;
       cctx.beginPath(); cctx.arc(cx, cy, r, 0, 2 * Math.PI); cctx.fill();
       if (tk.manualCorrection || tk.manualAddition) {
         cctx.strokeStyle = colors.accent;
@@ -1938,6 +2142,7 @@
     const prio = (ti) => {
       const t = state.tokens[ti];
       if (ti === activeTokIdx) return 3;
+      if (ti === selectedIndex) return 2.9;
       if (t.hybridOrnament || t.rawLandmark || t.murki) return 2.5;
       if ((t.t1 - t.t0) >= 0.28) return 2;
       return isGlide(t) || t.andolan ? 1.5 : 1;
@@ -1945,6 +2150,7 @@
     for (const ti of vis.slice().sort((a, b) => prio(b) - prio(a) || state.tokens[a].t0 - state.tokens[b].t0)) {
       const tk = state.tokens[ti];
       const isActive = ti === activeTokIdx;
+      const isSelected = ti === selectedIndex;
       if (dimmed(tk)) continue;   // spotlight mode: no labels on non-matching notes
       if (isGlide(tk)) {
         const vv = viaDisplay(tk.via);
@@ -1952,9 +2158,9 @@
         continue;
       }
       const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
-      const big = isActive || (tk.t1 - tk.t0) >= 0.28 ||
+      const big = isActive || isSelected || (tk.t1 - tk.t0) >= 0.28 ||
         !!(tk.hybridOrnament || tk.rawLandmark || tk.murki);
-      const col = isActive || tk.manualCorrection || tk.manualAddition
+      const col = isActive || isSelected || tk.manualCorrection || tk.manualAddition
         ? colors.accent
         : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
       labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);
@@ -2213,7 +2419,10 @@
         const changed = dragInfo.moved && targetK !== dragInfo.original.k;
         restoreDraggedToken(token, dragInfo.original);
         if (changed) commitManualNoteEdit(dragInfo.tokenIndex, targetK);
-        else seek(midpoint);
+        else {
+          selectNoteForConnectors(dragInfo.tokenIndex);
+          seek(midpoint);
+        }
         cvs.style.cursor = '';
       } else if (dragInfo.mode === 'loop') {
         // A sub-150 ms "loop" is just a click: restore what was there and seek.
@@ -2297,12 +2506,19 @@
     else if (e.key === ',') stepPhrase(-1);
     else if (e.key === '.') stepPhrase(1);
     else if (e.key === 'Escape' && state.addNoteMode) setAddNoteMode(false);
+    else if (e.key === 'Escape' && state.selectedNoteTime != null) {
+      state.selectedNoteTime = null;
+      syncConnectorEditor();
+      drawCanvas();
+    }
   });
 
   /* test/debug hook */
   window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive,
     _loopPhrase: loopPhrase, _stepPhrase: stepPhrase, _startRamp: startRamp, _rampStep: rampStep,
     _editNote: commitManualNoteEdit, _addNote: commitManualNoteInsertion,
+    _selectNote: selectNoteForConnectors,
+    _editConnector: commitManualConnectorEdit,
     _undoNoteEdit: undoManualNoteEdit,
     _renderRhythm: renderRhythm,
     _mic: {
