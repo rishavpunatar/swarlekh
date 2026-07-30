@@ -1275,6 +1275,88 @@ test('repeated murki consensus keeps faster renditions on one target sequence', 
   assert.ok(harmonized.some((token) => token.repeatedMurkiConsensus));
 });
 
+test('notateRegions: restores an onset-backed stable note that swells out of silence', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.4, frequency: st(2) },
+    { onset: 1.7, offset: 2.1, frequency: st(4) },
+  ];
+  const f0 = new Float32Array(220);
+  const clarity = new Float32Array(220);
+  const rms = new Float32Array(220).fill(0.003);
+  f0.fill(st(2), 0, 40);
+  clarity.fill(0.95, 0, 40);
+  rms.fill(0.2, 0, 40);
+  f0.fill(st(0), 60, 145);
+  clarity.fill(0.94, 60, 145);
+  for (let frame = 60; frame < 145; frame++) {
+    rms[frame] = 0.02 + 0.10 * (frame - 60) / 84;
+  }
+  f0.fill(st(4), 170, 210);
+  clarity.fill(0.95, 170, 210);
+  rms.fill(0.2, 170, 210);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    {
+      clean: true,
+      ornaments: true,
+      rms,
+      onsets: [55],
+    }
+  );
+  const recovered = tokens.find((token) =>
+    token.k === 0 && token.t0 >= 0.55 && token.t1 <= 1.5
+  );
+
+  assert.ok(recovered);
+  assert.strictEqual(recovered.softSwellEntry, true);
+  assert.strictEqual(recovered.hybridRecovery, true);
+});
+
+test('notateRegions: a flat residual cannot use the soft-swell recovery path', () => {
+  const hopSec = 0.01;
+  const regions = [
+    { onset: 0, offset: 0.4, frequency: st(2) },
+    { onset: 1.7, offset: 2.1, frequency: st(4) },
+  ];
+  const f0 = new Float32Array(220);
+  const clarity = new Float32Array(220);
+  const rms = new Float32Array(220).fill(0.003);
+  f0.fill(st(2), 0, 40);
+  clarity.fill(0.95, 0, 40);
+  rms.fill(0.2, 0, 40);
+  f0.fill(st(0), 60, 145);
+  clarity.fill(0.94, 60, 145);
+  rms.fill(0.02, 60, 145);
+  f0.fill(st(4), 170, 210);
+  clarity.fill(0.95, 170, 210);
+  rms.fill(0.2, 170, 210);
+
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    clarity,
+    hopSec,
+    SA,
+    {
+      clean: true,
+      ornaments: true,
+      rms,
+      onsets: [55],
+    }
+  );
+
+  assert.ok(!tokens.some((token) => token.softSwellEntry));
+  assert.ok(!tokens.some((token) =>
+    token.k === 0 && token.t0 >= 0.55 && token.t1 <= 1.5
+  ));
+});
+
 test('notateRegions: recovers a stable target reached on a fading phrase tail', () => {
   const hopSec = 0.01;
   const regions = [{ onset: 0, offset: 0.78, frequency: st(2) }];
