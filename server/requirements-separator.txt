@@ -1,0 +1,8 @@
+# Optional BS-RoFormer vocal separator, isolated in server/.venv-sep so its
+# dependencies never disturb the analysis server. Install with:
+#   uv venv server/.venv-sep --python 3.12
+#   uv pip install --python server/.venv-sep/bin/python -r server/requirements-separator.txt
+audio-separator==0.44.3
+numpy==2.4.6
+onnxruntime==1.27.0
+torch==2.13.0
