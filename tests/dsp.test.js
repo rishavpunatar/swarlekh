@@ -2600,3 +2600,31 @@ test('passing-tone gate: fast murki (G R G) survives, glide fragment does not sw
   const { tokens } = DSP.notate(f0, cl, hop, sa, { clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130, clarityThresh: 0.5 });
   assert.deepStrictEqual(tokens.map(t => t.k), [0, 4, 2, 4, 5], 'murki notes all surface');
 });
+
+test('notateRegions: vibrato on a held swara does not sprout murki notes', () => {
+  const hopSec = 0.01;
+  const frames = 120;
+  const regions = [{ onset: 0, offset: frames * hopSec, frequency: st(2) }];
+  // A held Re with a regular 6 Hz, ±85-cent vibrato: every peak quantizes to
+  // the neighbouring semitones, but it is one sung note, not a murki.
+  const f0 = new Float32Array(frames);
+  for (let frame = 0; frame < frames; frame++) {
+    const cents = 200 + 85 * Math.sin(2 * Math.PI * 6 * frame * hopSec);
+    f0[frame] = SA * Math.pow(2, cents / 1200);
+  }
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(frames).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+  assert.ok(!tokens.some((token) => token.hybridOrnament),
+    `vibrato produced ornament notes: ${tokens.map((t) => t.k).join(' ')}`);
+  const total = tokens.reduce((sum, token) => sum + token.t1 - token.t0, 0);
+  const onRe = tokens.filter((token) => token.k === 2)
+    .reduce((sum, token) => sum + token.t1 - token.t0, 0);
+  assert.ok(onRe / total >= 0.95,
+    `expected the held note to read as Re, got ${tokens.map((t) => t.k).join(' ')}`);
+});

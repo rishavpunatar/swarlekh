@@ -2829,6 +2829,109 @@
    * supplies the primary boundaries. A conservative frame-level fusion restores
    * only stable turning notes that GAME hid inside a broad ornament region.
    */
+  /**
+   * Vibrato is a periodic pitch oscillation around one held swara, not a murki.
+   * The raw-contour recovery passes cannot tell the two apart from a single
+   * excursion, so a quick inserted touch that sits inside a regular 4–10 Hz
+   * train of alternating extrema centred on its neighbouring note is folded
+   * back into that note. Sparse touches (fewer than two full cycles) and
+   * irregular murki runs keep their notes.
+   */
+  function vibratoTrainAround(f0, clarity, hopSec, saHz, thresh, tCenter) {
+    const hysteresis = 25;
+    const first = Math.max(0, Math.floor((tCenter - 0.45) / hopSec));
+    const last = Math.min(f0.length, Math.ceil((tCenter + 0.45) / hopSec));
+    const extrema = [];
+    let direction = 0, extreme = NaN, extremeIndex = -1;
+    for (let frame = first; frame < last; frame++) {
+      if (!(f0[frame] > 0) || clarity[frame] < thresh) {
+        // A voicing gap ends the train: vibrato rides one sustained tone.
+        if (frame * hopSec < tCenter) extrema.length = 0;
+        else break;
+        direction = 0;
+        extreme = NaN;
+        continue;
+      }
+      const cents = 1200 * Math.log2(f0[frame] / saHz);
+      if (Number.isNaN(extreme)) {
+        extreme = cents;
+        extremeIndex = frame;
+      } else if (direction >= 0 && cents < extreme - hysteresis) {
+        if (direction > 0) extrema.push({ t: extremeIndex * hopSec, cents: extreme });
+        direction = -1;
+        extreme = cents;
+        extremeIndex = frame;
+      } else if (direction <= 0 && cents > extreme + hysteresis) {
+        if (direction < 0) extrema.push({ t: extremeIndex * hopSec, cents: extreme });
+        direction = 1;
+        extreme = cents;
+        extremeIndex = frame;
+      } else if ((direction >= 0 && cents > extreme) ||
+          (direction <= 0 && cents < extreme)) {
+        extreme = cents;
+        extremeIndex = frame;
+      }
+    }
+    if (extrema.length < 5) return null;
+    const intervals = [];
+    const swings = [];
+    for (let i = 1; i < extrema.length; i++) {
+      intervals.push(extrema[i].t - extrema[i - 1].t);
+      swings.push(Math.abs(extrema[i].cents - extrema[i - 1].cents));
+    }
+    const mean = (values) => values.reduce((sum, value) => sum + value, 0) /
+      values.length;
+    const halfPeriod = mean(intervals);
+    const spread = Math.sqrt(mean(intervals.map((value) =>
+      (value - halfPeriod) * (value - halfPeriod))));
+    const swing = mean(swings);
+    if (halfPeriod < 0.05 || halfPeriod > 0.13 || spread / halfPeriod > 0.35 ||
+        swing > 180) {
+      return null;
+    }
+    return { center: mean(extrema.map((point) => point.cents)) };
+  }
+
+  function suppressVibratoOrnaments(tokens, f0, clarity, hopSec, saHz, thresh) {
+    if (!tokens.length || !f0 || !clarity || !(hopSec > 0)) return tokens;
+    // Relabel each quick inserted touch that rides a vibrato train back to the
+    // swara the train oscillates around …
+    let folded = false;
+    for (const token of tokens) {
+      if (!token.hybridOrnament || token.manualCorrection ||
+          token.t1 - token.t0 >= 0.16) {
+        continue;
+      }
+      const train = vibratoTrainAround(
+        f0, clarity, hopSec, saHz, thresh, (token.t0 + token.t1) / 2
+      );
+      if (!train || Math.abs(token.k * 100 - train.center) <= 40) continue;
+      token.k = Math.round(train.center / 100);
+      token.cents = train.center;
+      token.vibrato = true;
+      for (const flag of ['hybridOrnament', 'rawLandmark', 'rawMurkiCluster',
+        'nestedTurn', 'rawNestedLandmark', 'repeatedExtremumConsensus']) {
+        delete token[flag];
+      }
+      folded = true;
+    }
+    if (!folded) return tokens;
+    // … then merge it with the held note on either side.
+    const result = [];
+    for (const token of tokens) {
+      const previous = result[result.length - 1];
+      if (previous && previous.k === token.k && token.t0 - previous.t1 <= 0.06 &&
+          (previous.vibrato || token.vibrato) &&
+          !previous.manualCorrection && !token.manualCorrection) {
+        previous.t1 = Math.max(previous.t1, token.t1);
+        previous.vibrato = true;
+        continue;
+      }
+      result.push(token);
+    }
+    return result;
+  }
+
   function notateRegions(regions, f0, clarity, hopSec, saHz, opts) {
     opts = opts || {};
     const clean = opts.clean === true;
@@ -3458,6 +3561,9 @@
         opts.onsets,
         thresh
       );
+    }
+    if (ornaments && f0 && clarity && hopSec > 0) {
+      tokens = suppressVibratoOrnaments(tokens, f0, clarity, hopSec, saHz, thresh);
     }
 
     // If a phrase audibly fades onto a new swara, keep the last stable target
