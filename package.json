@@ -1,10 +1,11 @@
 {
   "name": "swarlekh",
   "version": "1.0.0",
-  "description": "Sargam notation from Hindustani vocal recordings — fully in-browser",
+  "description": "Sargam notation from Hindustani vocal recordings — on-device, with an optional local analysis server",
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "benchmark:app": "node evaluation/app-benchmark.js",
     "benchmark:download:vocadito": "bash evaluation/download-vocadito.sh",
     "benchmark:vocadito": "node evaluation/evaluate-vocadito.js",
     "benchmark:tune:vocadito": "node evaluation/evaluate-vocadito.js --tune",

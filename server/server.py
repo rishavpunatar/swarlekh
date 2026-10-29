@@ -219,6 +219,8 @@ class Job:
         process = self.process
         if process is not None and process.poll() is None:
             process.terminate()
+            # A separator still loading its model can ignore SIGTERM for a while.
+            threading.Timer(2.0, lambda: process.poll() is None and process.kill()).start()
 
     @property
     def progress(self):

@@ -3,6 +3,49 @@
 This directory keeps evaluation code and small result summaries in Git. Audio,
 annotations, and generated feature caches stay local under ignored directories.
 
+## App-level benchmark (runs in `npm test`)
+
+The other scripts below score model outputs. This one scores **what the app
+shows**: the Best engine's fused RMVPE/Praat pitch and GAME regions, passed
+through the same steps as the browser (gentle octave pass, tonic detection,
+`DSP.notateRegions` with the Clean preset). Those notes are compared with
+Vocadito's two human annotations.
+
+```sh
+node evaluation/app-benchmark.js            # all splits, human-readable
+node evaluation/app-benchmark.js --json
+SWARLEKH_DSP=path/to/other/dsp.js node evaluation/app-benchmark.js   # A/B a variant
+```
+
+It reads `fixtures/vocadito-best.json.gz` (500 KB, committed): the cached
+model outputs plus reference notes for all 40 tracks. No Python, audio or
+model weights are needed, so it runs in CI. Rebuild the fixture after
+re-extracting the caches with `node evaluation/build-app-fixture.js`.
+`tests/app-benchmark.test.js` enforces floors so a change that lowers the
+shown-note F1 fails the suite.
+
+Reading the numbers (all 40 tracks, onset + pitch F1):
+
+| Pipeline | F1 |
+| --- | ---: |
+| GAME raw regions (model only) | 70.94% |
+| GAME regions snapped to the Sa grid (ceiling for sargam output) | 64.06% |
+| App at `c04e5d4` (28 Jul, before the murki passes) | 64.32% |
+| App before the vibrato gate (`3bc10e7`) | 57.64% |
+| **App now, Clean preset** | **57.94%** |
+| App now, Main-notes preset | 61.28% |
+
+Vocadito is Western and multilingual solo singing. Its annotators don't mark
+murki or kan touches as notes, so the Clean preset's ornament notes count as
+false positives here by design. Ablation on the development split showed the
+loss comes from the raw-contour recovery passes (`fuseTurningOrnaments`,
+`fuseRawNeighborTurns`, `fuseRawMurkiClusters`). Their inserted notes match a
+human note 26–45% of the time, against 73% for GAME's own. Vibrato was the one
+failure that is wrong in any tradition, so those touches are now folded back
+into the held note. The rest needs Hindustani ground truth to judge: the
+app's `.json` export carries corrected notes alongside the analysis input,
+which makes it the raw material for that set.
+
 ## Quick benchmark
 
 Vocadito is the small, manually annotated smoke test. It contains 40 isolated

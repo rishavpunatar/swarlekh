@@ -1,5 +1,11 @@
 # Recorded results
 
+> **Scope note (2026-10-29).** The tables below score GAME's *raw* note
+> regions from the July model-selection study. They are not the notation the
+> app displays; that is scored by `evaluation/app-benchmark.js` (see
+> `evaluation/README.md`, about 58% F1 for the Clean preset today, 64% being
+> the ceiling once notes are snapped to a sargam grid).
+
 ## Protocol
 
 Vocadito's 40 solo-vocal excerpts are partitioned by singer before any model
