@@ -9,7 +9,7 @@
   <title>SwarLekh — sargam notation from your recordings</title>
   <meta name="description" content="Upload a Hindustani vocal recording and get swara (sargam) notation. Runs entirely on your device — audio never leaves it.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=65">
+  <link rel="stylesheet" href="style.css?v=66">
 </head>
 <body>
   <header>
@@ -30,9 +30,9 @@
     <section id="dropzone" class="card">
       <input type="file" id="fileInput" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac" hidden>
       <div class="dz-inner">
-        <p class="dz-main">Drop an MP3 here, or <button id="chooseBtn" class="linklike" type="button">choose a file</button></p>
-        <p class="hint">Works best on recordings where the voice is prominent. Percussion is filtered out;
-        the sung melody is tracked and written as sargam. Your audio never leaves this device.</p>
+        <p class="dz-main">Drop a recording here, or <button id="chooseBtn" class="linklike" type="button">choose a file</button></p>
+        <p class="hint">MP3, M4A, WAV, FLAC or OGG. Works best when the voice is prominent; the sung melody is
+        tracked and written as sargam you can read, practise and export. Your audio never leaves this device.</p>
       </div>
     </section>
 
@@ -46,19 +46,20 @@
     </section>
 
     <div id="resultArea" hidden>
+      <div id="printHeader"><h2 id="printTitle"></h2><p id="printMeta"></p></div>
       <section id="firstRun" class="card intro" hidden>
         <div class="intro-steps">
           <span><b>1</b> Check <b>Sa</b> is right — use the Drone to match the song’s home note.</span>
           <span><b>2</b> Press play — the contour follows the voice, naming every swara as it’s sung.</span>
-          <span><b>3</b> Drag on the ruler above the contour to <b>loop a phrase</b>; slow it with <b>Speed</b>.</span>
-          <span><b>4</b> Try <b>Sing along</b> — your own pitch draws over the melody, live and on-device.</span>
+          <span><b>3</b> Drag the ruler above the contour to <b>loop a phrase</b>; slow it with <b>Speed</b>. Drag a dot to correct a note.</span>
+          <span><b>4</b> Read, copy, print or export the <b>sargam</b> below the contour. Corrections are saved on this device.</span>
         </div>
         <button id="firstRunClose" class="mini-btn" type="button">Got it</button>
       </section>
 
       <section id="playerCard" class="card">
         <div class="player-row">
-          <button id="playBtn" class="big-btn" title="Play / pause (Space)">▶</button>
+          <button id="playBtn" class="big-btn" title="Play / pause (Space)" aria-label="Play">▶</button>
           <span id="timeDisp" class="time">0:00.0 / 0:00</span>
           <label class="ctl">Speed
             <select id="speedSel">
@@ -68,10 +69,24 @@
               <option value="1" selected>1×</option>
             </select>
           </label>
-          <span class="ctl pitch-ctl">Pitch
-            <button id="pitchDownBtn" class="mini-btn" title="Down a semitone">−</button>
+          <span class="ctl loop-ctl">Loop
+            <button id="loopABtn" class="mini-btn" title="Set loop start at playhead ( [ )">A</button>
+            <button id="loopBBtn" class="mini-btn" title="Set loop end at playhead ( ] )">B</button>
+            <button id="phrasePrevBtn" class="mini-btn" title="Loop the previous line ( , )" aria-label="Loop the previous line">⟨</button>
+            <button id="phraseNextBtn" class="mini-btn" title="Loop this / the next line ( . )" aria-label="Loop this or the next line">⟩</button>
+            <span id="phraseDisp" class="muted"></span>
+            <button id="loopClearBtn" class="mini-btn" title="Clear loop (L)" aria-label="Clear loop">✕</button>
+            <span id="loopDisp" class="muted"></span>
+            <button id="rampBtn" class="mini-btn" title="Ramp practice: with a loop set, each repeat speeds up by 0.05× from 0.65× until full speed.">Ramp</button>
+            <span id="rampDisp" class="muted"></span>
+          </span>
+          <button id="playerMoreBtn" class="mini-btn player-more-btn" type="button" aria-expanded="false" aria-controls="playerMore" title="More practice controls">More</button>
+        </div>
+        <div id="playerMore" class="player-row player-more">
+          <span class="ctl pitch-ctl">Pitch <span class="tag" title="Transposes the recording in your browser. Large shifts can sound processed.">beta</span>
+            <button id="pitchDownBtn" class="mini-btn" title="Down a semitone" aria-label="Down a semitone">−</button>
             <select id="pitchSel" title="Choose the key (Sa) to practise in"></select>
-            <button id="pitchUpBtn" class="mini-btn" title="Up a semitone">+</button>
+            <button id="pitchUpBtn" class="mini-btn" title="Up a semitone" aria-label="Up a semitone">+</button>
             <span id="pitchKey" class="muted"></span>
           </span>
           <label class="ctl">Listen to
@@ -81,52 +96,11 @@
               <option value="both">Both</option>
             </select>
           </label>
-          <span class="ctl loop-ctl">Loop
-            <button id="loopABtn" class="mini-btn" title="Set loop start at playhead ( [ )">A</button>
-            <button id="loopBBtn" class="mini-btn" title="Set loop end at playhead ( ] )">B</button>
-            <button id="phrasePrevBtn" class="mini-btn" title="Loop the previous line ( , )">⟨</button>
-            <button id="phraseNextBtn" class="mini-btn" title="Loop this / the next line ( . )">⟩</button>
-            <span id="phraseDisp" class="muted"></span>
-            <button id="loopClearBtn" class="mini-btn" title="Clear loop (L)">✕</button>
-            <span id="loopDisp" class="muted"></span>
-            <button id="rampBtn" class="mini-btn" title="Ramp practice: with a loop set, each repeat speeds up by 0.05× from 0.65× until full speed.">Ramp</button>
-            <span id="rampDisp" class="muted"></span>
-          </span>
           <span class="ctl mic-ctl">
             <button id="micBtn" class="mini-btn" title="Sing along: your pitch draws live over the melody. Analyzed on this device only — never recorded, never uploaded. Headphones recommended.">🎤 Sing along</button>
-            <span id="micReadout" class="muted"></span>
+            <span id="micReadout" class="muted" aria-live="polite"></span>
           </span>
         </div>
-      </section>
-
-      <section id="ragaCard" class="card">
-        <div class="raga-head">
-          <span class="card-label">Raag analysis</span>
-          <span id="ragaThaat" class="raga-thaat"></span>
-        </div>
-        <div id="ragaGuess" class="raga-guess"></div>
-        <div id="swarPalette" class="swar-palette"></div>
-        <div id="ragaGrammar" class="raga-grammar"></div>
-        <p id="taalLine" class="taal-line" hidden></p>
-        <p class="hint">The swaras this recording uses, sized by how much they’re sung. Tap one to highlight every place it appears. Thaat is the scale family (not a definitive raag); intonation shows how each komal/teevra swara is actually pitched.</p>
-      </section>
-
-      <section id="tonicCard" class="card">
-        <div class="tonic-row">
-          <span class="card-label">Sa (tonic)</span>
-          <span id="tonicChips"></span>
-          <label class="ctl">Note
-            <select id="tonicNote"></select>
-          </label>
-          <label class="ctl slider-ctl">Fine
-            <input type="range" id="tonicFine" min="-50" max="50" value="0" step="1">
-            <span id="tonicFineVal" class="muted">+0¢</span>
-          </label>
-          <span id="tonicHz" class="hz"></span>
-          <button id="saAtPlayheadBtn" class="mini-btn" title="Pause on a clearly sung Sa, then set that exact pitch as the tonic">Set playhead as Sa</button>
-          <button id="droneBtn" class="mini-btn" title="Play a Sa–Pa drone to check the tonic by ear">Drone</button>
-        </div>
-        <p class="hint" id="tonicHint">Pick the candidate that sounds like the song’s home note — toggle the <b>Drone</b> and listen against the recording.</p>
       </section>
 
       <section id="canvasCard" class="card">
@@ -142,8 +116,8 @@
           </label>
           <button id="addNoteBtn" class="mini-btn" title="Add a missing note" aria-label="Add a missing note" aria-pressed="false">&#9834;</button>
           <button id="undoNoteBtn" class="mini-btn" title="Undo the last note edit" aria-label="Undo the last note edit" hidden>&#8630;</button>
-          <button id="zoomOutBtn" class="mini-btn" title="Zoom out">−</button>
-          <button id="zoomInBtn" class="mini-btn" title="Zoom in">+</button>
+          <button id="zoomOutBtn" class="mini-btn" title="Zoom out" aria-label="Zoom out">−</button>
+          <button id="zoomInBtn" class="mini-btn" title="Zoom in" aria-label="Zoom in">+</button>
         </div>
         <div id="connectorToolbar" class="connector-toolbar" hidden>
           <strong id="selectedNoteLabel" class="selected-note-label"></strong>
@@ -173,16 +147,65 @@
           </label>
           <button id="closeConnectorBtn" class="mini-btn" title="Close connector controls" aria-label="Close connector controls">&times;</button>
         </div>
-        <canvas id="contour"></canvas>
+        <canvas id="contour" role="img" aria-label="Pitch contour of the sung melody" aria-describedby="notationLabel"></canvas>
         <details class="legend-details">
           <summary>How to read &amp; use the contour ▾</summary>
-          <p class="hint">Click to seek · drag to pan · <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+scroll or&nbsp;± to zoom ·
+          <p class="hint">Click to seek · drag to pan · <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+scroll, pinch or&nbsp;± to zoom · drag a dot up or down to correct it ·
           drag along the <b>ruler at the top</b> to loop a passage (double-click it to clear).
-          The line is the melody: <b style="color:var(--indigo)">indigo plateaus</b> are notes to hold,
-          while <b style="color:var(--accent)">saffron connectors</b> use three shapes: a vertical step,
+          The line is the melody: <b class="legend-indigo">indigo plateaus</b> are notes to hold,
+          while <b class="legend-accent">saffron connectors</b> use three shapes: a vertical step,
           a compact hook for a quick bend, or a broad curve for meend.
           Each <b>dot</b> is a note the voice hits, named with its swara; solid grid lines are the song’s scale.
-          With <b>Sing along</b> on, your voice draws as a <b style="color:var(--mic, #2a8f7a)">teal</b> trail over the melody.</p>
+          With <b>Sing along</b> on, your voice draws as a <b class="legend-mic">teal</b> trail over the melody.</p>
+        </details>
+      </section>
+
+      <section id="notationCard" class="card" aria-labelledby="notationLabel">
+        <div class="notation-head">
+          <span id="notationLabel" class="card-label">Sargam notation</span>
+          <span id="notationMeta" class="muted"></span>
+          <span class="spacer"></span>
+          <button id="copyBtn" class="mini-btn" type="button" title="Copy the notation as text">Copy</button>
+          <button id="dlTxtBtn" class="mini-btn" type="button" title="Download the notation as a text file">.txt</button>
+          <button id="dlJsonBtn" class="mini-btn" type="button" title="Download notes, timings, corrections and analysis as JSON">.json</button>
+          <button id="printBtn" class="mini-btn" type="button" title="Print, or save as PDF from the print dialog">Print / PDF</button>
+          <button id="dlWavBtn" class="mini-btn" type="button" title="Download the synthesized melody as a WAV file">Melody .wav</button>
+          <button id="clearEditsBtn" class="mini-btn" type="button" title="Remove all your note corrections for this recording" hidden>Reset corrections</button>
+        </div>
+        <ol id="notation" class="notation-lines" aria-live="off"></ol>
+        <p class="hint">Click a line to jump to it. <b>(GRG)m</b> is a murki into m, <b>(R)G</b> a kan, <b>P⌒S'</b> a meend through every swara it touches, <b>≈G</b> an andolan, and each <b>–</b> holds for about 0.3 s. Lowercase swaras are komal, <b>M</b> is teevra Ma, <b>.N</b> is mandra and <b>S'</b> taar.</p>
+      </section>
+
+      <section id="tonicCard" class="card">
+        <div class="tonic-row">
+          <span class="card-label">Sa (tonic)</span>
+          <span id="tonicChips"></span>
+          <label class="ctl">Note
+            <select id="tonicNote"></select>
+          </label>
+          <label class="ctl slider-ctl">Fine
+            <input type="range" id="tonicFine" min="-50" max="50" value="0" step="1">
+            <span id="tonicFineVal" class="muted">+0¢</span>
+          </label>
+          <span id="tonicHz" class="hz"></span>
+          <button id="saAtPlayheadBtn" class="mini-btn" title="Pause on a clearly sung Sa, then set that exact pitch as the tonic">Set playhead as Sa</button>
+          <button id="droneBtn" class="mini-btn" title="Play a Sa–Pa drone to check the tonic by ear">Drone</button>
+        </div>
+        <p class="hint" id="tonicHint">Pick the candidate that sounds like the song’s home note — toggle the <b>Drone</b> and listen against the recording.</p>
+      </section>
+
+      <section id="ragaCard" class="card">
+        <details id="ragaDetails" open>
+          <summary class="raga-head">
+            <span class="card-label">Raag analysis</span>
+            <span id="ragaThaat" class="raga-thaat"></span>
+            <span id="ragaSummary" class="raga-summary muted"></span>
+          </summary>
+          <div id="ragaGuess" class="raga-guess"></div>
+          <div id="swarPalette" class="swar-palette"></div>
+          <div id="ragaGrammar" class="raga-grammar"></div>
+          <p id="taalLine" class="taal-line" hidden></p>
+          <p class="hint">The swaras this recording uses, sized by how much they’re sung. Tap one to highlight every place it appears. Thaat is the scale family; raag suggestions are a shortlist to check by ear, not a verdict. Intonation shows how each komal/teevra swara is actually pitched.</p>
         </details>
       </section>
 
@@ -225,7 +248,7 @@
           </label>
           <span id="statsLine" class="muted"></span>
         </div>
-        <p class="hint">Every sung syllable starts a fresh note (so repeated words on one pitch don't blur into one). <b>Clean</b> keeps the singable notes and the ornaments that touch them — murkis as <b>(GRG)m</b>, bends as <b>P~S'</b> — while dropping blips and stray pitches. <b>Detailed</b> shows every nuance; <b>Simple</b> is just the main notes. Raise strictness if background instruments leak in; lower it if quiet phrases go missing.</p>
+        <p class="hint">Every sung syllable starts a fresh note (so repeated words on one pitch don't blur into one). <b>Clean</b> keeps the singable notes and the ornaments that touch them — murkis as <b>(GRG)m</b>, meends as <b>P⌒S'</b> — while dropping blips, stray pitches and vibrato wobble. <b>Detailed</b> shows every nuance; <b>Simple</b> is just the main notes. Raise strictness if background instruments leak in; lower it if quiet phrases go missing.</p>
       </section>
     </div>
   </main>
@@ -233,17 +256,18 @@
   <footer>
     <p>Audio is processed entirely on this device — nothing is uploaded, no analytics, no third-party assets.
     Sing-along uses your microphone live and in memory only — nothing is ever recorded or transmitted.
-    <b>Pitch</b> transposes the recording to your own Sa (notation is unchanged — sargam is the same in any key); <b>Speed</b> slows it down without changing pitch.
+    <b>Pitch</b> (beta) transposes the recording to your own Sa (notation is unchanged — sargam is the same in any key); <b>Speed</b> slows it down without changing pitch.
     Shortcuts: <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>[</kbd><kbd>]</kbd> loop · <kbd>,</kbd><kbd>.</kbd> phrase loop · <kbd>L</kbd> clear loop.
     <a href="https://github.com/rishavpunatar/swarlekh" rel="noopener">Source on GitHub</a></p>
   </footer>
 
   <div id="toast" hidden></div>
 
-  <script src="js/fft.js?v=53"></script>
-  <script src="js/dsp.js?v=65"></script>
-  <script src="js/ragas.js?v=53"></script>
-  <script src="js/ragaId.js?v=53"></script>
-  <script src="js/main.js?v=65"></script>
+  <script src="js/fft.js?v=66"></script>
+  <script src="js/dsp.js?v=66"></script>
+  <script src="js/dsp-regions.js?v=66"></script>
+  <script src="js/ragas.js?v=66"></script>
+  <script src="js/ragaId.js?v=66"></script>
+  <script src="js/main.js?v=66"></script>
 </body>
 </html>

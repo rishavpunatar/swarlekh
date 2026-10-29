@@ -2628,3 +2628,54 @@ test('notateRegions: vibrato on a held swara does not sprout murki notes', () =>
   assert.ok(onRe / total >= 0.95,
     `expected the held note to read as Re, got ${tokens.map((t) => t.k).join(' ')}`);
 });
+
+test('notationLines: one entry per phrase with sustains and section flags', () => {
+  const phrases = [
+    { t0: 0, t1: 1.2, tokens: [{ t0: 0, t1: 0.3, k: 0 }, { t0: 0.3, t1: 1.2, k: 2 }] },
+    { t0: 6, t1: 6.6, section: true, tokens: [{ t0: 6, t1: 6.6, k: 7, kan: [9] }] },
+  ];
+  const lines = DSP.notationLines(phrases, new Set([0, 2, 4, 5, 7, 9, 11]));
+  assert.strictEqual(lines.length, 2);
+  assert.strictEqual(lines[0].text, 'S  R – –');
+  assert.strictEqual(lines[1].text, '(D)P –');
+  assert.ok(lines[1].section);
+  assert.match(DSP.notationText(phrases), /^ 1\. \[0:00\]  S {2}R/);
+});
+
+test('toDevanagari keeps komal and teevra distinctions', () => {
+  assert.strictEqual(DSP.toDevanagari('S R G m P D N'), 'स रे ग म प ध नि');
+  assert.strictEqual(DSP.toDevanagari('r g M d n'), 'रे॒ ग॒ म॑ ध॒ नि॒');
+  assert.strictEqual(DSP.toDevanagari(".N S' (GRG)m"), ".नि स' (गरेग)म");
+  assert.notStrictEqual(DSP.toDevanagari('r'), DSP.toDevanagari('R'));
+});
+
+test('ragaId: a few seconds of a plain scale exercise is never a "likely" raga', () => {
+  const a = fakeAnalysis('S R G m P m G R S R G P D P m G R S'.split(' '), 'G', 'D');
+  a.total = 8;                                   // an 8-second clip
+  const ranked = RagaId.rankRagas(a, RAGAS);
+  assert.ok(ranked[0].confidence < 0.75, `${ranked[0].name} at ${ranked[0].confidence}`);
+  const bihag = ranked.findIndex((r) => r.name === 'Bihag');
+  assert.ok(bihag > 2, 'Bihag needs its samvadi N; a scale without N should not suggest it');
+});
+
+test('ragaId: a raga whose vadi or samvadi is never sung is demoted', () => {
+  const a = fakeAnalysis('S G m P N S S n P m G S G m P N S n P m G S'.split(' '), 'G', 'N');
+  const ranked = RagaId.rankRagas(a, RAGAS);
+  assert.strictEqual(ranked[0].name, 'Tilang', `top=${ranked.slice(0, 3).map((x) => x.name)}`);
+  const desh = ranked.find((r) => r.name === 'Desh');   // vadi R is absent here
+  assert.ok(/no R/.test(desh.rationale), desh.rationale);
+});
+
+test('ragaId: the knowledge base covers common light-classical ragas', () => {
+  for (const name of ['Alhaiya Bilawal', 'Pilu', 'Pahadi', 'Kirwani', 'Charukeshi', 'Tilang']) {
+    assert.ok(RAGAS.some((r) => r.name === name), `${name} missing`);
+  }
+});
+
+test('ragaId: a mixed scale never yields a "likely" raga', () => {
+  const a = fakeAnalysis('S R G m G m R S P d P m G m R S g m P'.split(' '), 'G', 'S');
+  a.total = 40;
+  a.thaat = { name: 'Bhairav', mixed: true, confidence: 0.56 };
+  const ranked = RagaId.rankRagas(a, RAGAS);
+  assert.ok(ranked.every((r) => r.confidence <= 0.6), ranked.slice(0, 2).map((r) => `${r.name} ${r.confidence}`).join(', '));
+});

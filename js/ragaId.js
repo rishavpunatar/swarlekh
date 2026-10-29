@@ -71,7 +71,25 @@
   function phraseStr(pcs) { var s = [], i; for (i = 0; i < pcs.length; i++) s.push(pcName(pcs[i])); return s.join(' '); }
 
   var W = { scale: 0.34, pakad: 0.34, vs: 0.16, dir: 0.08, thaat: 0.08 };
-  var PEN_FOREIGN = 1.6, GAP_DISCOUNT = 0.8, FOREIGN_GATE = 0.18;
+  var PEN_FOREIGN = 1.6, GAP_DISCOUNT = 0.8, FOREIGN_GATE = 0.18, MISSING_KEY_FACTOR = 0.6;
+
+  // True when every step of pat moves one scale degree in the same direction
+  // (a plain ascending/descending run of the raga's own scale).
+  function isScaleRun(pat, scale) {
+    if (pat.length < 3) return false;
+    var sorted = scale.slice().sort(function (a, b) { return a - b; });
+    var idx = function (pc) { return sorted.indexOf(((pc % 12) + 12) % 12); };
+    var dir = 0, i;
+    for (i = 1; i < pat.length; i++) {
+      var a = idx(pat[i - 1]), b = idx(pat[i]);
+      if (a < 0 || b < 0) return false;
+      var step = b - a;
+      if (step === sorted.length - 1) step = -1; else if (step === 1 - sorted.length) step = 1;
+      if (Math.abs(step) !== 1 || (dir && step !== dir)) return false;
+      dir = step;
+    }
+    return true;
+  }
 
   function scoreOne(analysis, raga, uScale, uWeights) {
     var why = [], i, pc;
@@ -104,7 +122,10 @@
       var pat = pakads[i].join ? pakads[i] : parsePhrase(pakads[i]);
       if (pat.length < 2) continue;
       var contig = hasContiguous(seq, pat) ? 1.0 : 0;
-      var qP = Math.max(contig, GAP_DISCOUNT * bestSubsequence(seq, pat));
+      // A short or plain stepwise phrase (e.g. m G R S) turns up in many
+      // ragas, so it is weaker evidence than a long, characteristic one.
+      var specificity = clamp01((pat.length - 1) / 4) * (isScaleRun(pat, rScale) ? 0.5 : 1);
+      var qP = Math.max(contig, GAP_DISCOUNT * bestSubsequence(seq, pat)) * specificity;
       if (qP > sPakad) sPakad = qP;
       if (qP >= 0.5 && (!longestHit || pat.length > longestHit.len)) longestHit = { str: phraseStr(pat), len: pat.length, contig: contig === 1 };
     }
@@ -115,6 +136,16 @@
 
     var raw = W.scale * sScale + W.pakad * sPakad + W.vs * sVs + W.dir * sDir + W.thaat * sThaat;
     if (foreignW > FOREIGN_GATE) raw *= (1 - Math.min(0.6, (foreignW - FOREIGN_GATE) * 2.0));
+    // A raga's vadi and samvadi are its most prominent swaras: if one never
+    // sounds in the recording, that raga is an unlikely reading of it.
+    var uHas = {}; for (i = 0; i < uScale.length; i++) uHas[uScale[i]] = 1;
+    var missing = [];
+    if (rVadi != null && !uHas[rVadi]) missing.push(pcName(rVadi));
+    if (rSam != null && rSam !== rVadi && !uHas[rSam]) missing.push(pcName(rSam));
+    if (missing.length) {
+      raw *= Math.pow(MISSING_KEY_FACTOR, missing.length);
+      why.push('no ' + missing.join(' or ') + ' (its vadi/samvadi)');
+    }
 
     return {
       name: raga.name, raw: raw, foreignW: foreignW, vadiKnown: vadiKnown, pakadFired: sPakad >= 0.5,
@@ -128,6 +159,7 @@
     var totalSec = typeof analysis.total === 'number' ? analysis.total : 0;
     var nNotes = (analysis.seq || []).length;
     var dataAmt = clamp01(Math.min(totalSec / 25, nNotes / 30));
+    var mixedScale = !!(analysis.thaat && analysis.thaat.mixed);
     var anyDbPakad = false;
     for (i = 0; i < db.length; i++) if (db[i].pakad && db[i].pakad.length) { anyDbPakad = true; break; }
 
@@ -147,11 +179,14 @@
       var margin = clamp01((s.raw - secondRaw) / 0.15);
       var conf = s.raw * (0.45 + 0.30 * evidence + 0.25 * dataAmt);
       if (i === 0) conf *= (0.7 + 0.3 * margin);
-      conf = Math.max(0, Math.min(0.95, conf));
-      if (s.pakadFired) conf = Math.max(conf, 0.5);
+      if (s.pakadFired && dataAmt >= 0.5) conf = Math.max(conf, 0.5);
+      // A few seconds of music cannot establish a raga, however well it fits,
+      // and nor can a mixed scale (both forms of a swara used freely).
+      conf = Math.max(0, Math.min(0.95, 0.3 + 0.65 * dataAmt, mixedScale ? 0.6 : 1, conf));
       var reasons = s.why.slice(0, 3);
       var rationale = reasons.length ? reasons.join(' + ') : 'weak scale overlap only';
       if (dataAmt < 0.4) rationale += ' — short clip, low confidence';
+      else if (mixedScale && i === 0) rationale += ' — mixed scale, so only a possibility';
       out.push({ name: s.name, score: Math.round(s.raw * 1000) / 1000, confidence: Math.round(conf * 100) / 100, rationale: rationale, why: s.why });
     }
     if (out.length > 1) { var lead = out[0].score - out[1].score; if (lead < 0.06 || dataAmt < 0.35) out[0].ambiguous = true; }
