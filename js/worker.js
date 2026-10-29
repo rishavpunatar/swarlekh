@@ -12,7 +12,7 @@
 // Inherit the ?v= cache-busting query so fft.js/dsp.js/crepe.js refresh in
 // lockstep with this file (no stale-DSP-in-worker drift).
 var V = self.location.search || '';
-importScripts('fft.js' + V, 'dsp.js' + V, 'crepe.js' + V);
+importScripts('fft.js' + V, 'dsp.js' + V, 'dsp-regions.js' + V, 'crepe.js' + V);
 
 var tfReady = false;
 function ensureNeural(prog) {

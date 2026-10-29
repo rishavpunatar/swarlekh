@@ -32,6 +32,12 @@
     sensSlider: $('sensSlider'), sensVal: $('sensVal'),
     minNoteSlider: $('minNoteSlider'), minNoteVal: $('minNoteVal'),
     statsLine: $('statsLine'), toast: $('toast'),
+    playerCard: $('playerCard'), playerMoreBtn: $('playerMoreBtn'),
+    notation: $('notation'), notationMeta: $('notationMeta'),
+    copyBtn: $('copyBtn'), dlTxtBtn: $('dlTxtBtn'), dlJsonBtn: $('dlJsonBtn'),
+    printBtn: $('printBtn'), dlWavBtn: $('dlWavBtn'), clearEditsBtn: $('clearEditsBtn'),
+    ragaDetails: $('ragaDetails'), ragaSummary: $('ragaSummary'),
+    printTitle: $('printTitle'), printMeta: $('printMeta'),
   };
 
   const state = {
@@ -50,7 +56,7 @@
     semitones: 0, fileBytes: null, fileMono: null, fileSr: 16000,
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
     raga: null, highlightPc: null, ragaMatches: [], script: 'latin', rhythm: null,
-    engine: 'yin', file: null,
+    engine: 'yin', file: null, fileSha: null,
     manualEdits: [], noteEditHistory: [], addNoteMode: false,
     selectedNoteTime: null, noteEditRevision: 0,
     opts: {
@@ -62,7 +68,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=65';
+  const WORKER_URL = 'js/worker.js?v=66';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -183,28 +189,74 @@
   // pitch and note regions. Audio only ever goes to your own machine.
   const SERVER_URL = 'http://127.0.0.1:8765';
   const REQUIRED_SERVER_ANALYSIS_VERSION = 5;
+  const SERVER_SILENCE_LIMIT_MS = 90 * 1000;   // no status reply this long = lost contact
   let analyzeAbort = null;   // lets the Cancel button stop a long separation
+  let serverJobId = null;    // the running server job, so Cancel can stop it there too
   let serverIssue = '';
-  async function analyzeViaServer() {
+  function newJobId() {
+    const raw = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : `${Date.now()}${Math.random()}`;
+    return raw.replace(/[^0-9a-z]/gi, '').slice(0, 24);
+  }
+  // Interleaved 16-bit WAV of every channel, for formats the server can't read.
+  async function stereoWavFromUpload() {
+    const ctx = ensureCtx();
+    const buf = await ctx.decodeAudioData(state.fileBytes.slice(0));
+    const channels = Math.min(2, buf.numberOfChannels);
+    const data = [];
+    for (let c = 0; c < channels; c++) data.push(buf.getChannelData(c));
+    return encodeWav(data, buf.sampleRate);
+  }
+  async function analyzeViaServer(onStatus) {
     // Preserve the uploaded channels for vocal separation. Downmixing here can
     // cancel or smear centre-panned vocals and makes GAME invent note boundaries.
     const audio = state.fileBytes || encodeWav(state.fileMono, state.fileSr);
     analyzeAbort = new AbortController();
     const ctrl = analyzeAbort;
-    const to = setTimeout(() => ctrl.abort(), 30 * 60 * 1000);   // safety net, 30 min
+    const jobId = newJobId();
+    serverJobId = jobId;
+    // No fixed time limit: long recordings legitimately take many minutes.
+    // The server reports progress; only prolonged silence means trouble.
+    let lastContact = performance.now();
+    let legacy = false;
+    const poll = setInterval(async () => {
+      if (legacy) { onStatus(null); return; }      // keep the elapsed timer moving
+      try {
+        const r = await fetch(`${SERVER_URL}/status?job=${jobId}`, { signal: ctrl.signal });
+        if (r.status === 404) { legacy = true; onStatus(null); return; }   // pre-/status server
+        if (r.ok) { lastContact = performance.now(); onStatus(await r.json(), jobId); }
+      } catch (e) { /* counted as silence below */ }
+      if (!legacy && performance.now() - lastContact > SERVER_SILENCE_LIMIT_MS) {
+        ctrl.abort(new DOMException('The local server stopped responding.', 'TimeoutError'));
+      }
+    }, 1500);
+    const post = (body, type) => fetch(`${SERVER_URL}/analyze?job=${jobId}`, {
+      method: 'POST', body, headers: { 'Content-Type': type }, signal: ctrl.signal,
+    });
     try {
-      const resp = await fetch(SERVER_URL + '/analyze', {
-        method: 'POST',
-        body: audio,
-        headers: { 'Content-Type': (state.file && state.file.type) || 'application/octet-stream' },
-        signal: ctrl.signal,
-      });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return await resp.json();   // { f0, periodicity, rms, noteRegions, hopSec, sr }
+      let resp = await post(audio, (state.file && state.file.type) || 'application/octet-stream');
+      if (resp.status === 415 && state.fileBytes) {
+        // The server couldn't decode this format (no ffmpeg there): send the
+        // browser's own decode as a WAV instead.
+        resp = await post(await stereoWavFromUpload(), 'audio/wav');
+      }
+      let payload = null;
+      try { payload = await resp.json(); } catch (e) { /* non-JSON error page */ }
+      if (!resp.ok) {
+        const err = new Error((payload && payload.error) || ('HTTP ' + resp.status));
+        if (payload && payload.cancelled) err.name = 'CancelledError';
+        throw err;
+      }
+      return payload;   // { f0, periodicity, rms, noteRegions, onsets, rhythm, hopSec, voicedFraction, … }
     } finally {
-      clearTimeout(to);
+      clearInterval(poll);
       if (analyzeAbort === ctrl) analyzeAbort = null;
+      if (serverJobId === jobId) serverJobId = null;
     }
+  }
+  function cancelServerJob() {
+    if (!serverJobId) return;
+    fetch(`${SERVER_URL}/cancel?job=${serverJobId}`, { method: 'POST' }).catch(() => {});
   }
 
   // Quick reachability probe so a visitor without the local server never
@@ -213,7 +265,7 @@
   async function serverUp() {
     try {
       const c = new AbortController();
-      const t = setTimeout(() => c.abort(), 1500);
+      const t = setTimeout(() => c.abort(), 2500);
       const r = await fetch(SERVER_URL + '/', { signal: c.signal });
       clearTimeout(t);
       if (!r.ok) { serverIssue = 'offline'; return false; }
@@ -231,33 +283,114 @@
     }
   }
 
+  const SERVER_STAGE = {
+    queued: 'Waiting for the server',
+    decoding: 'Reading the audio',
+    separating: 'Isolating the voice',
+    pitch: 'Tracking pitch (RMVPE + Praat)',
+    notes: 'Finding sung notes (GAME)',
+    rhythm: 'Detecting tempo and taal',
+    done: 'Finishing',
+  };
+  function fmtDuration(sec) {
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m ? `${m}:${s < 10 ? '0' : ''}${s}` : `${s}s`;
+  }
+  function showServerProgress(status, jobId, startedAt) {
+    const elapsed = (performance.now() - startedAt) / 1000;
+    const job = status && ((status.job && status.job.id === jobId) ? status.job : status.mine);
+    if (!job) {
+      // Older server without /status: an honest elapsed timer.
+      const frac = 0.12 + 0.64 * (1 - Math.exp(-elapsed / 150));
+      setStage(`Isolating the voice on your local server — ${fmtDuration(elapsed)} elapsed`, frac);
+      return;
+    }
+    if (status.job && status.job.id !== jobId) {
+      setStage('Waiting for the local server to finish another analysis…', 0.12);
+      return;
+    }
+    let label = SERVER_STAGE[job.stage] || job.stage;
+    if (job.stage === 'separating' && job.note) {
+      label = job.note === 'cached' ? 'Reusing the separated voice'
+        : /^Loading/.test(job.note) ? job.note : `${label} (${job.note})`;
+    }
+    const eta = job.eta != null ? ` · about ${fmtDuration(job.eta)} left` : '';
+    setStage(`${label} — ${fmtDuration(job.elapsed)} elapsed${eta}`, 0.12 + 0.82 * job.progress);
+  }
+
   /* Per-file analysis cache (IndexedDB, on-device): re-uploading the same
    * recording tomorrow restores the separated-voice analysis instantly instead
-   * of re-running the multi-minute separation. Keyed by SHA-256 of the file. */
+   * of re-running the multi-minute separation. Keyed by SHA-256 of the file.
+   * Note corrections live in their own store under the same file hash, so they
+   * survive reloads, re-uploads and analysis upgrades. */
+  const IDB_ANALYSIS_LIMIT = 25;          // most recent recordings kept
   function idbOpen() {
     return new Promise((res, rej) => {
-      const rq = indexedDB.open('swarlekh', 1);
-      rq.onupgradeneeded = () => rq.result.createObjectStore('analysis');
+      const rq = indexedDB.open('swarlekh', 2);
+      rq.onupgradeneeded = () => {
+        const db = rq.result;
+        if (!db.objectStoreNames.contains('analysis')) db.createObjectStore('analysis');
+        if (!db.objectStoreNames.contains('edits')) db.createObjectStore('edits');
+      };
       rq.onsuccess = () => res(rq.result);
       rq.onerror = () => rej(rq.error);
     });
   }
-  async function idbGet(key) {
+  async function idbGet(key, store) {
     try {
       const db = await idbOpen();
       return await new Promise((res) => {
-        const rq = db.transaction('analysis').objectStore('analysis').get(key);
+        const rq = db.transaction(store || 'analysis').objectStore(store || 'analysis').get(key);
         rq.onsuccess = () => res(rq.result || null);
         rq.onerror = () => res(null);
       });
     } catch (e) { return null; }
   }
-  function idbPut(key, val) {
-    idbOpen().then((db) => db.transaction('analysis', 'readwrite').objectStore('analysis').put(val, key)).catch(() => {});
+  function idbPut(key, val, store) {
+    return idbOpen().then((db) => new Promise((res) => {
+      const tx = db.transaction(store || 'analysis', 'readwrite');
+      tx.objectStore(store || 'analysis').put(val, key);
+      tx.oncomplete = () => res(true);
+      tx.onerror = () => res(false);
+    })).catch(() => false);
+  }
+  // Keep the analysis cache bounded: drop the oldest analyses.
+  async function pruneAnalysisCache() {
+    try {
+      const db = await idbOpen();
+      const entries = await new Promise((res) => {
+        const out = [];
+        const rq = db.transaction('analysis').objectStore('analysis').openCursor();
+        rq.onsuccess = () => {
+          const cursor = rq.result;
+          if (!cursor) { res(out); return; }
+          out.push({ key: cursor.key, ts: (cursor.value && cursor.value.ts) || 0 });
+          cursor.continue();
+        };
+        rq.onerror = () => res(out);
+      });
+      if (entries.length <= IDB_ANALYSIS_LIMIT) return;
+      entries.sort((a, b) => b.ts - a.ts);
+      const store = db.transaction('analysis', 'readwrite').objectStore('analysis');
+      for (const entry of entries.slice(IDB_ANALYSIS_LIMIT)) store.delete(entry.key);
+    } catch (e) { /* storage unavailable: nothing to prune */ }
   }
   async function fileHash(ab) {
     const h = await crypto.subtle.digest('SHA-256', ab);
     return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  async function loadNoteEdits(sha) {
+    const saved = sha ? await idbGet('edits:' + sha, 'edits') : null;
+    return saved && Array.isArray(saved.edits) ? saved.edits : [];
+  }
+  function persistNoteEdits() {
+    if (!state.fileSha) return;
+    idbPut('edits:' + state.fileSha, {
+      edits: state.manualEdits.map((edit) => Object.assign({}, edit)),
+      fileName: state.fileName,
+      ts: Date.now(),
+    }, 'edits');
   }
 
   let processSeq = 0;
@@ -289,6 +422,7 @@
       state.fileBytes = ab.slice(0);
       // v8 adds learned pulse/downbeat reconciliation and taal-cycle metadata.
       const hash = 'v8:' + await fileHash(ab.slice(0));
+      state.fileSha = hash.slice(3);          // corrections are keyed by the file alone
       const ctx = ensureCtx();
       let buf;
       try {
@@ -324,6 +458,7 @@
       if (stale()) return;
 
       let workerOpts = {};
+      let lowVoiceWarning = false;
       state.rhythm = null;
       if (state.engine === 'neural') {
         workerOpts = { neural: true };
@@ -353,27 +488,25 @@
             : 'Local analysis server not running — using the in-browser engine. Start the server (server/README.md) and re-upload for the highest quality.');
         } else {
           if (stale()) return;
-          // The server doesn't stream sub-progress, so show a live elapsed
-          // timer — honest about the wait, cancellable any time.
+          // The server reports its stage and progress; show them live, with
+          // an ETA once separation has measurably advanced. Cancellable.
           const t0 = performance.now();
-          const estMin = Math.max(1, Math.round(state.duration / 60));
-          const ticker = setInterval(() => {
-            const s = (performance.now() - t0) / 1000;
-            const mm = Math.floor(s / 60), ss = Math.floor(s % 60);
-            const frac = 0.12 + 0.64 * (1 - Math.exp(-s / 150));
-            setStage(`Isolating the voice on your local server — ${mm}:${ss < 10 ? '0' : ''}${ss} elapsed (typically ${estMin}–${estMin * 2} min, once per recording)`, frac);
-          }, 1000);
+          showServerProgress(null, null, t0);
           let data = null;
           try {
-            data = await analyzeViaServer();
+            data = await analyzeViaServer((status, jobId) => {
+              if (!stale()) showServerProgress(status, jobId, t0);
+            });
           } catch (err) {
             if (stale()) return;
             if (err && err.name === 'AbortError') return;   // user cancelled
+            if (err && err.name === 'CancelledError') return;   // superseded by a newer upload
             state.engine = 'yin';
             const eSel = $('engineSel'); if (eSel) eSel.value = 'yin';
-            toast('The local server hit an error — continuing with the in-browser engine. (' + (err.message || err) + ')');
-          } finally {
-            clearInterval(ticker);
+            const reason = err && err.name === 'TimeoutError'
+              ? 'The local server stopped responding'
+              : (err && err.message) || String(err);
+            toast(`${reason} — continuing with the in-browser engine.`);
           }
           if (stale()) return;
           if (data) {
@@ -394,8 +527,14 @@
               noteRegions: data.noteRegions,
               rhythm: data.rhythm,
               hopSec: data.hopSec,
+              voicedFraction: data.voicedFraction,
               ts: Date.now(),
-            });
+            }).then(pruneAnalysisCache);
+            if (data.voicedFraction != null && data.voicedFraction < 0.05) {
+              lowVoiceWarning = true;
+            } else if (data.separationCached) {
+              toast('Reused this recording’s separated voice from the local server’s cache.');
+            }
           }
         }
       }
@@ -422,6 +561,16 @@
       synthEl.src = synthUrl;
 
       state.saHz = result.tonic[0].hz;
+      // Corrections made earlier on this recording come back with it. (A new
+      // upload already cleared the old file's; re-analysing the same file
+      // keeps the in-memory ones if storage is unavailable.)
+      const savedEdits = await loadNoteEdits(state.fileSha);
+      if (stale()) return;
+      if (savedEdits.length) {
+        state.manualEdits = savedEdits;
+        state.noteEditHistory = [];
+      }
+      updateUndoNoteButton();
       renderRhythm();
       renderTonicChips();
       syncTonicControls();
@@ -438,7 +587,11 @@
       updateTimeDisp();
       state.ready = true;
       maybeShowFirstRun();
-      if (result.tonic[0].uncertain) {
+      if (lowVoiceWarning) {
+        toast('Very little singing was found in this recording — the notation may be sparse. Is the voice audible over the accompaniment?');
+      } else if (state.manualEdits.length) {
+        toast(`Restored your ${state.manualEdits.length} note correction${state.manualEdits.length === 1 ? '' : 's'} for this recording.`);
+      } else if (result.tonic[0].uncertain) {
         toast('Sa may be off — check it with the Drone (see the note below the tonic).');
       } else if (state.octaveDoubled) {
         toast('Fixed some octave glitches. If two voices an octave apart still show, pick “Single octave” under Octave.');
@@ -454,6 +607,7 @@
   // Cancel a long separation and return to the dropzone.
   if ($('cancelBtn')) $('cancelBtn').addEventListener('click', () => {
     processSeq++;
+    cancelServerJob();                 // stop the work on the server too
     if (analyzeAbort) analyzeAbort.abort();
     els.progressCard.hidden = true;
     if (!state.ready) els.dropzone.classList.remove('compact');
@@ -684,6 +838,7 @@
     computeSmoothedCents();
     syncConnectorEditor();
     renderRaga();
+    renderNotation();
     drawCanvas();
     updateStats();
   }
@@ -692,6 +847,12 @@
     if (els.undoNoteBtn) {
       els.undoNoteBtn.hidden = state.noteEditHistory.length === 0;
     }
+  }
+
+  // Every committed correction is saved on this device for this recording.
+  function noteEditsChanged() {
+    updateUndoNoteButton();
+    persistNoteEdits();
   }
 
   function clearManualNoteEdits() {
@@ -830,7 +991,7 @@
     } else {
       state.manualEdits.push(edit);
     }
-    updateUndoNoteButton();
+    noteEditsChanged();
     renotateNow();
     toast(`Note corrected to ${tokenGlyph(targetK)}.`);
   }
@@ -853,7 +1014,7 @@
       k,
     });
     state.selectedNoteTime = (start + end) / 2;
-    updateUndoNoteButton();
+    noteEditsChanged();
     renotateNow();
     toast(`Added ${tokenGlyph(k)}.`);
   }
@@ -976,7 +1137,7 @@
       state.manualEdits.push(current);
     }
     state.selectedNoteTime = current.time;
-    updateUndoNoteButton();
+    noteEditsChanged();
     renotateNow();
   }
 
@@ -1014,7 +1175,7 @@
   function undoManualNoteEdit() {
     if (!state.noteEditHistory.length) return;
     state.manualEdits = state.noteEditHistory.pop();
-    updateUndoNoteButton();
+    noteEditsChanged();
     renotateNow();
     toast('Note edit undone.');
   }
@@ -1090,12 +1251,11 @@
 
   const swLetter = (pc) => DSP.swaraInfo(((pc % 12) + 12) % 12).letter;
 
-  // Devanagari swara glyphs (base akshara; komal/teevra/octave shown by marks).
-  const DEVA = { S: 'स', R: 'रे', G: 'ग', M: 'म', P: 'प', D: 'ध', N: 'नि' };
-  // The glyph for a swara letter under the current script.
+  // The glyph for a swara letter under the current script. Devanagari keeps
+  // the komal (low line) and teevra (stroke above) marks, so r ≠ R and m ≠ M.
   function glyph(letter) {
     if (state.script !== 'devanagari') return letter;
-    return DEVA[letter.toUpperCase()] || letter;
+    return DSP.devanagariSwara(letter);
   }
   // Full swara glyph with octave marks (script-aware); used for inline paths.
   function tokenGlyph(k) {
@@ -1159,6 +1319,10 @@
     } else els.ragaThaat.textContent = '';
 
     renderRagaGuess();
+    if (els.ragaSummary) {
+      const top = (state.ragaMatches || [])[0];
+      els.ragaSummary.textContent = top ? `· ${confWord(top.confidence)} ${top.name}` : '';
+    }
 
     els.swarPalette.textContent = '';
     const byPc = {};
@@ -1241,18 +1405,200 @@
   }
 
 
+  /* ------------------------- notation & export ------------------------- */
+
+  // Readable sargam, one line per phrase — the text alternative to the
+  // contour, the printable sheet and the export all come from these lines.
+  let notationLineEls = [];
+  let lastActiveLine = -1;
+  function scriptText(text) {
+    return state.script === 'devanagari' ? DSP.toDevanagari(text) : text;
+  }
+  function currentNotationLines() {
+    return DSP.notationLines(state.phrases, state.scale);
+  }
+  function renderNotation() {
+    if (!els.notation) return;
+    const lines = currentNotationLines();
+    els.notation.textContent = '';
+    notationLineEls = [];
+    lastActiveLine = -1;
+    if (!lines.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'No sung notes were found. Try lowering Voicing strictness in the settings below.';
+      els.notation.appendChild(li);
+    }
+    for (const line of lines) {
+      const li = document.createElement('li');
+      li.dataset.idx = String(line.index);
+      if (line.section && line.index > 0) li.className = 'section';
+      const num = document.createElement('span');
+      num.className = 'n-num';
+      num.textContent = String(line.index + 1);
+      const time = document.createElement('span');
+      time.className = 'n-time';
+      time.textContent = fmtTime(line.t0);
+      const text = document.createElement('span');
+      text.className = 'n-text';
+      text.textContent = scriptText(line.text);
+      li.append(num, time, text);
+      els.notation.appendChild(li);
+      notationLineEls.push(li);
+    }
+    const edits = state.manualEdits.length;
+    els.notationMeta.textContent = `${lines.length} line${lines.length === 1 ? '' : 's'} · Sa ${noteLabel(state.saHz)}` +
+      (edits ? ` · ${edits} correction${edits === 1 ? '' : 's'}` : '');
+    if (els.clearEditsBtn) els.clearEditsBtn.hidden = edits === 0;
+    cvs.setAttribute('aria-label',
+      `Pitch contour: ${state.tokens.length} sung notes in ${lines.length} lines, Sa ${noteLabel(state.saHz)}. The notation below lists every line as text.`);
+    highlightNotationLine(activeLineIdx, false);
+  }
+  function highlightNotationLine(idx, follow) {
+    if (idx === lastActiveLine) return;
+    if (notationLineEls[lastActiveLine]) notationLineEls[lastActiveLine].classList.remove('active');
+    lastActiveLine = idx;
+    const li = notationLineEls[idx];
+    if (!li) return;
+    li.classList.add('active');
+    if (follow) {
+      // Keep the sung line visible inside the notation list without moving the page.
+      const box = els.notation;
+      if (li.offsetTop < box.scrollTop || li.offsetTop + li.offsetHeight > box.scrollTop + box.clientHeight) {
+        box.scrollTop = li.offsetTop - box.clientHeight / 3;
+      }
+    }
+  }
+  if (els.notation) {
+    els.notation.addEventListener('click', (e) => {
+      const li = e.target.closest('li[data-idx]');
+      if (!li) return;
+      const line = state.phrases[Number(li.dataset.idx)];
+      if (line) seek(Math.max(0, line.t0 - 0.15));
+    });
+  }
+
+  function baseName() {
+    return (state.fileName || 'recording').replace(/\.[^.]+$/, '') || 'recording';
+  }
+  function notationPlainText() {
+    const header = [
+      `${baseName()} — SwarLekh sargam`,
+      `Sa = ${noteLabel(state.saHz)} (${state.saHz.toFixed(1)} Hz)` +
+        (state.raga && state.raga.thaat ? ` · thaat ${state.raga.thaat.name}` : '') +
+        (state.rhythm && state.rhythm.taal ? ` · ${state.rhythm.taal}, ~${Math.round(state.rhythm.bpm)} BPM` : ''),
+      '',
+    ];
+    const body = DSP.notationText(state.phrases, state.scale);
+    return header.join('\n') + scriptText(body) + '\n';
+  }
+  function downloadUrl(url, name) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  function download(blob, name) {
+    const url = URL.createObjectURL(blob);
+    downloadUrl(url, name);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  // Everything needed to read the transcription, re-score it later against
+  // your corrections, or rebuild it: notes, lines, edits and the analysis input.
+  function exportJson() {
+    const round = (v, d) => Math.round(v * d) / d;
+    return {
+      app: 'SwarLekh',
+      format: 1,
+      exportedAt: new Date().toISOString(),
+      file: { name: state.fileName, sha256: state.fileSha, duration: round(state.duration, 1000) },
+      engine: state.engine,
+      saHz: round(state.saHz, 100),
+      detail: detailSel.value,
+      raga: state.raga ? {
+        thaat: state.raga.thaat ? state.raga.thaat.name : null,
+        aaroh: state.raga.aaroh, avaroh: state.raga.avaroh,
+        vadi: state.raga.vadi, samvadi: state.raga.samvadi,
+        suggestions: (state.ragaMatches || []).map((m) => ({ name: m.name, confidence: m.confidence })),
+      } : null,
+      rhythm: state.rhythm ? { bpm: state.rhythm.bpm, taal: state.rhythm.taal, cycle: state.rhythm.cycle } : null,
+      lines: currentNotationLines().map((line) => ({ t0: round(line.t0, 1000), t1: round(line.t1, 1000), text: line.text })),
+      notes: state.tokens.map((tk) => ({
+        t0: round(tk.t0, 1000), t1: round(tk.t1, 1000), k: tk.k,
+        swara: DSP.tokenText(tk.k, false), text: DSP.tokenFullText(tk, state.scale),
+        hz: round(state.saHz * Math.pow(2, tk.k / 12), 100),
+        corrected: !!tk.manualCorrection,
+      })),
+      corrections: state.manualEdits,
+      analysis: {
+        hopSec: state.hopSec,
+        f0: Array.from(state.f0 || [], (v) => round(v, 100)),
+        clarity: Array.from(state.clarity || [], (v) => round(v, 1000)),
+        rms: Array.from(state.opts.rms || [], (v) => round(v, 100000)),
+        noteRegions: state.noteRegions,
+        onsets: (state.opts.onsets || []).map((frame) => round(frame * state.hopSec, 1000)),
+      },
+    };
+  }
+  if (els.copyBtn) els.copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(notationPlainText());
+      toast('Notation copied.');
+    } catch (e) { toast('Copy was blocked by the browser — use .txt instead.'); }
+  });
+  if (els.dlTxtBtn) els.dlTxtBtn.addEventListener('click', () => {
+    download(new Blob([notationPlainText()], { type: 'text/plain;charset=utf-8' }), `${baseName()} - sargam.txt`);
+  });
+  if (els.dlJsonBtn) els.dlJsonBtn.addEventListener('click', () => {
+    download(new Blob([JSON.stringify(exportJson())], { type: 'application/json' }), `${baseName()} - swarlekh.json`);
+  });
+  if (els.dlWavBtn) els.dlWavBtn.addEventListener('click', () => {
+    // The melody guide already lives at a blob: URL (in the current key);
+    // link to it directly — the CSP rightly forbids fetch()ing blob: URLs.
+    if (synthUrl) downloadUrl(synthUrl, `${baseName()} - melody.wav`);
+  });
+  function preparePrint() {
+    if (els.printTitle) els.printTitle.textContent = `${baseName()} — sargam`;
+    if (els.printMeta) {
+      els.printMeta.textContent = `Sa = ${noteLabel(state.saHz)} (${state.saHz.toFixed(1)} Hz)` +
+        (state.rhythm && state.rhythm.taal ? ` · ${state.rhythm.taal}, ~${Math.round(state.rhythm.bpm)} BPM` : '') +
+        ` · transcribed with SwarLekh`;
+    }
+    if (els.ragaDetails) els.ragaDetails.open = true;
+  }
+  window.addEventListener('beforeprint', preparePrint);
+  if (els.printBtn) els.printBtn.addEventListener('click', () => { preparePrint(); window.print(); });
+  if (els.clearEditsBtn) els.clearEditsBtn.addEventListener('click', () => {
+    if (!state.manualEdits.length) return;
+    state.noteEditHistory.push(state.manualEdits.map((edit) => Object.assign({}, edit)));
+    state.manualEdits = [];
+    noteEditsChanged();
+    renotateNow();
+    toast('Corrections cleared — use undo to bring them back.');
+  });
+
+  // 16-bit PCM WAV from one Float32Array (mono) or an array of channels.
   function encodeWav(samples, sr) {
-    const n = samples.length;
-    const buf = new ArrayBuffer(44 + n * 2);
+    const channels = Array.isArray(samples) ? samples : [samples];
+    const ch = channels.length;
+    const n = channels[0].length;
+    const bytes = n * ch * 2;
+    const buf = new ArrayBuffer(44 + bytes);
     const v = new DataView(buf);
     const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-    ws(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); ws(8, 'WAVE'); ws(12, 'fmt ');
-    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-    ws(36, 'data'); v.setUint32(40, n * 2, true);
+    ws(0, 'RIFF'); v.setUint32(4, 36 + bytes, true); ws(8, 'WAVE'); ws(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * ch * 2, true); v.setUint16(32, ch * 2, true); v.setUint16(34, 16, true);
+    ws(36, 'data'); v.setUint32(40, bytes, true);
+    let o = 44;
     for (let i = 0; i < n; i++) {
-      const s = Math.max(-1, Math.min(1, samples[i]));
-      v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      for (let c = 0; c < ch; c++) {
+        const s = Math.max(-1, Math.min(1, channels[c][i]));
+        v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        o += 2;
+      }
     }
     return new Blob([buf], { type: 'audio/wav' });
   }
@@ -1299,7 +1645,7 @@
   scriptSel.addEventListener('change', () => {
     state.script = scriptSel.value;
     document.body.classList.toggle('deva', state.script === 'devanagari');
-    if (state.ready) renderRaga();
+    if (state.ready) { renderRaga(); renderNotation(); drawCanvas(); }
     savePrefs();
   });
 
@@ -1390,6 +1736,16 @@
   }
   els.sourceSel.addEventListener('change', applySource);
 
+  if (els.playerMoreBtn) els.playerMoreBtn.addEventListener('click', () => {
+    const open = !els.playerCard.classList.contains('expanded');
+    els.playerCard.classList.toggle('expanded', open);
+    els.playerMoreBtn.setAttribute('aria-expanded', String(open));
+    els.playerMoreBtn.textContent = open ? 'Less' : 'More';
+  });
+  if (els.ragaDetails && window.matchMedia && window.matchMedia('(max-width: 640px)').matches) {
+    els.ragaDetails.open = false;      // on a phone the contour and notation come first
+  }
+
   /* ------------------------------ pitch ------------------------------ */
 
   function clearPitchCache() {
@@ -1398,6 +1754,20 @@
       if (v.synthUrl && v.synthUrl !== synthUrl) URL.revokeObjectURL(v.synthUrl);
     }
     pitchCache.clear();
+  }
+
+  // A shifted copy of a long recording is tens of MB; keep the original and
+  // the most recent few so stepping through keys can't exhaust memory.
+  const PITCH_CACHE_SHIFTS = 3;
+  function prunePitchCache(keep) {
+    const shifts = [...pitchCache.keys()].filter((k) => k !== 0 && k !== keep);
+    while (shifts.length > PITCH_CACHE_SHIFTS - 1) {
+      const oldest = shifts.shift();                 // Map keeps insertion order
+      const v = pitchCache.get(oldest);
+      if (v.origUrl !== origUrl) URL.revokeObjectURL(v.origUrl);
+      if (v.synthUrl !== synthUrl) URL.revokeObjectURL(v.synthUrl);
+      pitchCache.delete(oldest);
+    }
   }
 
   const noteName = (hz) => noteLabel(hz).split(' ')[0];
@@ -1493,7 +1863,10 @@
     updatePitchUI();
 
     const cached = pitchCache.get(semitones);
-    if (cached) { origUrl = cached.origUrl; synthUrl = cached.synthUrl; swapAudioSources(origUrl, synthUrl); return; }
+    if (cached) {
+      pitchCache.delete(semitones); pitchCache.set(semitones, cached);   // most recent
+      origUrl = cached.origUrl; synthUrl = cached.synthUrl; swapAudioSources(origUrl, synthUrl); return;
+    }
 
     // In-browser phase-vocoder transpose (the server WORLD/Rubber Band path was
     // removed — it didn't sound right; transpose quality is parked for now).
@@ -1511,6 +1884,7 @@
       const oUrl = URL.createObjectURL(encodeWav(shifted, state.fileSr));
       const sUrl = URL.createObjectURL(encodeWav(syn, state.sr));
       pitchCache.set(semitones, { origUrl: oUrl, synthUrl: sUrl });
+      prunePitchCache(semitones);
       origUrl = oUrl; synthUrl = sUrl;
       swapAudioSources(oUrl, sUrl);
     } catch (err) {
@@ -1535,6 +1909,7 @@
       }
       state.playing = true;
       els.playBtn.textContent = '⏸';
+      els.playBtn.setAttribute('aria-label', 'Pause');
       startRaf();
     } catch (e) { toast('Playback failed: ' + e.message); }
   }
@@ -1543,6 +1918,7 @@
     synthEl.pause();
     state.playing = false;
     els.playBtn.textContent = '▶';
+    els.playBtn.setAttribute('aria-label', 'Play');
     stopRaf();
     updateTimeDisp();
   }
@@ -1638,6 +2014,7 @@
     LATENCY_SEC: 0.10,    // input+block latency estimate; trail is back-dated by this
   };
   let mic = null;         // { stream, src, node, silent, ring, w, filled, timer } — null = off
+  let micWorkletLoaded = null;   // addModule() promise, once per AudioContext
   async function startMic() {
     if (mic || !state.ready) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1657,14 +2034,11 @@
     }
     const ctx = ensureCtx();
     const src = ctx.createMediaStreamSource(stream);
-    const node = ctx.createScriptProcessor(4096, 1, 1);
     const silent = ctx.createGain();
-    silent.gain.value = 0;                 // ScriptProcessor must reach the destination; keep it inaudible
+    silent.gain.value = 0;                 // the capture node must reach the destination; keep it inaudible
     const ring = new Float32Array(Math.round(16000 * MIC.RING_SEC));
-    mic = { stream, src, node, silent, ring, w: 0, filled: 0, timer: 0 };
-    node.onaudioprocess = (e) => {
+    const onBlock = (inp) => {
       const m = mic; if (!m) return;
-      const inp = e.inputBuffer.getChannelData(0);
       const ratio = ctx.sampleRate / 16000;   // 44.1k/48k -> 16k, linear interp
       for (let o = 0; (o * ratio | 0) < inp.length - 1; o++) {
         const p = o * ratio, i = p | 0, fr = p - i;
@@ -1673,6 +2047,29 @@
         if (m.filled < m.ring.length) m.filled++;
       }
     };
+    // AudioWorklet captures off the main thread; ScriptProcessor (deprecated)
+    // remains only as a fallback for browsers without worklets.
+    let node = null;
+    if (ctx.audioWorklet && typeof AudioWorkletNode === 'function') {
+      try {
+        if (!micWorkletLoaded) micWorkletLoaded = ctx.audioWorklet.addModule('js/mic-worklet.js?v=66');
+        await micWorkletLoaded;
+        node = new AudioWorkletNode(ctx, 'swarlekh-mic', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+        node.port.onmessage = (e) => onBlock(e.data);
+      } catch (err) {
+        micWorkletLoaded = null;
+        node = null;
+      }
+    }
+    if (!node) {
+      node = ctx.createScriptProcessor(4096, 1, 1);
+      node.onaudioprocess = (e) => onBlock(e.inputBuffer.getChannelData(0));
+    }
+    if (mic || !state.ready) {             // stopped or superseded while the worklet loaded
+      stream.getTracks().forEach((tr) => tr.stop());
+      return;
+    }
+    mic = { stream, src, node, silent, ring, w: 0, filled: 0, timer: 0 };
     src.connect(node); node.connect(silent); silent.connect(ctx.destination);
     mic.timer = setInterval(micTick, MIC.TICK_MS);
     els.micBtn.classList.add('on');
@@ -1729,7 +2126,10 @@
     if (!m) return;
     mic = null;
     clearInterval(m.timer);
-    if (m.node) m.node.onaudioprocess = null;
+    if (m.node) {
+      m.node.onaudioprocess = null;
+      if (m.node.port) m.node.port.onmessage = null;
+    }
     try { m.src.disconnect(); m.node.disconnect(); m.silent.disconnect(); } catch (e) {}
     if (m.stream && m.stream.getTracks) m.stream.getTracks().forEach((tr) => tr.stop());
     state.micTrail = [];
@@ -1765,6 +2165,14 @@
   function stopRaf() { if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
   function tick() {
     const t = origEl.currentTime;
+    // timeupdate fires only ~4x a second, which let loops run up to 250 ms
+    // into the next phrase; while visible, check the loop end every frame.
+    if (state.playing && state.loopA != null && state.loopB != null && t >= state.loopB) {
+      if (state.ramp.on) rampStep();
+      seek(state.loopA);
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
     if (!(state.loopA != null && state.loopB != null && t >= state.loopB)) {
       const viewSec = viewWidthSec();
       if (t > state.scrollSec + viewSec * 0.72 || t < state.scrollSec) {
@@ -1806,6 +2214,7 @@
     // the phrase index feeds the phrase-loop display.
     activeLineIdx = lineIdx;
     activeTokIdx = tokIdx;
+    highlightNotationLine(lineIdx, state.playing);
   }
 
   /* ------------------------------ canvas ------------------------------ */
@@ -2281,7 +2690,48 @@
     if (Math.abs(x - xa) <= 6) return 'a';
     return null;
   }
+  // Touch: the canvas owns gestures (touch-action: none), so it interprets
+  // them itself — a mostly-vertical swipe scrolls the page, a horizontal one
+  // pans the contour, two fingers pinch-zoom, and a dot moves only after a
+  // short press-and-hold so scrolling past a note can't edit it.
+  const touches = new Map();          // pointerId -> { x, y }
+  let pinch = null;                   // { dist, pxPerSec, tAt }
+  const NOTE_HOLD_MS = 280;
+  function touchSpread() {
+    const [a, b] = [...touches.values()];
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, midX: (a.x + b.x) / 2 };
+  }
+  function abandonDrag() {
+    if (!dragInfo) return;
+    if (dragInfo.mode === 'add-note') {
+      const index = state.tokens.indexOf(dragInfo.preview);
+      if (index >= 0) state.tokens.splice(index, 1);
+      renotateNow();
+    } else if (dragInfo.mode === 'note') {
+      const token = state.tokens[dragInfo.tokenIndex];
+      if (token) restoreDraggedToken(token, dragInfo.original);
+      computeSmoothedCents();
+      drawCanvas();
+    }
+    dragInfo = null;
+  }
   cvs.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size >= 2) {
+        abandonDrag();
+        if (touches.size === 2) {
+          const { dist, midX } = touchSpread();
+          const rect = cvs.getBoundingClientRect();
+          pinch = {
+            dist, pxPerSec: state.pxPerSec,
+            tAt: state.scrollSec + Math.max(0, midX - rect.left - GUTTER) / state.pxPerSec,
+          };
+        }
+        cvs.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
     const rect = cvs.getBoundingClientRect();
     const y = e.clientY - rect.top, x = e.clientX - rect.left;
     const edge = loopEdgeAt(e.clientX);
@@ -2317,25 +2767,50 @@
                    prevA: state.loopA, prevB: state.loopB, moved: false };
     } else {
       const tokenIndex = noteAt(e.clientX, e.clientY);
+      const touch = e.pointerType === 'touch';
       if (tokenIndex >= 0) {
-        if (state.playing) pause();
+        if (state.playing && !touch) pause();
         const token = state.tokens[tokenIndex];
         dragInfo = {
           mode: 'note',
           tokenIndex,
           original: Object.assign({}, token),
           targetK: token.k,
+          x: e.clientX,
           y: e.clientY,
+          scroll0: state.scrollSec,
+          lastY: e.clientY,
+          touch,
+          downAt: performance.now(),
           moved: false,
         };
-        cvs.style.cursor = 'ns-resize';
+        if (!touch) cvs.style.cursor = 'ns-resize';
       } else {
-        dragInfo = { mode: 'pan', x: e.clientX, scroll0: state.scrollSec, moved: false };
+        dragInfo = { mode: 'pan', x: e.clientX, y: e.clientY, lastY: e.clientY,
+                     scroll0: state.scrollSec, touch, axis: null, moved: false };
       }
     }
     cvs.setPointerCapture(e.pointerId);
   });
   cvs.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && touches.size === 2) {
+        const { dist, midX } = touchSpread();
+        const rect = cvs.getBoundingClientRect();
+        state.pxPerSec = Math.max(15, Math.min(400, pinch.pxPerSec * dist / pinch.dist));
+        state.scrollSec = clampScroll(pinch.tAt - Math.max(0, midX - rect.left - GUTTER) / state.pxPerSec);
+        drawCanvas();
+        return;
+      }
+    }
+    if (dragInfo && dragInfo.touch && dragInfo.mode === 'note' && !dragInfo.moved &&
+        performance.now() - dragInfo.downAt < NOTE_HOLD_MS &&
+        Math.hypot(e.clientX - dragInfo.x, e.clientY - dragInfo.y) > 8) {
+      // Moved before the hold completed: this is a scroll or pan, not an edit.
+      dragInfo = { mode: 'pan', x: dragInfo.x, y: dragInfo.y, lastY: dragInfo.lastY,
+                   scroll0: dragInfo.scroll0, touch: true, axis: null, moved: false };
+    }
     if (!dragInfo) {   // idle: cursor affordances so the ruler invites the drag
       const y = e.clientY - cvs.getBoundingClientRect().top;
       cvs.style.cursor = state.addNoteMode && y >= RULER
@@ -2371,6 +2846,7 @@
       return;
     }
     if (dragInfo.mode === 'note') {
+      if (dragInfo.touch && state.playing && !dragInfo.moved) pause();
       if (Math.abs(e.clientY - dragInfo.y) > 3) dragInfo.moved = true;
       const targetK = canvasYToK(e.clientY);
       if (targetK !== dragInfo.targetK) {
@@ -2384,6 +2860,19 @@
     }
     if (dragInfo.mode === 'pan') {
       const dx = e.clientX - dragInfo.x;
+      if (dragInfo.touch) {
+        const dy = e.clientY - dragInfo.y;
+        if (!dragInfo.axis && Math.hypot(dx, dy) > 8) {
+          dragInfo.axis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
+          dragInfo.moved = true;
+        }
+        if (dragInfo.axis === 'y') {
+          window.scrollBy(0, dragInfo.lastY - e.clientY);   // let the page scroll
+          dragInfo.lastY = e.clientY;
+          return;
+        }
+        if (dragInfo.axis !== 'x') return;
+      }
       if (Math.abs(dx) > 4) dragInfo.moved = true;
       if (dragInfo.moved) {
         state.scrollSec = clampScroll(dragInfo.scroll0 - dx / state.pxPerSec);
@@ -2404,7 +2893,15 @@
     state.phraseLoop = -1;          // a hand-set loop is no longer a phrase loop
     updateLoopUI(); drawCanvas();
   });
+  function releaseTouch(e) {
+    if (e.pointerType !== 'touch') return false;
+    const wasPinch = !!pinch;
+    touches.delete(e.pointerId);
+    if (touches.size < 2) pinch = null;
+    return wasPinch;                    // the lifted finger ended a pinch
+  }
   cvs.addEventListener('pointerup', (e) => {
+    if (releaseTouch(e)) { dragInfo = null; return; }
     if (dragInfo) {
       if (dragInfo.mode === 'add-note') {
         const preview = dragInfo.preview;
@@ -2444,18 +2941,9 @@
     }
     dragInfo = null;
   });
-  cvs.addEventListener('pointercancel', () => {
-    if (dragInfo && dragInfo.mode === 'add-note') {
-      const index = state.tokens.indexOf(dragInfo.preview);
-      if (index >= 0) state.tokens.splice(index, 1);
-      renotateNow();
-    } else if (dragInfo && dragInfo.mode === 'note') {
-      const token = state.tokens[dragInfo.tokenIndex];
-      if (token) restoreDraggedToken(token, dragInfo.original);
-      computeSmoothedCents();
-      drawCanvas();
-    }
-    dragInfo = null;
+  cvs.addEventListener('pointercancel', (e) => {
+    releaseTouch(e);
+    abandonDrag();
     cvs.style.cursor = state.addNoteMode ? 'crosshair' : '';
   });
   cvs.addEventListener('dblclick', (e) => {

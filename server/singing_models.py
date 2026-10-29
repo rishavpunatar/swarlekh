@@ -86,7 +86,9 @@ class RobustPitchTracker:
         praat_frequency,
         praat_strength,
         praat_hop_sec,
+        on_chunk=None,
     ):
+        """on_chunk(fraction) is called after each chunk; it may raise to cancel."""
         waveform = np.asarray(audio, dtype=np.float32)
         if waveform.ndim > 1:
             waveform = waveform.mean(axis=0)
@@ -118,6 +120,8 @@ class RobustPitchTracker:
             times_parts.append(global_times[keep])
             frequency_parts.append(frequency[keep])
             confidence_parts.append(confidence[keep])
+            if on_chunk is not None:
+                on_chunk(min(1.0, core_end / max(duration, 1e-9)))
 
         times = np.concatenate(times_parts) if times_parts else np.array([])
         frequency = (
@@ -197,7 +201,8 @@ class GameTranscriber:
             providers=providers,
         )
 
-    def transcribe(self, audio, sample_rate):
+    def transcribe(self, audio, sample_rate, on_chunk=None):
+        """on_chunk(fraction) is called after each chunk; it may raise to cancel."""
         import librosa
 
         waveform = np.asarray(audio, dtype=np.float32)
@@ -235,6 +240,8 @@ class GameTranscriber:
                     continue
                 if midpoint <= core_end + 1e-7:
                     notes.append(shifted)
+            if on_chunk is not None:
+                on_chunk(min(1.0, core_end / max(audio_duration, 1e-9)))
 
         notes.sort(key=lambda note: (note["onset"], note["offset"]))
         return notes

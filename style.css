@@ -187,6 +187,10 @@ kbd {
   color: var(--text);
 }
 
+/* The hidden attribute always wins over component display rules (e.g. the
+   flex first-run card), so "Got it" and other toggles really hide things. */
+[hidden] { display: none !important; }
+
 /* ---------------------------------------------------------------------------
    4. Cards
    --------------------------------------------------------------------------- */
@@ -636,6 +640,8 @@ input[type="range"]::-moz-range-thumb {
 #contour {
   width: 100%; height: 560px; display: block;
   border-radius: 0;
+  /* Gestures are interpreted in JS: vertical swipes still scroll the page,
+     horizontal drags pan, two fingers pinch-zoom, dots drag to correct. */
   cursor: crosshair; touch-action: none;
 }
 #canvasCard .hint {
@@ -645,34 +651,12 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* ---------------------------------------------------------------------------
-   13. Key picker (onboarding)
-   --------------------------------------------------------------------------- */
-.key-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.key-cur { font-size: 15px; }
-.key-cur b { color: var(--accent); font-size: 18px; font-family: var(--font-serif); }
-#keyGoBtn {
-  margin-left: auto;
-  background: var(--accent);
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--accent) 88%, #fff) 0%, var(--accent) 100%);
-  color: var(--on-accent); border: none;
-  border-radius: var(--radius-md); padding: 10px 20px;
-  font-size: 15px; font-weight: 600; font-family: inherit;
-  height: auto; width: auto; white-space: nowrap; cursor: pointer;
-  box-shadow: 0 1px 2px rgba(58, 46, 28, 0.2),
-              inset 0 1px 0 rgba(255, 255, 255, 0.22);
-  transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
-}
-#keyGoBtn:hover { filter: brightness(1.06); transform: translateY(-1px); }
-#keyGoBtn:active { transform: translateY(0) scale(0.98); }
-
-/* ---------------------------------------------------------------------------
    14. Notation (kept for dynamic tokens: canvas labels & any future list)
    --------------------------------------------------------------------------- */
 .legend { font-size: 12.5px; color: var(--muted); margin: 4px 0 12px; }
 .legend b { color: var(--text); font-weight: 600; }
 
-#notation { max-height: 420px; overflow-y: auto; padding-right: 6px; }
+#notation { max-height: 460px; overflow-y: auto; padding-right: 6px; }
 #notation::-webkit-scrollbar { width: 9px; }
 #notation::-webkit-scrollbar-thumb {
   background: var(--grid-strong); border-radius: 5px;
@@ -817,3 +801,93 @@ input[type="range"]::-moz-range-thumb {
 #phraseDisp, #loopDisp, #rampDisp { font-variant-numeric: tabular-nums; }
 .taal-line { margin: 10px 0 0; font-size: 13.5px; }
 .taal-line b { color: var(--accent); }
+
+
+/* ---------------------------------------------------------------------------
+   18. Practice layout: sticky transport, notation, collapsible raag card
+   --------------------------------------------------------------------------- */
+/* The transport stays on screen while you read the contour and notation. */
+#playerCard {
+  position: sticky; top: 8px; z-index: 20;
+  backdrop-filter: saturate(1.1);
+}
+.player-more { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+.player-more-btn { display: none; }
+.tag {
+  font-size: 10px; font-weight: 650; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px; padding: 1px 6px; cursor: help;
+}
+
+.legend-indigo { color: var(--indigo) !important; }
+.legend-accent { color: var(--accent) !important; }
+.legend-mic { color: var(--mic, #2a8f7a) !important; }
+
+.notation-head { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; margin-bottom: 10px; }
+#notationMeta { font-size: 12.5px; }
+.notation-lines {
+  list-style: none; margin: 0; padding: 0;
+  font-family: var(--font-serif); font-size: 18px; line-height: 1.55;
+}
+.notation-lines li {
+  display: flex; gap: 12px; align-items: baseline;
+  padding: 5px 8px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.15s ease;
+}
+.notation-lines li:hover { background: var(--tok-bg); }
+.notation-lines li.section { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 12px; }
+.notation-lines li.active { background: var(--accent-soft); }
+.notation-lines li.active .n-text { color: var(--text); }
+.notation-lines .n-num, .notation-lines .n-time {
+  font-family: var(--font-ui); font-size: 11.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums; flex-shrink: 0;
+}
+.notation-lines .n-num { min-width: 20px; text-align: right; }
+.notation-lines .n-time { min-width: 34px; }
+.notation-lines .n-text { white-space: pre-wrap; word-break: break-word; letter-spacing: 0.3px; }
+.notation-lines .empty { color: var(--muted); font-family: var(--font-ui); font-size: 14px; cursor: default; }
+
+#ragaDetails > summary { cursor: pointer; list-style: none; flex-wrap: wrap; }
+#ragaDetails > summary::-webkit-details-marker { display: none; }
+#ragaDetails > summary::after {
+  content: "▾"; color: var(--muted); font-size: 12px; margin-left: auto;
+  transition: transform 0.15s ease;
+}
+#ragaDetails:not([open]) > summary::after { transform: rotate(-90deg); }
+#ragaDetails:not([open]) > summary { margin-bottom: 0; }
+.raga-summary { font-size: 13px; }
+#ragaDetails[open] .raga-summary { display: none; }
+
+@media (max-width: 640px) {
+  #playerCard { top: 4px; padding: 10px 12px; }
+  #playerCard .player-row { gap: 8px 10px; }
+  #playerCard .big-btn { width: 42px; height: 42px; }
+  #playerCard .time { min-width: 0; font-size: 14px; }
+  .player-more-btn { display: inline-flex; margin-left: auto; }
+  .player-more { display: none; }
+  #playerCard.expanded .player-more { display: flex; }
+  .loop-ctl #phraseDisp, .loop-ctl #loopDisp { display: none; }
+  .notation-lines { font-size: 16px; }
+  .notation-lines li { gap: 8px; padding: 5px 4px; }
+}
+
+/* ---------------------------------------------------------------------------
+   19. Print: a clean notation sheet (use "Save as PDF" in the print dialog)
+   --------------------------------------------------------------------------- */
+#printHeader { display: none; }
+@media print {
+  :root { --text: #000; --muted: #555; --card: #fff; --bg: #fff; }
+  body { background: #fff !important; color: #000; }
+  header, footer, #dropzone, #progressCard, #firstRun, #playerCard, #canvasCard,
+  #tonicCard, #settingsCard, #toast, .notation-head .mini-btn, #notationCard .hint,
+  #ragaCard .hint, #swarPalette, #ragaGuess { display: none !important; }
+  #resultArea { display: block !important; }
+  #printHeader { display: block; margin: 0 0 12px; }
+  #printHeader h2 { font-family: var(--font-serif); font-size: 22px; margin: 0 0 4px; }
+  #printHeader p { margin: 0; font-size: 12px; color: #333; }
+  .card { border: none; box-shadow: none; padding: 0; margin: 0 0 14px; background: #fff; }
+  #ragaDetails > summary::after { display: none; }
+  #notation { max-height: none; overflow: visible; }
+  .notation-lines li { break-inside: avoid; cursor: default; }
+  .notation-lines li.active { background: none !important; }
+}

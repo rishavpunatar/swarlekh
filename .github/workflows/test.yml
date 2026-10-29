@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # DSP, notation, raga, client contracts and the app-level accuracy
+      # benchmark (from the committed fixture; no audio or Python needed).
+      - run: npm test
+
+  server-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # The full server suite needs torch, Demucs and model weights; CI only
+      # guards against syntax errors. Run the real tests locally (server/README.md).
+      - run: python -m py_compile server/server.py server/singing_models.py server/rhythm.py

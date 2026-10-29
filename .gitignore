@@ -4,6 +4,8 @@ node_modules/
 
 # local analysis server (Python venv + model caches)
 server/.venv/
+server/.venv-sep/
+server/cache/
 server/__pycache__/
 server/server.log
 server/models/

@@ -2600,3 +2600,82 @@ test('passing-tone gate: fast murki (G R G) survives, glide fragment does not sw
   const { tokens } = DSP.notate(f0, cl, hop, sa, { clean: true, ornaments: true, ornMinMs: 25, minNoteMs: 130, clarityThresh: 0.5 });
   assert.deepStrictEqual(tokens.map(t => t.k), [0, 4, 2, 4, 5], 'murki notes all surface');
 });
+
+test('notateRegions: vibrato on a held swara does not sprout murki notes', () => {
+  const hopSec = 0.01;
+  const frames = 120;
+  const regions = [{ onset: 0, offset: frames * hopSec, frequency: st(2) }];
+  // A held Re with a regular 6 Hz, ±85-cent vibrato: every peak quantizes to
+  // the neighbouring semitones, but it is one sung note, not a murki.
+  const f0 = new Float32Array(frames);
+  for (let frame = 0; frame < frames; frame++) {
+    const cents = 200 + 85 * Math.sin(2 * Math.PI * 6 * frame * hopSec);
+    f0[frame] = SA * Math.pow(2, cents / 1200);
+  }
+  const { tokens } = DSP.notateRegions(
+    regions,
+    f0,
+    new Float32Array(frames).fill(0.95),
+    hopSec,
+    SA,
+    { clean: true, ornaments: true, minNoteMs: 130 }
+  );
+  assert.ok(!tokens.some((token) => token.hybridOrnament),
+    `vibrato produced ornament notes: ${tokens.map((t) => t.k).join(' ')}`);
+  const total = tokens.reduce((sum, token) => sum + token.t1 - token.t0, 0);
+  const onRe = tokens.filter((token) => token.k === 2)
+    .reduce((sum, token) => sum + token.t1 - token.t0, 0);
+  assert.ok(onRe / total >= 0.95,
+    `expected the held note to read as Re, got ${tokens.map((t) => t.k).join(' ')}`);
+});
+
+test('notationLines: one entry per phrase with sustains and section flags', () => {
+  const phrases = [
+    { t0: 0, t1: 1.2, tokens: [{ t0: 0, t1: 0.3, k: 0 }, { t0: 0.3, t1: 1.2, k: 2 }] },
+    { t0: 6, t1: 6.6, section: true, tokens: [{ t0: 6, t1: 6.6, k: 7, kan: [9] }] },
+  ];
+  const lines = DSP.notationLines(phrases, new Set([0, 2, 4, 5, 7, 9, 11]));
+  assert.strictEqual(lines.length, 2);
+  assert.strictEqual(lines[0].text, 'S  R – –');
+  assert.strictEqual(lines[1].text, '(D)P –');
+  assert.ok(lines[1].section);
+  assert.match(DSP.notationText(phrases), /^ 1\. \[0:00\]  S {2}R/);
+});
+
+test('toDevanagari keeps komal and teevra distinctions', () => {
+  assert.strictEqual(DSP.toDevanagari('S R G m P D N'), 'स रे ग म प ध नि');
+  assert.strictEqual(DSP.toDevanagari('r g M d n'), 'रे॒ ग॒ म॑ ध॒ नि॒');
+  assert.strictEqual(DSP.toDevanagari(".N S' (GRG)m"), ".नि स' (गरेग)म");
+  assert.notStrictEqual(DSP.toDevanagari('r'), DSP.toDevanagari('R'));
+});
+
+test('ragaId: a few seconds of a plain scale exercise is never a "likely" raga', () => {
+  const a = fakeAnalysis('S R G m P m G R S R G P D P m G R S'.split(' '), 'G', 'D');
+  a.total = 8;                                   // an 8-second clip
+  const ranked = RagaId.rankRagas(a, RAGAS);
+  assert.ok(ranked[0].confidence < 0.75, `${ranked[0].name} at ${ranked[0].confidence}`);
+  const bihag = ranked.findIndex((r) => r.name === 'Bihag');
+  assert.ok(bihag > 2, 'Bihag needs its samvadi N; a scale without N should not suggest it');
+});
+
+test('ragaId: a raga whose vadi or samvadi is never sung is demoted', () => {
+  const a = fakeAnalysis('S G m P N S S n P m G S G m P N S n P m G S'.split(' '), 'G', 'N');
+  const ranked = RagaId.rankRagas(a, RAGAS);
+  assert.strictEqual(ranked[0].name, 'Tilang', `top=${ranked.slice(0, 3).map((x) => x.name)}`);
+  const desh = ranked.find((r) => r.name === 'Desh');   // vadi R is absent here
+  assert.ok(/no R/.test(desh.rationale), desh.rationale);
+});
+
+test('ragaId: the knowledge base covers common light-classical ragas', () => {
+  for (const name of ['Alhaiya Bilawal', 'Pilu', 'Pahadi', 'Kirwani', 'Charukeshi', 'Tilang']) {
+    assert.ok(RAGAS.some((r) => r.name === name), `${name} missing`);
+  }
+});
+
+test('ragaId: a mixed scale never yields a "likely" raga', () => {
+  const a = fakeAnalysis('S R G m G m R S P d P m G m R S g m P'.split(' '), 'G', 'S');
+  a.total = 40;
+  a.thaat = { name: 'Bhairav', mixed: true, confidence: 0.56 };
+  const ranked = RagaId.rankRagas(a, RAGAS);
+  assert.ok(ranked.every((r) => r.confidence <= 0.6), ranked.slice(0, 2).map((r) => `${r.name} ${r.confidence}`).join(', '));
+});
