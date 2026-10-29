@@ -26,7 +26,8 @@ test('cancel stops the job on the server, not just the browser request', () => {
 test('note corrections persist per recording and restore on reload', () => {
   assert.match(source, /createObjectStore\('edits'\)/);
   assert.match(source, /idbPut\('edits:' \+ state\.fileSha/);
-  assert.match(source, /state\.manualEdits = await loadNoteEdits\(state\.fileSha\)/);
+  assert.match(source, /const savedEdits = await loadNoteEdits\(state\.fileSha\)/);
+  assert.match(source, /state\.manualEdits = savedEdits;/);
   assert.equal((source.match(/noteEditsChanged\(\);/g) || []).length, 5);
 });
 

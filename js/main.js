@@ -220,7 +220,7 @@
     let lastContact = performance.now();
     let legacy = false;
     const poll = setInterval(async () => {
-      if (legacy) return;
+      if (legacy) { onStatus(null); return; }      // keep the elapsed timer moving
       try {
         const r = await fetch(`${SERVER_URL}/status?job=${jobId}`, { signal: ctrl.signal });
         if (r.status === 404) { legacy = true; onStatus(null); return; }   // pre-/status server
@@ -561,10 +561,15 @@
       synthEl.src = synthUrl;
 
       state.saHz = result.tonic[0].hz;
-      // Corrections made earlier on this recording come back with it.
-      clearManualNoteEdits();
-      state.manualEdits = await loadNoteEdits(state.fileSha);
+      // Corrections made earlier on this recording come back with it. (A new
+      // upload already cleared the old file's; re-analysing the same file
+      // keeps the in-memory ones if storage is unavailable.)
+      const savedEdits = await loadNoteEdits(state.fileSha);
       if (stale()) return;
+      if (savedEdits.length) {
+        state.manualEdits = savedEdits;
+        state.noteEditHistory = [];
+      }
       updateUndoNoteButton();
       renderRhythm();
       renderTonicChips();
