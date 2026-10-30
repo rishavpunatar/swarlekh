@@ -2254,7 +2254,10 @@ test('stabilizeOctave auto: lifts a sustained intra-phrase octave-down error', (
   // is stepwise; the middle is dragged an octave low to +2. Auto must lift the
   // middle back into the neighbours' register (a local-median glitch fix can't —
   // the error is longer than its window).
-  const seq = [[12, 40], [2, 55], [16, 40], [12, 40]];   // S' [R-low] G' S'
+  // Restructuring runs only on a track that shows gross tracking errors (a
+  // voice-level spread beyond ~2.3 octaves), as the real file did (3.4
+  // octaves); the trailing deep sub-harmonic latch supplies that context.
+  const seq = [[12, 40], [2, 55], [16, 40], [12, 40], [-20, 30]];   // S' [R-low] G' S' + latch
   const { f0, clarity } = trackFromRuns(seq);
   const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'auto');
   const mid = [];
@@ -2714,4 +2717,20 @@ test('ragaId: a mixed scale never yields a "likely" raga', () => {
   a.thaat = { name: 'Bhairav', mixed: true, confidence: 0.56 };
   const ranked = RagaId.rankRagas(a, RAGAS);
   assert.ok(ranked.every((r) => r.confidence <= 0.6), ranked.slice(0, 2).map((r) => `${r.name} ${r.confidence}`).join(', '));
+});
+
+test('regroupPhrases: a long alaap with short breaths is split into readable lines', () => {
+  // 60 s of notes with 0.5 s breaths every ~4 s: below the 1 s line gap, so it
+  // used to become one line; lines must stay <= ~12 s and break at breaths.
+  const tokens = [];
+  let t = 0;
+  for (let phrase = 0; phrase < 15; phrase++) {
+    for (let n = 0; n < 6; n++) { tokens.push({ t0: t, t1: t + 0.6, k: n % 5 }); t += 0.6; }
+    t += 0.5;
+  }
+  const lines = DSP.regroupPhrases(tokens, 1.0, true);
+  assert.ok(lines.length >= 5, `expected several lines, got ${lines.length}`);
+  for (const line of lines) assert.ok(line.t1 - line.t0 <= 12.01, `line too long: ${(line.t1 - line.t0).toFixed(1)} s`);
+  for (let i = 1; i < lines.length; i++) assert.ok(lines[i].t0 - lines[i - 1].t1 >= 0.49, 'lines break at breaths');
+  assert.strictEqual(lines.reduce((a, l) => a + l.tokens.length, 0), tokens.length);
 });

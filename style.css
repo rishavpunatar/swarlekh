@@ -891,3 +891,16 @@ input[type="range"]::-moz-range-thumb {
   .notation-lines li { break-inside: avoid; cursor: default; }
   .notation-lines li.active { background: none !important; }
 }
+
+/* Uncertain swaras in the notation: check these by ear. */
+.unsure {
+  text-decoration: underline dotted color-mix(in srgb, var(--accent) 70%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+  cursor: help;
+}
+#sungBtn[aria-pressed="true"] { background: var(--tok-bg); border-color: var(--grid-strong); }
+#sungBtn[aria-pressed="false"] { opacity: 0.55; }
+@media print {
+  .unsure { text-decoration: underline dotted #888; }
+}

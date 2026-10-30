@@ -427,17 +427,16 @@
     const loud = [];
     for (let k = 0; k < idx.length; k++) if (!rms || (rms[idx[k]] || 0) >= loudRef) loud.push(k);
     if (loud.length < 20) return true;
-    const gap = Math.max(3, Math.round(0.16 / hopSec));
-    let jumps = 0;
-    for (let q = 1; q < loud.length; q++) {
-      const a = loud[q - 1], b = loud[q];
-      const d = Math.abs(cents[b] - cents[a]);
-      if (idx[b] - idx[a] <= gap && d > 900 && d < 1500) jumps++;
-    }
+    // Octave-sized frame jumps are NOT evidence: on real concert mixes they
+    // are everywhere (median 34 per 90 s on Saraga), and gating on them made
+    // restructuring fire on almost every recording and misplace the octave.
+    // A voice-level spread beyond ~2.3 octaves is (no singer covers that in a
+    // passage), as is a register no singer uses. Measured on Saraga excerpts:
+    // Sa+octave 42% when gated on jumps, 62% never restructuring, 64% here.
     const lc = loud.map((k) => cents[k]).sort((a, b) => a - b);
     const spread = lc[Math.floor(0.95 * (lc.length - 1))] - lc[Math.floor(0.05 * (lc.length - 1))];
     const medHz = 55 * Math.pow(2, lc[lc.length >> 1] / 1200);
-    return jumps >= 2 || spread > 2000 || medHz < 90 || medHz > 600;
+    return spread > 2800 || medHz < 90 || medHz > 600;
   }
 
   function stabilizeOctave(f0, clarity, rms, hopSec, mode) {
@@ -985,8 +984,17 @@
     const placed = [];
     for (const p of peaks.slice(0, 3)) {
       let bestHz = 0, bestScore = -1, bestCov = 0, bestSa = 0;
+      // The tanpura's Sa strings sound at the singer's Sa: its persistent
+      // energy is strongest at the true octave (Saraga: 80% of excerpts, and
+      // stronger than the octave above in 90%). It decides when the voice
+      // alone is ambiguous, e.g. a passage of taans around taar Sa.
+      const octaveHz = [];
+      for (let oct = 0; oct <= 4; oct++) octaveHz.push(55 * Math.pow(2, (p.pc / 1200)) * Math.pow(2, oct));
+      const droneSal = drone && drone.salienceAt && drone.strength >= 0.3
+        ? octaveHz.map((hz) => (hz >= 80 && hz <= 400 ? drone.salienceAt(hz) : 0)) : null;
+      const droneMax = droneSal ? Math.max(...droneSal) : 0;
       for (let oct = 0; oct <= 4; oct++) {
-        const hz = 55 * Math.pow(2, (p.pc / 1200)) * Math.pow(2, oct);
+        const hz = octaveHz[oct];
         if (hz < 80 || hz > 400) continue;
         const saCents = 1200 * Math.log2(hz / 55);
         if (saCents < minSaCents) continue;            // Sa not below the sung range
@@ -996,7 +1004,11 @@
           if (rc >= -500 && rc < 1500) cov += r.w;
           else if (rc >= 1500 && rc < 2100) cov += r.w * 0.25;
         }
-        const sc = cov * (0.3 + naturalness(saCents));   // octave that reads naturally
+        let sc = cov * (0.3 + naturalness(saCents));   // octave that reads naturally
+        if (droneMax > 0) {
+          const rel = droneSal[oct] / droneMax;
+          sc *= 1 - 0.6 * drone.strength * (1 - rel);
+        }
         if (sc > bestScore) { bestScore = sc; bestHz = hz; bestCov = cov; bestSa = saCents; }
       }
       // Combine the pitch-class score with how naturally its best octave sits,
@@ -1083,14 +1095,27 @@
     let best = 0;
     for (let b = 1; b < 240; b++) if (profile[b] > profile[best]) best = b;
     if (!(profile[best] > 0)) return empty;
+    // Absolute harmonic salience of a pitch (for octave decisions): how much
+    // persistent drone energy has this exact fundamental.
+    const salienceAt = (hz) => {
+      const at = (f) => {
+        const x = f * N / sr, k = Math.floor(x);
+        if (k < kMin || k + 1 >= kMax) return 0;
+        return Math.max(linesLow[k], linesLow[k + 1]);
+      };
+      let sal = 0;
+      for (let h = 1; h <= 8; h++) sal += at(hz * h) * Math.pow(0.85, h - 1);
+      return sal;
+    };
     // Persistence of the strongest line: a drone keeps most of its level even
     // in the quietest fifth of the frames; a sung note does not.
     const persistence = profile[best] / Math.max(1e-9, profileHigh[best]);
     // Calibrated on Saraga: real tanpuras sit at 0.2-0.5, voices without a
     // drone at <= 0.06.
     const strength = Math.max(0, Math.min(1, (persistence - 0.08) / 0.17));
-    for (let b = 0; b < 240; b++) profile[b] /= profile[best];
-    return { profile, strength, persistence };
+    const top = profile[best];
+    for (let b = 0; b < 240; b++) profile[b] /= top;
+    return { profile, strength, persistence, salienceAt };
   }
 
   /**
@@ -1471,6 +1496,28 @@
           phrases.splice(i, 1);
         }
       }
+    }
+    // Keep lines readable and loopable: an alaap breathes every few seconds
+    // with pauses shorter than the line gap, which used to run a whole minute
+    // into one line. Split any line longer than ~12 s at its longest breath
+    // (>= 0.2 s), keeping each part at least 3 s long.
+    const MAX_LINE = 12, MIN_PART = 3, MIN_BREATH = 0.2;
+    for (let i = 0; i < phrases.length; i++) {
+      const ph = phrases[i];
+      if (ph.t1 - ph.t0 <= MAX_LINE) continue;
+      let cut = -1, widest = MIN_BREATH;
+      for (let j = 1; j < ph.tokens.length; j++) {
+        const gap = ph.tokens[j].t0 - ph.tokens[j - 1].t1;
+        if (gap >= widest && ph.tokens[j - 1].t1 - ph.t0 >= MIN_PART && ph.t1 - ph.tokens[j].t0 >= MIN_PART) {
+          widest = gap; cut = j;
+        }
+      }
+      if (cut < 0) continue;
+      const head = ph.tokens.slice(0, cut), tail = ph.tokens.slice(cut);
+      phrases.splice(i, 1,
+        { t0: head[0].t0, t1: head[head.length - 1].t1, tokens: head },
+        { t0: tail[0].t0, t1: tail[tail.length - 1].t1, tokens: tail });
+      i--;                                   // re-check the first half
     }
     let prevEnd = 0;
     for (const ph of phrases) {
@@ -2267,24 +2314,80 @@
     return t;
   }
 
+  /**
+   * A note the learner should check by ear. Measured on the synthetic
+   * Hindustani benchmark: notes sung >35c from their swara are right ~73% of
+   * the time (vs ~97%), and notes inferred by the ornament-recovery passes
+   * ~54%. Your own corrections are never "uncertain".
+   */
+  function isUncertainNote(tk) {
+    if (!tk || tk.manualCorrection || tk.manualAddition) return false;
+    if (tk.hybridOrnament || tk.rawLandmark || tk.rawMurkiCluster || tk.rawNestedLandmark) return true;
+    return Number.isFinite(tk.cents) && Math.abs(tk.cents - tk.k * 100) > 35;
+  }
+
   /** Notation as one entry per phrase line: the swara text with ~0.3 s
-   * sustain dashes, X⌒Y meend connectors and section breaks. */
+   * sustain dashes, X⌒Y meend connectors and section breaks. `segments`
+   * carries the same text split per note, flagged when the note is uncertain. */
   function notationLines(phrases, scaleSet) {
     return phrases.map((ph, idx) => {
-      const parts = [];
+      const parts = [];          // [{ text, unsure }][] — one array per spoken group
       for (const tk of ph.tokens) {
         let body = tokenFullText(tk, scaleSet);
         const sustained = Math.min(12, Math.max(0, Math.round((tk.t1 - tk.t0 - 0.35) / 0.3)));
         for (let d2 = 0; d2 < sustained; d2++) body += ' –';
+        const seg = { text: body, unsure: isUncertainNote(tk), t0: tk.t0 };
         if (tk.meendFromPrev && parts.length) {
           // Show the swaras the glide passes through, not just the endpoints.
           const v = tk.via ? viaPath(tk.via, scaleSet) : [];
           const mid = v.length > 2 ? v.slice(1, -1).map((k) => tokenText(k, false)).join('⌒') + '⌒' : '';
-          parts[parts.length - 1] += '⌒' + mid + body;
-        } else parts.push(body);
+          parts[parts.length - 1].push({ text: '⌒' + mid, unsure: false, t0: tk.t0 }, seg);
+        } else parts.push([seg]);
       }
-      return { index: idx, t0: ph.t0, t1: ph.t1, section: !!ph.section, text: parts.join('  ') };
+      const segments = [];
+      parts.forEach((group, i) => {
+        if (i) segments.push({ text: '  ', unsure: false, gap: true });
+        segments.push(...group);
+      });
+      return {
+        index: idx, t0: ph.t0, t1: ph.t1, section: !!ph.section,
+        text: segments.map((x) => x.text).join(''), segments,
+      };
     });
+  }
+
+  /**
+   * The written notation as a pitch track, so it can be played back and
+   * compared by ear with the recording: each swara held flat at its exact
+   * pitch, meends gliding through the swaras they name, silence elsewhere.
+   */
+  function notationPitchTrack(tokens, saHz, hopSec, durationSec) {
+    const n = Math.max(1, Math.ceil(durationSec / hopSec));
+    const f0 = new Float32Array(n), clarity = new Float32Array(n);
+    const hz = (k) => saHz * Math.pow(2, k / 12);
+    for (let ti = 0; ti < tokens.length; ti++) {
+      const tk = tokens[ti];
+      const i0 = Math.max(0, Math.round(tk.t0 / hopSec));
+      const i1 = Math.min(n, Math.max(i0 + 1, Math.round(tk.t1 / hopSec)));
+      const via = tk.glide && tk.via && tk.via.length > 1 ? tk.via : null;
+      const prev = tokens[ti - 1];
+      const glideIn = tk.meendFromPrev && prev && tk.t0 - prev.t1 < 0.05
+        ? Math.min(0.15, 0.25 * (tk.t1 - tk.t0)) : 0;
+      for (let i = i0; i < i1; i++) {
+        const x = (i - i0) / Math.max(1, i1 - i0 - 1);
+        let k = tk.k;
+        if (via) {
+          const pos = x * (via.length - 1), a = Math.floor(pos), b = Math.min(via.length - 1, a + 1);
+          k = via[a] + (via[b] - via[a]) * (pos - a);
+        } else if (glideIn && (i - i0) * hopSec < glideIn) {
+          const y = (i - i0) * hopSec / glideIn;
+          k = prev.k + (tk.k - prev.k) * y * y * (3 - 2 * y);
+        }
+        f0[i] = hz(k);
+        clarity[i] = 1;
+      }
+    }
+    return { f0, clarity };
   }
 
   /** Render notation as numbered lines of plain text, with ~0.3 s sustain
@@ -2662,7 +2765,7 @@
   return {
     preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets,
     detectTonic, droneProfile, estimateTuningDrift, driftAt, correctDrift, tonicWithDrift, notate, buildPracticeContour,
-    displayPitchRange, notationText, notationLines, toDevanagari, devanagariSwara, analyzeRaga,
+    displayPitchRange, notationText, notationLines, notationPitchTrack, isUncertainNote, toDevanagari, devanagariSwara, analyzeRaga,
     regroupPhrases: groupPhrases,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     pitchShift, timeStretch, resampleLinear, formantCorrect,
