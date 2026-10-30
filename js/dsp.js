@@ -962,6 +962,85 @@
     return placed.length ? placed : [{ hz: 146.83, score: 0, uncertain: true }];
   }
 
+  /**
+   * Slow tuning drift (a singer going sharp over a long alaap, or an old tape).
+   * Sa and Pa are achal swaras — sung pure — so how far their steady frames sit
+   * from the provisional Sa grid, window by window, IS the drift. Returns
+   * { times, cents } (window centres) to subtract, or null when the recording
+   * holds its tuning. Glides and ornaments are excluded (moving frames).
+   */
+  function estimateTuningDrift(f0, clarity, hopSec, saHz) {
+    const n = f0.length;
+    const duration = n * hopSec;
+    if (!(saHz > 0) || duration < 40) return null;
+    const dev = new Float32Array(n).fill(NaN);
+    const span = Math.max(1, Math.round(0.03 / hopSec));
+    for (let i = span; i < n - span; i++) {
+      if (!(f0[i] > 0) || clarity[i] < 0.5 || !(f0[i - span] > 0) || !(f0[i + span] > 0)) continue;
+      if (Math.abs(1200 * Math.log2(f0[i + span] / f0[i - span])) > 25) continue;   // moving
+      const pc = (((1200 * Math.log2(f0[i] / saHz)) % 1200) + 1200) % 1200;
+      for (const ref of [0, 702, 1200]) {
+        if (Math.abs(pc - ref) <= 45) { dev[i] = pc - ref; break; }
+      }
+    }
+    const WIN = 20, STEP = 5, minFrames = Math.round(1.5 / hopSec);
+    const times = [], cents = [];
+    for (let c = WIN / 2; c < duration - WIN / 4; c += STEP) {
+      const a = Math.max(0, Math.floor((c - WIN / 2) / hopSec));
+      const b = Math.min(n, Math.ceil((c + WIN / 2) / hopSec));
+      const vals = [];
+      for (let i = a; i < b; i++) if (!Number.isNaN(dev[i])) vals.push(dev[i]);
+      if (vals.length < minFrames) continue;
+      vals.sort((x, y) => x - y);
+      times.push(c);
+      cents.push(vals[vals.length >> 1]);
+    }
+    if (times.length < 3) return null;
+    // 3-point median removes a stray window without flattening real drift.
+    const smooth = cents.map((v, i) => {
+      if (i === 0 || i === cents.length - 1) return v;
+      return [cents[i - 1], v, cents[i + 1]].sort((x, y) => x - y)[1];
+    });
+    const lo = Math.min(...smooth), hi = Math.max(...smooth);
+    if (hi - lo < 20) return null;
+    return { times: Float32Array.from(times), cents: Float32Array.from(smooth) };
+  }
+
+  /** Drift (cents) at time t, linear between window centres, flat at the ends. */
+  function driftAt(drift, t) {
+    if (!drift) return 0;
+    const { times, cents } = drift;
+    if (t <= times[0]) return cents[0];
+    if (t >= times[times.length - 1]) return cents[cents.length - 1];
+    let lo = 0, hi = times.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (times[mid] <= t) lo = mid; else hi = mid; }
+    const x = (t - times[lo]) / (times[hi] - times[lo]);
+    return cents[lo] + (cents[hi] - cents[lo]) * x;
+  }
+
+  /** Remove the drift from a pitch track (a new array; 0 stays unvoiced). */
+  function correctDrift(f0, hopSec, drift) {
+    const out = new Float32Array(f0);
+    if (!drift) return out;
+    for (let i = 0; i < out.length; i++) {
+      if (out[i] > 0) out[i] *= Math.pow(2, -driftAt(drift, i * hopSec) / 1200);
+    }
+    return out;
+  }
+
+  /**
+   * Sa with drift handling, shared by the worker and the benchmarks:
+   * provisional Sa → drift on Sa/Pa → corrected track → final Sa.
+   */
+  function tonicWithDrift(f0, clarity, hopSec, rms) {
+    let tonic = detectTonic(f0, clarity, hopSec, rms);
+    const drift = estimateTuningDrift(f0, clarity, hopSec, tonic[0].hz);
+    if (!drift) return { tonic, drift: null, f0 };
+    const corrected = correctDrift(f0, hopSec, drift);
+    tonic = detectTonic(corrected, clarity, hopSec, rms);
+    return { tonic, drift, f0: corrected };
+  }
+
   /* ---------------------------------------------------------------- *
    * Sargam quantization. 12-letter convention:
    *   S r R g G m M P d D n N   (lowercase = komal; m = shuddha Ma,
@@ -2439,7 +2518,7 @@
 
   return {
     preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets,
-    detectTonic, notate, buildPracticeContour,
+    detectTonic, estimateTuningDrift, driftAt, correctDrift, tonicWithDrift, notate, buildPracticeContour,
     displayPitchRange, notationText, notationLines, toDevanagari, devanagariSwara, analyzeRaga,
     regroupPhrases: groupPhrases,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,

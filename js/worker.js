@@ -93,13 +93,30 @@ self.onmessage = async function (e) {
     // different: its f0, clarity and loudness all come from the separated voice.
     // Using mix YIN here would throw that isolation away and let harmonium or
     // accompaniment choose Sa.
-    let tonic;
+    // Sa, with slow tuning drift (measured on Sa/Pa) removed from the pitch
+    // used for notation. The audio and the melody synth keep the real pitch.
+    const synthF0 = stab.f0.slice();
+    let tonic, drift;
     if (e.data.neural) {
       const yt = DSP.yinTrack(filtered, sr, {});
       const ys = DSP.stabilizeOctave(yt.f0, yt.clarity, yt.rms, yt.hopSec, 'auto');
-      tonic = DSP.detectTonic(ys.f0, yt.clarity, yt.hopSec, yt.rms);
+      const t = DSP.tonicWithDrift(ys.f0, yt.clarity, yt.hopSec, yt.rms);
+      tonic = t.tonic; drift = t.drift;
+      if (drift) stab.f0 = DSP.correctDrift(stab.f0, track.hopSec, drift);
     } else {
-      tonic = DSP.detectTonic(stab.f0, track.clarity, track.hopSec, track.rms);
+      const t = DSP.tonicWithDrift(stab.f0, track.clarity, track.hopSec, track.rms);
+      tonic = t.tonic; drift = t.drift;
+      stab.f0 = t.f0;
+    }
+    let noteRegions = e.data.providedNoteRegions || [];
+    if (drift) {
+      f0raw.set(DSP.correctDrift(f0raw, track.hopSec, drift));
+      noteRegions = noteRegions.map(function (region) {
+        const mid = (Number(region.onset) + Number(region.offset)) / 2;
+        const shift = Math.pow(2, -DSP.driftAt(drift, mid) / 1200);
+        const frequency = (region.frequency > 0 ? region.frequency : 440 * Math.pow(2, (region.midi - 69) / 12)) * shift;
+        return Object.assign({}, region, { frequency: frequency, midi: 69 + 12 * Math.log2(frequency / 440) });
+      });
     }
 
     // Syllable/consonant onsets. The local server detects them on the
@@ -111,7 +128,7 @@ self.onmessage = async function (e) {
       : DSP.detectOnsets(filtered, sr, hopSamples);
 
     prog('synth', 0);
-    const synth = DSP.synthesize(stab.f0, track.clarity, track.hopSec, sr);
+    const synth = DSP.synthesize(synthF0, track.clarity, track.hopSec, sr);
 
     self.postMessage({
       type: 'result',
@@ -123,7 +140,8 @@ self.onmessage = async function (e) {
       hopSec: track.hopSec,
       tonic,
       onsets,
-      noteRegions: e.data.providedNoteRegions || [],
+      noteRegions,
+      drift: drift ? { times: Array.from(drift.times), cents: Array.from(drift.cents) } : null,
       synth,
       sr,
     }, [stab.f0.buffer, f0raw.buffer, track.clarity.buffer, track.rms.buffer, synth.buffer]);

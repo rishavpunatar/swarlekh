@@ -56,6 +56,9 @@ function generate(raga, saHz, opts = {}) {
   for (const p of raga.pakad || []) phrases.push(parsePhrase(p));
   phrases.push(parsePhrase(raga.avaroha || ''));
   for (const p of (raga.pakad || []).slice(0, 2)) phrases.push(parsePhrase(p));
+  // Drift is a slow, long-performance effect: repeat the material to make a
+  // performance long enough (~1.5 min) for it to show.
+  if (opts.repeat > 1) phrases.push(...[].concat(...Array(opts.repeat - 1).fill(phrases.slice())));
   const notes = [];
   let t = 0.4;
   for (const phrase of phrases) {
@@ -96,7 +99,7 @@ function generate(raga, saHz, opts = {}) {
       rms[i] = 0.08 * Math.max(0.3, env) * (1 + 0.06 * Math.sin(2 * Math.PI * 3 * tt));
     }
   }
-  return { f0, clarity, rms, hop, notes, saHz, duration: total, raga: raga.name };
+  return { f0, clarity, rms, hop, notes, saHz, duration: total, raga: raga.name, driftCents: opts.driftCents || 0 };
 }
 
 // Voice (glottal source with vowel formants) + tanpura + tabla at fixed levels
@@ -164,11 +167,24 @@ function regionsFor(perf, seed) {
 
 function analyzeBest(DSP, perf) {
   const { clarity, rms, hop } = perf;
-  const stable = DSP.stabilizeOctave(Float32Array.from(perf.f0), clarity, rms, hop, 'gentle').f0;
-  const tonic = DSP.detectTonic(stable, clarity, hop, rms);
+  let stable = DSP.stabilizeOctave(Float32Array.from(perf.f0), clarity, rms, hop, 'gentle').f0;
+  let regions = regionsFor(perf, 99);
+  let tonic;
+  if (DSP.tonicWithDrift) {                       // same steps as js/worker.js
+    const t = DSP.tonicWithDrift(stable, clarity, hop, rms);
+    tonic = t.tonic; stable = t.f0;
+    if (t.drift) {
+      regions = regions.map((r) => {
+        const f = r.frequency * Math.pow(2, -DSP.driftAt(t.drift, (r.onset + r.offset) / 2) / 1200);
+        return Object.assign({}, r, { frequency: f, midi: 69 + 12 * Math.log2(f / 440) });
+      });
+    }
+  } else {
+    tonic = DSP.detectTonic(stable, clarity, hop, rms);
+  }
   const sa = tonic[0].hz;
   const opts = Object.assign({}, CLEAN, { rms, onsets: perf.notes.map((n) => Math.round(n.t0 / hop)) });
-  const { tokens } = DSP.notateRegions(regionsFor(perf, 99), stable, clarity, hop, sa, opts);
+  const { tokens } = DSP.notateRegions(regions, stable, clarity, hop, sa, opts);
   return { sa, tokens, uncertain: !!tonic[0].uncertain };
 }
 
@@ -176,7 +192,13 @@ function analyzeFast(DSP, samples) {
   const filtered = DSP.preFilter(samples, SR);
   const track = DSP.yinTrack(filtered, SR, {});
   const stable = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, 'auto');
-  const tonic = DSP.detectTonic(stable.f0, track.clarity, track.hopSec, track.rms);
+  let tonic;
+  if (DSP.tonicWithDrift) {                       // same steps as js/worker.js
+    const t = DSP.tonicWithDrift(stable.f0, track.clarity, track.hopSec, track.rms);
+    tonic = t.tonic; stable.f0 = t.f0;
+  } else {
+    tonic = DSP.detectTonic(stable.f0, track.clarity, track.hopSec, track.rms);
+  }
   const onsets = DSP.detectOnsets(filtered, SR, Math.round(track.hopSec * SR),
     DSP.voiceOnsetEvidence ? { track } : undefined);
   const sa = tonic[0].hz;
@@ -188,7 +210,9 @@ function analyzeFast(DSP, samples) {
 const circular = (c) => { const d = ((c % 1200) + 1200) % 1200; return Math.min(d, 1200 - d); };
 
 function scoreRun(perf, result, agg) {
-  const err = 1200 * Math.log2(result.sa / perf.saHz);
+  // With drift there is no single true Sa; judge against the average tuning.
+  const refSa = perf.saHz * Math.pow(2, (perf.driftCents || 0) / 2 / 1200);
+  const err = 1200 * Math.log2(result.sa / refSa);
   const pcOk = circular(err) < 30, octOk = pcOk && Math.abs(err) < 600;
   agg.runs++; agg.saPc += pcOk; agg.saOct += octOk;
   if (!octOk) agg.misses.push(`${perf.raga}@${perf.saHz}:${err.toFixed(0)}c`);
@@ -258,8 +282,8 @@ const SUITES = {
     ['male Sa', { sas: [110, 130.8, 146.8] }],
     ['female Sa', { sas: [196, 220, 261.6] }],
     ['vibrato', { sas: [146.8, 220], gen: { vibrato: 1 } }],
-    ['+40c drift', { sas: [146.8, 220], gen: { driftCents: 40 } }],
-    ['+70c drift', { sas: [146.8, 220], gen: { driftCents: 70 } }],
+    ['+40c drift', { sas: [146.8, 220], gen: { driftCents: 40, repeat: 2 } }],
+    ['+70c drift', { sas: [146.8, 220], gen: { driftCents: 70, repeat: 2 } }],
   ],
   fast: [
     ['male, tanpura+tabla', { sas: [130.8] }],
