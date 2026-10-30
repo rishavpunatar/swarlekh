@@ -96,15 +96,18 @@ self.onmessage = async function (e) {
     // Sa, with slow tuning drift (measured on Sa/Pa) removed from the pitch
     // used for notation. The audio and the melody synth keep the real pitch.
     const synthF0 = stab.f0.slice();
+    // The drone (tanpura / sruti box) is in the MIX even when the pitch track
+    // comes from the separated voice: it is the steadiest Sa evidence there is.
+    const tonicExtra = DSP.droneProfile ? { drone: DSP.droneProfile(samples, sr) } : undefined;
     let tonic, drift;
     if (e.data.neural) {
       const yt = DSP.yinTrack(filtered, sr, {});
       const ys = DSP.stabilizeOctave(yt.f0, yt.clarity, yt.rms, yt.hopSec, 'auto');
-      const t = DSP.tonicWithDrift(ys.f0, yt.clarity, yt.hopSec, yt.rms);
+      const t = DSP.tonicWithDrift(ys.f0, yt.clarity, yt.hopSec, yt.rms, tonicExtra);
       tonic = t.tonic; drift = t.drift;
       if (drift) stab.f0 = DSP.correctDrift(stab.f0, track.hopSec, drift);
     } else {
-      const t = DSP.tonicWithDrift(stab.f0, track.clarity, track.hopSec, track.rms);
+      const t = DSP.tonicWithDrift(stab.f0, track.clarity, track.hopSec, track.rms, tonicExtra);
       tonic = t.tonic; drift = t.drift;
       stab.f0 = t.f0;
     }
@@ -125,7 +128,7 @@ self.onmessage = async function (e) {
     const hopSamples = Math.round(track.hopSec * sr);
     const onsets = (external && e.data.providedOnsets && e.data.providedOnsets.length)
       ? e.data.providedOnsets.map(function (t) { return Math.round(t / track.hopSec); })
-      : DSP.detectOnsets(filtered, sr, hopSamples);
+      : DSP.detectOnsets(filtered, sr, hopSamples, { track: track });
 
     prog('synth', 0);
     const synth = DSP.synthesize(synthF0, track.clarity, track.hopSec, sr);
@@ -142,6 +145,7 @@ self.onmessage = async function (e) {
       onsets,
       noteRegions,
       drift: drift ? { times: Array.from(drift.times), cents: Array.from(drift.cents) } : null,
+      droneStrength: tonicExtra && tonicExtra.drone ? tonicExtra.drone.strength : 0,
       synth,
       sr,
     }, [stab.f0.buffer, f0raw.buffer, track.clarity.buffer, track.rms.buffer, synth.buffer]);

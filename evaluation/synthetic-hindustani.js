@@ -192,18 +192,19 @@ function analyzeFast(DSP, samples) {
   const filtered = DSP.preFilter(samples, SR);
   const track = DSP.yinTrack(filtered, SR, {});
   const stable = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, 'auto');
-  let tonic;
+  let tonic, droneStrength = 0;
   if (DSP.tonicWithDrift) {                       // same steps as js/worker.js
-    const t = DSP.tonicWithDrift(stable.f0, track.clarity, track.hopSec, track.rms);
+    const extra = DSP.droneProfile ? { drone: DSP.droneProfile(samples, SR) } : undefined;
+    droneStrength = extra ? extra.drone.strength : 0;
+    const t = DSP.tonicWithDrift(stable.f0, track.clarity, track.hopSec, track.rms, extra);
     tonic = t.tonic; stable.f0 = t.f0;
   } else {
     tonic = DSP.detectTonic(stable.f0, track.clarity, track.hopSec, track.rms);
   }
-  const onsets = DSP.detectOnsets(filtered, SR, Math.round(track.hopSec * SR),
-    DSP.voiceOnsetEvidence ? { track } : undefined);
+  const onsets = DSP.detectOnsets(filtered, SR, Math.round(track.hopSec * SR), { track });
   const sa = tonic[0].hz;
   const { tokens } = DSP.notate(stable.f0, track.clarity, track.hopSec, sa,
-    Object.assign({}, CLEAN, { onsets, rms: track.rms }));
+    Object.assign({}, CLEAN, { onsets, rms: track.rms, droneStrength: droneStrength }));
   return { sa, tokens, uncertain: !!tonic[0].uncertain };
 }
 
@@ -234,6 +235,13 @@ function scoreRun(perf, result, agg) {
     const sung = perf.notes.some((note) => Math.min(tk.t1, note.t1) - Math.max(tk.t0, note.t0) >= 0.5 * (tk.t1 - tk.t0));
     if (!sung) agg.spurious++;
   }
+  // Re-sung syllables on the same swara must stay separate notes.
+  for (let i = 1; i < perf.notes.length; i++) {
+    const a = perf.notes[i - 1], b = perf.notes[i];
+    if (a.k !== b.k || Math.abs(a.t1 - b.t0) > 1e-6) continue;
+    agg.repeats++;
+    if (result.tokens.some((tk) => Math.abs(tk.t0 - b.t0) < 0.08 && tk.k === b.k)) agg.repeatsKept++;
+  }
   // Same-swara splits inside one sung note (e.g. at tabla strokes).
   for (let i = 1; i < result.tokens.length; i++) {
     const a = result.tokens[i - 1], b = result.tokens[i];
@@ -242,14 +250,15 @@ function scoreRun(perf, result, agg) {
 }
 
 function newAgg() {
-  return { runs: 0, saPc: 0, saOct: 0, truth: 0, swara: 0, pitch: 0, tokens: 0, spurious: 0, splits: 0, misses: [] };
+  return { runs: 0, saPc: 0, saOct: 0, truth: 0, swara: 0, pitch: 0, tokens: 0, spurious: 0, splits: 0, repeats: 0, repeatsKept: 0, misses: [] };
 }
 function summarize(agg) {
   const ratio = (a, b) => (b ? a / b : 0);
   return {
     runs: agg.runs, saPitchClass: ratio(agg.saPc, agg.runs), saOctave: ratio(agg.saOct, agg.runs),
     swara: ratio(agg.swara, agg.truth), pitch: ratio(agg.pitch, agg.truth),
-    spurious: ratio(agg.spurious, agg.tokens), falseSplits: ratio(agg.splits, agg.truth), misses: agg.misses,
+    spurious: ratio(agg.spurious, agg.tokens), falseSplits: ratio(agg.splits, agg.truth),
+    repeatRecall: agg.repeats ? agg.repeatsKept / agg.repeats : null, misses: agg.misses,
   };
 }
 
@@ -303,7 +312,7 @@ if (require.main === module) {
     for (const [name, cfg] of suites) {
       const run = engine === 'best' ? runBest : runFast;
       const s = run(DSP, Object.assign({ step }, cfg));
-      console.log(`${(engine + ': ' + name).padEnd(30)} Sa ${pct(s.saOctave)} (class ${pct(s.saPitchClass)}) · swara ${pct(s.swara)} · pitch ${pct(s.pitch)} · spurious ${pct(s.spurious)} · false splits ${pct(s.falseSplits)}`);
+      console.log(`${(engine + ': ' + name).padEnd(30)} Sa ${pct(s.saOctave)} (class ${pct(s.saPitchClass)}) · swara ${pct(s.swara)} · pitch ${pct(s.pitch)} · spurious ${pct(s.spurious)} · false splits ${pct(s.falseSplits)}${s.repeatRecall != null ? ` · repeats kept ${pct(s.repeatRecall)}` : ''}`);
       if (process.argv.includes('--misses') && s.misses.length) console.log('   ', s.misses.slice(0, 12).join(' '));
     }
   }

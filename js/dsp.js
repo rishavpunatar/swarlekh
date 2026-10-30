@@ -413,6 +413,11 @@
    * Returns { f0: newTrack, doubled }.
    * ---------------------------------------------------------------- */
 
+  function circularCents(a, b) {
+    const d = (((a - b) % 1200) + 1200) % 1200;
+    return Math.min(d, 1200 - d);
+  }
+
   function octaveErrorEvidence(idx, cents, sorted, rms, hopSec) {
     let loudRef = 0;
     if (rms) {
@@ -667,7 +672,41 @@
         last = f;
       }
     }
+    // With the pitch track, keep only onsets the VOICE shows: on the full mix,
+    // a tabla stroke under a held vowel is a flux peak too, and it used to cut
+    // every held note into repeats ("S S S S" for "S – – –").
+    if (opts.track) {
+      const shift = Math.round(N / 2 / hop);
+      return onsets.filter((f) => voiceArticulation(opts.track, f + shift));
+    }
     return onsets;
+  }
+
+  /** Does the voice itself articulate at frame i? A note change, a voicing or
+   *  periodicity break (consonant), or a loudness dip just before (closure). */
+  function voiceArticulation(track, i) {
+    const { f0, clarity, rms, hopSec } = track;
+    const n = f0.length;
+    if (i < 6 || i >= n - 3) return true;
+    const pre = Math.max(3, Math.round(0.1 / hopSec));
+    const near = Math.max(2, Math.round(0.05 / hopSec));
+    const median = (a, b) => {
+      const v = [];
+      for (let j = Math.max(0, a); j <= Math.min(n - 1, b); j++) if (f0[j] > 0) v.push(1200 * Math.log2(f0[j]));
+      if (!v.length) return null;
+      v.sort((x, y) => x - y);
+      return v[v.length >> 1];
+    };
+    const before = median(i - pre, i - 1), after = median(i + 1, i + pre);
+    if (before == null || after == null || Math.abs(after - before) > 60) return true;
+    for (let j = i - near; j <= i + 1; j++) if (!(f0[j] > 0) || clarity[j] < 0.55) return true;
+    if (rms) {
+      let sustain = 0, dip = Infinity;
+      for (let j = Math.max(0, i - 2 * pre); j < i - near; j++) sustain = Math.max(sustain, rms[j]);
+      for (let j = i - near; j <= i; j++) dip = Math.min(dip, rms[j]);
+      if (sustain > 0 && dip < 0.7 * sustain) return true;
+    }
+    return false;
   }
 
   /* ---------------------------------------------------------------- *
@@ -676,7 +715,8 @@
    * range sits mostly between mandra Pa and taar Ga.
    * ---------------------------------------------------------------- */
 
-  function detectTonic(f0, clarity, hopSec, rms) {
+  function detectTonic(f0, clarity, hopSec, rms, extra) {
+    const drone = extra && extra.drone && extra.drone.strength > 0 ? extra.drone : null;
     const BINS = 240; // 5-cent bins
     const hist = new Float64Array(BINS);
     // Loudness reference: the singer is louder than a tanpura. Weighting by
@@ -870,12 +910,28 @@
     //   + entry     : first stable vocal-register note after a long intro
     //   - asPa      : a strong note +498c above means *we* are likely its Pa
     // No credit for the fourth-above (the old bug: it let Pa borrow Sa).
+    //   + drone     : a tanpura line here (and its Pa string a fifth up)
+    const droneAt = (cents) => {
+      if (!drone) return 0;
+      const b = Math.round((((cents % 1200) + 1200) % 1200) / 5) % BINS;
+      let v = 0;
+      for (let k = -4; k <= 4; k++) v = Math.max(v, drone.profile[(b + k + BINS) % BINS] * Math.exp(-(k * k) / 8));
+      return v;
+    };
+    if (drone) {
+      // The drone's own strongest class is a candidate even if the voice
+      // rarely dwells there (e.g. a Pa- or Ma-centric raga).
+      let best = 0;
+      for (let b = 1; b < BINS; b++) if (drone.profile[b] > drone.profile[best]) best = b;
+      if (!peaks.some((p) => circularCents(p.pc, best * 5) < 40)) peaks.push({ pc: best * 5, h: smooth[best] });
+    }
     for (const p of peaks) {
       const self = at(p.pc) / maxH;
       const fifth = at(p.pc + 702) / maxH;
       const asPa = at(p.pc + 498) / maxH;
+      const droneSa = drone ? drone.strength * (droneAt(p.pc) + 0.35 * droneAt(p.pc + 702) - 0.5 * Math.max(0, droneAt(p.pc + 498) - droneAt(p.pc))) : 0;
       p.score = 0.50 * self + 0.42 * fifth + 1.30 * cadConf * cadAt(p.pc) +
-        1.70 * entryAt(p.pc) - 0.30 * Math.min(asPa, 1.2 * self);
+        1.70 * entryAt(p.pc) - 0.30 * Math.min(asPa, 1.2 * self) + 1.0 * droneSa;
     }
     peaks.sort((a, b) => b.score - a.score);
 
@@ -963,6 +1019,81 @@
   }
 
   /**
+   * Tonic evidence from the drone. A tanpura (or a sruti box, or a held
+   * harmonium drone) is a set of STATIONARY spectral lines tuned to Sa and Pa
+   * (or Ma/Ni); a voice's partials move. The per-bin median magnitude over time
+   * keeps the lines and erases the melody. Harmonic summation folds them into
+   * a 5-cent pitch-class profile (same reference as detectTonic, 55 Hz).
+   * Returns { profile: Float32Array(240) scaled to [0,1], strength } where
+   * strength (0..1) says how drone-like the recording is; 0 = no usable drone.
+   */
+  function droneProfile(samples, sr) {
+    const N = 8192;
+    const empty = { profile: new Float32Array(240), strength: 0 };
+    if (!samples || samples.length < N * 4) return empty;
+    const hop = N / 2;
+    const frames = Math.floor((samples.length - N) / hop) + 1;
+    const use = Math.min(frames, 360);
+    const win = new Float32Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1));
+    const kMax = Math.min(N / 2, Math.ceil(1500 * N / sr));
+    const kMin = Math.floor(50 * N / sr);
+    const mags = Array.from({ length: kMax }, () => new Float32Array(use));
+    const re = new Float32Array(N), im = new Float32Array(N);
+    for (let u = 0; u < use; u++) {
+      const start = Math.floor(u * (frames - 1) / Math.max(1, use - 1)) * hop;
+      for (let i = 0; i < N; i++) { re[i] = samples[start + i] * win[i]; im[i] = 0; }
+      fft(re, im);
+      for (let k = kMin; k < kMax; k++) mags[k][u] = Math.hypot(re[k], im[k]);
+    }
+    // Lines present in ~80% of frames (a drone) vs ~20% (any held sung note).
+    const low = new Float32Array(kMax), high = new Float32Array(kMax);
+    for (let k = kMin; k < kMax; k++) {
+      const col = mags[k].slice().sort();
+      low[k] = col[Math.floor(0.2 * (col.length - 1))];
+      high[k] = col[Math.floor(0.8 * (col.length - 1))];
+    }
+    const deEnvelope = (spec) => {
+      const out = new Float32Array(kMax), half = 12;
+      for (let k = kMin; k < kMax; k++) {
+        const local = [];
+        for (let j = Math.max(kMin, k - half); j <= Math.min(kMax - 1, k + half); j++) local.push(spec[j]);
+        local.sort((x, y) => x - y);
+        out[k] = Math.max(0, spec[k] - local[local.length >> 1]);
+      }
+      return out;
+    };
+    const linesLow = deEnvelope(low), linesHigh = deEnvelope(high);
+    const fold = (lines) => {
+      const at = (hz) => {
+        const x = hz * N / sr, k = Math.floor(x);
+        if (k < kMin || k + 1 >= kMax) return 0;
+        return Math.max(lines[k], lines[k + 1]);
+      };
+      const prof = new Float32Array(240);
+      for (let c = 0; c < 1200 * 3.5; c += 5) {             // fundamentals 55 Hz … ~620 Hz
+        const f = 55 * Math.pow(2, c / 1200);
+        let sal = 0;
+        for (let h = 1; h <= 8; h++) sal += at(f * h) * Math.pow(0.85, h - 1);
+        prof[Math.round(c / 5) % 240] += sal;
+      }
+      return prof;
+    };
+    const profile = fold(linesLow), profileHigh = fold(linesHigh);
+    let best = 0;
+    for (let b = 1; b < 240; b++) if (profile[b] > profile[best]) best = b;
+    if (!(profile[best] > 0)) return empty;
+    // Persistence of the strongest line: a drone keeps most of its level even
+    // in the quietest fifth of the frames; a sung note does not.
+    const persistence = profile[best] / Math.max(1e-9, profileHigh[best]);
+    // Calibrated on Saraga: real tanpuras sit at 0.2-0.5, voices without a
+    // drone at <= 0.06.
+    const strength = Math.max(0, Math.min(1, (persistence - 0.08) / 0.17));
+    for (let b = 0; b < 240; b++) profile[b] /= profile[best];
+    return { profile, strength, persistence };
+  }
+
+  /**
    * Slow tuning drift (a singer going sharp over a long alaap, or an old tape).
    * Sa and Pa are achal swaras — sung pure — so how far their steady frames sit
    * from the provisional Sa grid, window by window, IS the drift. Returns
@@ -1032,12 +1163,12 @@
    * Sa with drift handling, shared by the worker and the benchmarks:
    * provisional Sa → drift on Sa/Pa → corrected track → final Sa.
    */
-  function tonicWithDrift(f0, clarity, hopSec, rms) {
-    let tonic = detectTonic(f0, clarity, hopSec, rms);
+  function tonicWithDrift(f0, clarity, hopSec, rms, extra) {
+    let tonic = detectTonic(f0, clarity, hopSec, rms, extra);
     const drift = estimateTuningDrift(f0, clarity, hopSec, tonic[0].hz);
     if (!drift) return { tonic, drift: null, f0 };
     const corrected = correctDrift(f0, hopSec, drift);
-    tonic = detectTonic(corrected, clarity, hopSec, rms);
+    tonic = detectTonic(corrected, clarity, hopSec, rms, extra);
     return { tonic, drift, f0: corrected };
   }
 
@@ -1650,6 +1781,18 @@
         const lv = tokens.map((t) => t.loud).filter((x) => x > 0).sort((a, b) => a - b);
         const medLoud = lv.length ? lv[lv.length >> 1] : 0;
         if (medLoud > 0) tokens = tokens.filter((tk) => tk.loud >= 0.16 * medLoud || (tk.t1 - tk.t0) < 0.4);
+        // With a tanpura present, a quiet Sa or Pa that the voice is not
+        // carrying (no louder note running straight into it) is drone bleed
+        // between phrases, whatever its length.
+        if (medLoud > 0 && opts.droneStrength > 0.3) {
+          const src = tokens;
+          tokens = src.filter((tk, i) => {
+            const pc = ((tk.k % 12) + 12) % 12;
+            if ((pc !== 0 && pc !== 7) || tk.loud >= 0.3 * medLoud) return true;
+            const prev = src[i - 1];
+            return !!(prev && tk.t0 - prev.t1 < 0.03 && tk.loud >= 0.55 * prev.loud);
+          });
+        }
       }
       // 1. Weak-short blips out. We want EVERY note the voice actually hits, so
       // only a sub-100 ms run that is *also* barely above the voicing threshold
@@ -2518,7 +2661,7 @@
 
   return {
     preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets,
-    detectTonic, estimateTuningDrift, driftAt, correctDrift, tonicWithDrift, notate, buildPracticeContour,
+    detectTonic, droneProfile, estimateTuningDrift, driftAt, correctDrift, tonicWithDrift, notate, buildPracticeContour,
     displayPitchRange, notationText, notationLines, toDevanagari, devanagariSwara, analyzeRaga,
     regroupPhrases: groupPhrases,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,

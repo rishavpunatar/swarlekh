@@ -551,6 +551,8 @@
       state.tonicCands = result.tonic;
       state.opts.onsets = result.onsets || [];
       state.opts.rms = result.rms;
+      state.opts.droneStrength = result.droneStrength || 0;
+      state.drift = result.drift || null;
       state.noteRegions = result.noteRegions || [];
       applyOctaveMode(false);
       state.synthDuration = result.synth.length / targetSr;
