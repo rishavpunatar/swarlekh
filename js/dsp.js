@@ -413,6 +413,28 @@
    * Returns { f0: newTrack, doubled }.
    * ---------------------------------------------------------------- */
 
+  function octaveErrorEvidence(idx, cents, sorted, rms, hopSec) {
+    let loudRef = 0;
+    if (rms) {
+      const levels = idx.map((i) => rms[i] || 0).sort((a, b) => a - b);
+      loudRef = 0.3 * levels[Math.floor(0.9 * (levels.length - 1))];
+    }
+    const loud = [];
+    for (let k = 0; k < idx.length; k++) if (!rms || (rms[idx[k]] || 0) >= loudRef) loud.push(k);
+    if (loud.length < 20) return true;
+    const gap = Math.max(3, Math.round(0.16 / hopSec));
+    let jumps = 0;
+    for (let q = 1; q < loud.length; q++) {
+      const a = loud[q - 1], b = loud[q];
+      const d = Math.abs(cents[b] - cents[a]);
+      if (idx[b] - idx[a] <= gap && d > 900 && d < 1500) jumps++;
+    }
+    const lc = loud.map((k) => cents[k]).sort((a, b) => a - b);
+    const spread = lc[Math.floor(0.95 * (lc.length - 1))] - lc[Math.floor(0.05 * (lc.length - 1))];
+    const medHz = 55 * Math.pow(2, lc[lc.length >> 1] / 1200);
+    return jumps >= 2 || spread > 2000 || medHz < 90 || medHz > 600;
+  }
+
   function stabilizeOctave(f0, clarity, rms, hopSec, mode) {
     const n = f0.length;
     const out = new Float32Array(f0);
@@ -453,6 +475,14 @@
     // register up and flip the detected Sa. So steps 1–2 run only for 'auto'.
     const work = cents.slice();
     let totalFolded = 0;
+
+    // The register pull and global shift below exist for octave-tracking
+    // ERRORS. A clean track (deep male voices, long mandra passages included)
+    // must keep its octaves, so they run only with evidence: octave-sized jumps
+    // between neighbouring frames, an implausibly wide spread, or a register no
+    // singer uses. Only frames as loud as the voice count, so a quiet tanpura
+    // tracked between phrases is not mistaken for an octave error.
+    if (mode === 'auto' && !octaveErrorEvidence(idx, cents, sorted, rms, hopSec)) mode = 'gentle';
 
     if (mode === 'auto') {
     // 1. SEGMENT continuity. Octave errors make a phrase jump ~an octave away
@@ -744,6 +774,17 @@
     // start/resolution notes are real evidence — keep a floor so Sa still
     // resolves on short clips (full trust at >= 6 phrases).
     const cadConf = Math.max(0.3, Math.min(1, nPhrases / 6));
+    // Smooth the cadence histogram like the pitch histogram: a phrase that
+    // resolves on Sa with vibrato, intonation or slow drift lands 20-40c off
+    // the Sa peak and must still count as resolving on Sa.
+    {
+      const raw = Float64Array.from(cad);
+      for (let b = 0; b < BINS; b++) {
+        let s = 0;
+        for (let k = -9; k <= 9; k++) s += raw[(b + k + BINS) % BINS] * kw[k + 9];
+        cad[b] = s;
+      }
+    }
     let cadMax = 0;
     for (let b = 0; b < BINS; b++) if (cad[b] > cadMax) cadMax = cad[b];
     const cadAt = (cents) => {
@@ -837,6 +878,23 @@
         1.70 * entryAt(p.pc) - 0.30 * Math.min(asPa, 1.2 * self);
     }
     peaks.sort((a, b) => b.score - a.score);
+
+    // Refine each candidate's exact tuning from the frames sung on it: the
+    // weighted circular mean within ±40c is steadier than the 5c histogram
+    // peak, which vibrato splits into two humps. Every swara is quantized
+    // against Sa, so a few cents here matter for notes sung near a boundary.
+    for (const p of peaks.slice(0, 3)) {
+      let sx = 0, sy = 0;
+      for (const r of rels) {
+        const pc = ((r.c % 1200) + 1200) % 1200;
+        let d = pc - p.pc;
+        if (d > 600) d -= 1200; else if (d < -600) d += 1200;
+        if (Math.abs(d) > 40) continue;
+        const a = 2 * Math.PI * pc / 1200;
+        sx += r.w * Math.cos(a); sy += r.w * Math.sin(a);
+      }
+      if (sx || sy) p.pc = ((Math.atan2(sy, sx) * 1200 / (2 * Math.PI)) + 1200) % 1200;
+    }
 
     // Octave placement: put Sa in the singer's register, not on a tanpura
     // drone an octave below. Maximize clarity-weighted coverage of the voice
