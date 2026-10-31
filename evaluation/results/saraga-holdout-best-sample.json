@@ -1,0 +1,75 @@
+{
+  "dataset": "Saraga 1.5 Hindustani (CC BY-NC-SA 4.0)",
+  "protocol": "Best engine (BS-RoFormer separation + RMVPE/Praat + GAME on the local server): one 90 s excerpt at 50% of every 5th held-out vocal recording, first 6. Small sample: separation runs ~3x real time on an M1.",
+  "date": "2026-10-31",
+  "main": {
+    "engine": "best",
+    "recordings": 6,
+    "excerpts": 6,
+    "saPitchClass50": "66.7%",
+    "saPitchClass30": "66.7%",
+    "saWithOctave": "33.3%",
+    "flaggedUncertain": "16.7%",
+    "wrongSaFlagged": "25.0%",
+    "phrases": 16,
+    "phrasesFound": "68.8%",
+    "phrasesFoundWithTrueSa": "68.8%"
+  },
+  "branch": {
+    "engine": "best",
+    "recordings": 6,
+    "excerpts": 6,
+    "saPitchClass50": "100.0%",
+    "saPitchClass30": "100.0%",
+    "saWithOctave": "66.7%",
+    "flaggedUncertain": "16.7%",
+    "wrongSaFlagged": "0.0%",
+    "phrases": 16,
+    "phrasesFound": "68.8%",
+    "phrasesFoundWithTrueSa": "68.8%"
+  },
+  "perExcerpt": [
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Khat Todi",
+      "tonicHz": 138.59,
+      "saErrCents": 1201,
+      "correct": false,
+      "mainSaErrCents": 1200
+    },
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Ramgauri & Gauri",
+      "tonicHz": 153.78,
+      "saErrCents": -5,
+      "correct": true,
+      "mainSaErrCents": 710
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Multani",
+      "tonicHz": 138.59,
+      "saErrCents": -3,
+      "correct": true,
+      "mainSaErrCents": -5
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Todi",
+      "tonicHz": 138.59,
+      "saErrCents": 1198,
+      "correct": false,
+      "mainSaErrCents": 1200
+    },
+    {
+      "recording": "New Signature by Brajeshwar Mukherjee / Raag Bairagi",
+      "tonicHz": 146.83,
+      "saErrCents": 1,
+      "correct": true,
+      "mainSaErrCents": 0
+    },
+    {
+      "recording": "Raag Abhogi, Rageshree & Khamaj by Ajoy Chakrabarty / Raag Khamaj",
+      "tonicHz": 140.2,
+      "saErrCents": -7,
+      "correct": true,
+      "mainSaErrCents": 495
+    }
+  ]
+}

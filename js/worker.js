@@ -88,18 +88,42 @@ self.onmessage = async function (e) {
     const stab = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, cleanTrack ? 'gentle' : 'auto');
 
     prog('tonic', 0);
-    // Browser CREPE's flatter salience can confuse the YIN-tuned tonic scorer,
-    // so it keeps the established quick-YIN fallback. The local-server path is
-    // different: its f0, clarity and loudness all come from the separated voice.
-    // Using mix YIN here would throw that isolation away and let harmonium or
-    // accompaniment choose Sa.
-    let tonic;
-    if (e.data.neural) {
+    // Sa, with slow tuning drift (measured on Sa/Pa) removed from the pitch
+    // used for notation. The audio and the melody synth keep the real pitch.
+    const synthF0 = stab.f0.slice();
+    // The drone (tanpura / sruti box) is in the MIX even when the pitch track
+    // comes from the separated voice: it is the steadiest Sa evidence there is.
+    const tonicExtra = DSP.droneProfile ? { drone: DSP.droneProfile(samples, sr) } : undefined;
+    let tonic, drift;
+    if (e.data.neural || external) {
+      // Sa is found on the full mix — the voice together with the tanpura's
+      // low strings — and only fine-tuned on the clean track. Measured on
+      // Saraga concerts this is the more reliable reading (held-out: 87% Sa,
+      // 72% with octave); the isolated voice alone loses Sa's octave whenever
+      // a passage stays in taar saptak, and CREPE's flat salience misleads
+      // the tonic scorer.
       const yt = DSP.yinTrack(filtered, sr, {});
       const ys = DSP.stabilizeOctave(yt.f0, yt.clarity, yt.rms, yt.hopSec, 'auto');
-      tonic = DSP.detectTonic(ys.f0, yt.clarity, yt.hopSec, yt.rms);
+      const t = DSP.tonicWithDrift(ys.f0, yt.clarity, yt.hopSec, yt.rms, tonicExtra);
+      tonic = t.tonic; drift = t.drift;
+      if (drift) stab.f0 = DSP.correctDrift(stab.f0, track.hopSec, drift);
+      if (external && DSP.refineSa) {
+        tonic = tonic.map(function (c) { return Object.assign({}, c, { hz: DSP.refineSa(c.hz, stab.f0, track.clarity) }); });
+      }
     } else {
-      tonic = DSP.detectTonic(stab.f0, track.clarity, track.hopSec, track.rms);
+      const t = DSP.tonicWithDrift(stab.f0, track.clarity, track.hopSec, track.rms, tonicExtra);
+      tonic = t.tonic; drift = t.drift;
+      stab.f0 = t.f0;
+    }
+    let noteRegions = e.data.providedNoteRegions || [];
+    if (drift) {
+      f0raw.set(DSP.correctDrift(f0raw, track.hopSec, drift));
+      noteRegions = noteRegions.map(function (region) {
+        const mid = (Number(region.onset) + Number(region.offset)) / 2;
+        const shift = Math.pow(2, -DSP.driftAt(drift, mid) / 1200);
+        const frequency = (region.frequency > 0 ? region.frequency : 440 * Math.pow(2, (region.midi - 69) / 12)) * shift;
+        return Object.assign({}, region, { frequency: frequency, midi: 69 + 12 * Math.log2(frequency / 440) });
+      });
     }
 
     // Syllable/consonant onsets. The local server detects them on the
@@ -108,10 +132,10 @@ self.onmessage = async function (e) {
     const hopSamples = Math.round(track.hopSec * sr);
     const onsets = (external && e.data.providedOnsets && e.data.providedOnsets.length)
       ? e.data.providedOnsets.map(function (t) { return Math.round(t / track.hopSec); })
-      : DSP.detectOnsets(filtered, sr, hopSamples);
+      : DSP.detectOnsets(filtered, sr, hopSamples, { track: track });
 
     prog('synth', 0);
-    const synth = DSP.synthesize(stab.f0, track.clarity, track.hopSec, sr);
+    const synth = DSP.synthesize(synthF0, track.clarity, track.hopSec, sr);
 
     self.postMessage({
       type: 'result',
@@ -123,7 +147,9 @@ self.onmessage = async function (e) {
       hopSec: track.hopSec,
       tonic,
       onsets,
-      noteRegions: e.data.providedNoteRegions || [],
+      noteRegions,
+      drift: drift ? { times: Array.from(drift.times), cents: Array.from(drift.cents) } : null,
+      droneStrength: tonicExtra && tonicExtra.drone ? tonicExtra.drone.strength : 0,
       synth,
       sr,
     }, [stab.f0.buffer, f0raw.buffer, track.clarity.buffer, track.rms.buffer, synth.buffer]);

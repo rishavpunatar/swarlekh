@@ -2035,10 +2035,32 @@ test('detectTonic: delayed higher-register vocal entry can establish Sa', () => 
 });
 
 test('detectTonic: mandra-register melody keeps Sa in the right octave', () => {
-  const { f0, clarity } = tonicTrack(SA, [[-5,60],[-3,60],[-1,60],[0,80],[2,40],[0,40],[-3,60],[-5,80]]);
+  // Two low phrases that resolve on Sa: Sa must sit in the singer's register,
+  // not an octave above the mandra notes.
+  const { f0, clarity } = tonicTrack(SA, [[-5,60],[-3,60],[-1,60],[0,80],[null,30],[2,40],[-1,40],[-3,60],[-5,40],[-1,30],[0,90]]);
   const c = DSP.detectTonic(f0, clarity, 0.016);
   assert.ok(Math.abs(1200 * Math.log2(c[0].hz / SA)) < 35,
     `expected ${SA}, got ${c[0].hz.toFixed(1)}`);
+});
+
+test('detectTonic: one phrase that starts and ends on mandra Pa is a flagged close call', () => {
+  // A single phrase resolving on .P genuinely argues for Pa as Sa; with one
+  // phrase the app must say it is unsure and still offer the real Sa.
+  const { f0, clarity } = tonicTrack(SA, [[-5,60],[-3,60],[-1,60],[0,80],[2,40],[0,40],[-3,60],[-5,80]]);
+  const c = DSP.detectTonic(f0, clarity, 0.016);
+  assert.ok(c[0].uncertain, 'a single phrase cannot settle Sa');
+  assert.ok(c.some((x) => tonicErrCents(x.hz, SA) < 35), `Sa should be a candidate: ${c.map((x) => x.hz.toFixed(1)).join(',')}`);
+});
+
+test('detectTonic: phrases resolving on Sa with vibrato still find Sa', () => {
+  // Phrase endings sung with ±25c vibrato land off the Sa peak; the cadence
+  // cue must still credit Sa (it used to be lost, letting Pa or Ga win).
+  const seq = [];
+  for (let p = 0; p < 6; p++) seq.push([7, 50], [4, 30], [2, 30], [0, 70], [null, 25]);
+  const { f0, clarity } = tonicTrack(SA, seq);
+  for (let i = 0; i < f0.length; i++) if (f0[i] > 0) f0[i] *= Math.pow(2, 25 * Math.sin(2 * Math.PI * 5.5 * i * 0.016) / 1200);
+  const c = DSP.detectTonic(f0, clarity, 0.016);
+  assert.ok(tonicErrCents(c[0].hz, SA) < 30, `expected Sa, got ${c[0].hz.toFixed(1)}`);
 });
 
 test('detectTonic: ambiguous Pa-centric fragment still surfaces Sa in top-3 + flags uncertain', () => {
@@ -2232,7 +2254,10 @@ test('stabilizeOctave auto: lifts a sustained intra-phrase octave-down error', (
   // is stepwise; the middle is dragged an octave low to +2. Auto must lift the
   // middle back into the neighbours' register (a local-median glitch fix can't —
   // the error is longer than its window).
-  const seq = [[12, 40], [2, 55], [16, 40], [12, 40]];   // S' [R-low] G' S'
+  // Restructuring runs only on a track that shows gross tracking errors (a
+  // voice-level spread beyond ~2.3 octaves), as the real file did (3.4
+  // octaves); the trailing deep sub-harmonic latch supplies that context.
+  const seq = [[12, 40], [2, 55], [16, 40], [12, 40], [-20, 30]];   // S' [R-low] G' S' + latch
   const { f0, clarity } = trackFromRuns(seq);
   const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'auto');
   const mid = [];
@@ -2271,12 +2296,26 @@ test('stabilizeOctave gentle: snaps an isolated glitch but never shifts the regi
     if (Math.abs(1200 * Math.log2(res.f0[i] / before[i])) > 30) moved++;
   }
   assert.strictEqual(moved, 0, `gentle must keep CREPE's register, but moved ${moved} frames`);
-  // sanity: 'auto' on the same low track DOES lift it (so gentle ≠ auto)
+  // 'auto' must also leave a clean low (male / mandra) track where it is:
+  // octave restructuring needs evidence of tracking errors.
   const { f0: f0b, clarity: clb } = trackFromRuns(seq);
   const auto = DSP.stabilizeOctave(f0b, clb, null, HOP, 'auto');
   let lifted = 0;
   for (let i = 0; i < f0b.length; i++) if (f0b[i] > 0 && auto.f0[i] > 0 && auto.f0[i] > f0b[i] * 1.5) lifted++;
-  assert.ok(lifted > 50, `auto should lift the low track, lifted ${lifted}`);
+  assert.strictEqual(lifted, 0, `auto must not lift a clean low track, lifted ${lifted}`);
+});
+
+test('stabilizeOctave auto: a deep male line with no tracking errors keeps its octave', () => {
+  // Sa = 98 Hz singer exploring mandra: median ~110 Hz, below the old
+  // 150 Hz register window that used to fold the whole song up an octave.
+  const saLow = 98;
+  const runs = [[0, 40], [-2, 30], [-5, 40], [-3, 30], [0, 50], [2, 30], [4, 40], [0, 60]];
+  const n = runs.reduce((a, r) => a + r[1], 0);
+  const f0 = new Float32Array(n), clarity = new Float32Array(n).fill(0.9);
+  let i = 0;
+  for (const [k, len] of runs) for (let j = 0; j < len; j++) f0[i++] = saLow * Math.pow(2, k / 12);
+  const res = DSP.stabilizeOctave(f0, clarity, null, HOP, 'auto');
+  for (let j = 0; j < n; j++) assert.ok(Math.abs(1200 * Math.log2(res.f0[j] / f0[j])) < 1, `frame ${j} moved`);
 });
 
 test('stabilizeOctave: off mode is a no-op', () => {
@@ -2678,4 +2717,49 @@ test('ragaId: a mixed scale never yields a "likely" raga', () => {
   a.thaat = { name: 'Bhairav', mixed: true, confidence: 0.56 };
   const ranked = RagaId.rankRagas(a, RAGAS);
   assert.ok(ranked.every((r) => r.confidence <= 0.6), ranked.slice(0, 2).map((r) => `${r.name} ${r.confidence}`).join(', '));
+});
+
+test('regroupPhrases: a long alaap with short breaths is split into readable lines', () => {
+  // 60 s of notes with 0.5 s breaths every ~4 s: below the 1 s line gap, so it
+  // used to become one line; lines must stay <= ~12 s and break at breaths.
+  const tokens = [];
+  let t = 0;
+  for (let phrase = 0; phrase < 15; phrase++) {
+    for (let n = 0; n < 6; n++) { tokens.push({ t0: t, t1: t + 0.6, k: n % 5 }); t += 0.6; }
+    t += 0.5;
+  }
+  const lines = DSP.regroupPhrases(tokens, 1.0, true);
+  assert.ok(lines.length >= 5, `expected several lines, got ${lines.length}`);
+  for (const line of lines) assert.ok(line.t1 - line.t0 <= 12.01, `line too long: ${(line.t1 - line.t0).toFixed(1)} s`);
+  for (let i = 1; i < lines.length; i++) assert.ok(lines[i].t0 - lines[i - 1].t1 >= 0.49, 'lines break at breaths');
+  assert.strictEqual(lines.reduce((a, l) => a + l.tokens.length, 0), tokens.length);
+});
+
+test('uncertain notes: judged on the pitch a note settles on, not its glide', () => {
+  const hop = 0.01, n = 100;
+  const f0 = new Float32Array(n).fill(SA * Math.pow(2, 2 / 12));      // settles on Re
+  for (let i = 0; i < 20; i++) f0[i] = SA * Math.pow(2, (i / 20 * 200) / 1200); // meend up from Sa
+  const meendIn = [{ t0: 0, t1: 1, k: 2, cents: 150 }];               // mean pulled low by the glide
+  DSP.annotateSungPitch(meendIn, f0, new Float32Array(n).fill(0.9), hop, SA);
+  assert.ok(Math.abs(meendIn[0].sungCents - 200) < 1);
+  assert.strictEqual(DSP.isUncertainNote(meendIn[0]), false, 'a meend into a clean Re is not uncertain');
+  assert.strictEqual(DSP.isUncertainNote({ t0: 0, t1: 1, k: 2, sungCents: 245 }), true, 'settled 45c off');
+  assert.strictEqual(DSP.isUncertainNote({ t0: 0, t1: 1, k: 2, sungCents: 225, hybridOrnament: true }), true, 'inferred and 25c off');
+  assert.strictEqual(DSP.isUncertainNote({ t0: 0, t1: 1, k: 2, sungCents: 210, hybridOrnament: true }), false, 'inferred but clean');
+  assert.strictEqual(DSP.isUncertainNote({ t0: 0, t1: 1, k: 2, sungCents: 260, manualCorrection: true }), false, 'your corrections are trusted');
+});
+
+test('uncertain notes: at most the 20% most off-pitch notes are flagged', () => {
+  const hop = 0.01;
+  const tokens = [];
+  const f0 = new Float32Array(1000);
+  for (let n = 0; n < 10; n++) {                       // 10 notes, all 40-85c off their swara
+    const off = 40 + 5 * n;
+    tokens.push({ t0: n, t1: n + 1, k: 0 });
+    for (let i = n * 100; i < (n + 1) * 100; i++) f0[i] = SA * Math.pow(2, off / 1200);
+  }
+  DSP.annotateSungPitch(tokens, f0, new Float32Array(1000).fill(0.9), hop, SA);
+  const flagged = tokens.filter((tk) => DSP.isUncertainNote(tk));
+  assert.ok(flagged.length >= 1 && flagged.length <= 2, `flagged ${flagged.length} of 10`);
+  assert.ok(flagged.every((tk) => tk.sungCents >= 80), 'the most off-pitch ones');
 });

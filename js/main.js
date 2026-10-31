@@ -36,7 +36,7 @@
     notation: $('notation'), notationMeta: $('notationMeta'),
     copyBtn: $('copyBtn'), dlTxtBtn: $('dlTxtBtn'), dlJsonBtn: $('dlJsonBtn'),
     printBtn: $('printBtn'), dlWavBtn: $('dlWavBtn'), clearEditsBtn: $('clearEditsBtn'),
-    ragaDetails: $('ragaDetails'), ragaSummary: $('ragaSummary'),
+    ragaDetails: $('ragaDetails'), ragaSummary: $('ragaSummary'), sungBtn: $('sungBtn'),
     printTitle: $('printTitle'), printMeta: $('printMeta'),
   };
 
@@ -56,7 +56,7 @@
     semitones: 0, fileBytes: null, fileMono: null, fileSr: 16000,
     f0raw: null, f0auto: null, octaveMode: 'auto', octaveDoubled: false,
     raga: null, highlightPc: null, ragaMatches: [], script: 'latin', rhythm: null,
-    engine: 'yin', file: null, fileSha: null,
+    engine: 'yin', file: null, fileSha: null, drift: null, showSung: true, notationRev: 0,
     manualEdits: [], noteEditHistory: [], addNoteMode: false,
     selectedNoteTime: null, noteEditRevision: 0,
     opts: {
@@ -68,7 +68,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=66';
+  const WORKER_URL = 'js/worker.js?v=68';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -551,6 +551,8 @@
       state.tonicCands = result.tonic;
       state.opts.onsets = result.onsets || [];
       state.opts.rms = result.rms;
+      state.opts.droneStrength = result.droneStrength || 0;
+      state.drift = result.drift || null;
       state.noteRegions = result.noteRegions || [];
       applyOctaveMode(false);
       state.synthDuration = result.synth.length / targetSr;
@@ -785,7 +787,8 @@
   function updateDroneFreq() {
     if (!droneNodes) return;
     // The drone must sound in the key you're PRACTISING in — follow the transpose.
-    const sa = state.saHz * Math.pow(2, (state.semitones || 0) / 12);
+    const drift = state.drift ? DSP.driftAt(state.drift, origEl.currentTime) : 0;
+    const sa = state.saHz * Math.pow(2, ((state.semitones || 0) * 100 + drift) / 1200);
     const f = [sa, sa / 2, sa * 2 / 3, sa * 2];
     droneNodes.oscs.forEach((o, i) => o.frequency.setTargetAtTime(f[i], actx.currentTime, 0.04));
   }
@@ -824,6 +827,7 @@
       )
       : DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
     applyManualNoteEdits(res.tokens);
+    DSP.annotateSungPitch(res.tokens, state.f0, state.clarity, state.hopSec, state.saHz);
     state.tokens = res.tokens;
     state.phrases = DSP.regroupPhrases(
       state.tokens,
@@ -841,6 +845,8 @@
     renderNotation();
     drawCanvas();
     updateStats();
+    state.notationRev++;
+    if (usesNotation()) refreshNotationAudio();
   }
 
   function updateUndoNoteButton() {
@@ -1198,6 +1204,17 @@
       setAddNoteMode(!state.addNoteMode);
     });
   }
+  function setShowSung(on) {
+    state.showSung = !!on;
+    if (els.sungBtn) els.sungBtn.setAttribute('aria-pressed', String(state.showSung));
+    try { localStorage.setItem('swarlekh.showSung', state.showSung ? '1' : '0'); } catch (e) {}
+    drawCanvas();
+  }
+  try { state.showSung = localStorage.getItem('swarlekh.showSung') !== '0'; } catch (e) {}
+  if (els.sungBtn) {
+    els.sungBtn.setAttribute('aria-pressed', String(state.showSung));
+    els.sungBtn.addEventListener('click', () => setShowSung(!state.showSung));
+  }
 
   // Precompute contour cents once per analysis/Sa/threshold change. This track
   // is retained for slide classification and the empty-notation fallback; the
@@ -1401,6 +1418,10 @@
     if (meend) orn.push(`${meend} meend`);
     if (andolan) orn.push(`${andolan} andolan`);
     if (orn.length) txt += ' · ' + orn.join(' · ');
+    if (state.drift) {
+      const c = state.drift.cents;
+      txt += ` · tuning drift of ${Math.round(Math.max(...c) - Math.min(...c))}¢ corrected`;
+    }
     els.statsLine.textContent = txt;
   }
 
@@ -1441,13 +1462,22 @@
       time.textContent = fmtTime(line.t0);
       const text = document.createElement('span');
       text.className = 'n-text';
-      text.textContent = scriptText(line.text);
+      for (const seg of line.segments) {
+        if (!seg.unsure) { text.append(scriptText(seg.text)); continue; }
+        const span = document.createElement('span');
+        span.className = 'unsure';
+        span.title = 'Uncertain — sung between two swaras, or an inferred ornament. Check it by ear (Listen to → Notation).';
+        span.textContent = scriptText(seg.text);
+        text.append(span);
+      }
       li.append(num, time, text);
       els.notation.appendChild(li);
       notationLineEls.push(li);
     }
     const edits = state.manualEdits.length;
+    const unsure = state.tokens.filter((tk) => DSP.isUncertainNote(tk)).length;
     els.notationMeta.textContent = `${lines.length} line${lines.length === 1 ? '' : 's'} · Sa ${noteLabel(state.saHz)}` +
+      (unsure ? ` · ${unsure} to check` : '') +
       (edits ? ` · ${edits} correction${edits === 1 ? '' : 's'}` : '');
     if (els.clearEditsBtn) els.clearEditsBtn.hidden = edits === 0;
     cvs.setAttribute('aria-label',
@@ -1530,7 +1560,9 @@
         swara: DSP.tokenText(tk.k, false), text: DSP.tokenFullText(tk, state.scale),
         hz: round(state.saHz * Math.pow(2, tk.k / 12), 100),
         corrected: !!tk.manualCorrection,
+        uncertain: DSP.isUncertainNote(tk),
       })),
+      tuningDrift: state.drift,
       corrections: state.manualEdits,
       analysis: {
         hopSec: state.hopSec,
@@ -1729,10 +1761,40 @@
     if (!state.playing) { seek(state.loopA); play(); }
   });
 
+  // "Notation" plays exactly what is written — every swara at its pitch,
+  // meends gliding through the swaras they name, your corrections included —
+  // so you can check the transcription against the recording by ear.
+  let notationUrl = null, notationKey = '';
+  const usesNotation = () => els.sourceSel.value === 'notation' || els.sourceSel.value === 'orignotation';
+  function notationAudioUrl() {
+    const key = `${state.notationRev}:${state.semitones}`;
+    if (notationUrl && notationKey === key) return notationUrl;
+    const sa = state.saHz * Math.pow(2, state.semitones / 12);
+    const track = DSP.notationPitchTrack(state.tokens, sa, 0.01, state.duration);
+    const pcm = DSP.synthesize(track.f0, track.clarity, 0.01, 16000);
+    if (notationUrl) URL.revokeObjectURL(notationUrl);
+    notationUrl = URL.createObjectURL(encodeWav(pcm, 16000));
+    notationKey = key;
+    return notationUrl;
+  }
+  function synthSourceUrl() { return usesNotation() ? notationAudioUrl() : synthUrl; }
+  function setSynthSource(url) {
+    if (!url || synthEl.src === url) return;
+    const playing = state.playing;
+    synthEl.src = url;
+    synthEl.load();
+    synthEl.addEventListener('loadeddata', () => {
+      try { synthEl.currentTime = Math.min(origEl.currentTime, synthEl.duration || origEl.currentTime); } catch (e) {}
+      synthEl.playbackRate = origEl.playbackRate;
+      if (playing && state.playing) synthEl.play().catch(() => {});
+    }, { once: true });
+  }
+  const refreshNotationAudio = debounce(() => { if (usesNotation()) setSynthSource(notationAudioUrl()); }, 400);
   function applySource() {
     const mode = els.sourceSel.value;
-    origEl.muted = mode === 'synth';
+    origEl.muted = mode === 'synth' || mode === 'notation';
     synthEl.muted = mode === 'original';
+    if (state.ready) setSynthSource(synthSourceUrl());
   }
   els.sourceSel.addEventListener('change', applySource);
 
@@ -1851,7 +1913,7 @@
     pendingRestore = restore;
     origEl.addEventListener('loadeddata', restore);
     origEl.src = oUrl;
-    synthEl.src = sUrl;
+    synthEl.src = usesNotation() ? notationAudioUrl() : sUrl;
     origEl.load();
     synthEl.load();
   }
@@ -2052,7 +2114,7 @@
     let node = null;
     if (ctx.audioWorklet && typeof AudioWorkletNode === 'function') {
       try {
-        if (!micWorkletLoaded) micWorkletLoaded = ctx.audioWorklet.addModule('js/mic-worklet.js?v=66');
+        if (!micWorkletLoaded) micWorkletLoaded = ctx.audioWorklet.addModule('js/mic-worklet.js?v=68');
         await micWorkletLoaded;
         node = new AudioWorkletNode(ctx, 'swarlekh-mic', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
         node.port.onmessage = (e) => onBlock(e.data);
@@ -2095,7 +2157,8 @@
       // Compare against the TRANSPOSED Sa: the user sings in the shifted key,
       // the contour is plotted rel. the original saHz — dividing the shift out
       // maps the voice straight into the contour's cents space.
-      const refSa = state.saHz * Math.pow(2, state.semitones / 12);
+      const drift = state.drift ? DSP.driftAt(state.drift, origEl.currentTime) : 0;
+      const refSa = state.saHz * Math.pow(2, (state.semitones * 100 + drift) / 1200);
       state.micCents = 1200 * Math.log2(r.f0[best] / refSa);
       if (state.playing) {                 // paused singing feeds the readout only
         state.micTrail.push({
@@ -2152,9 +2215,11 @@
       seek(state.loopA);
       return;
     }
-    if (state.playing && !synthEl.paused && Math.abs(synthEl.currentTime - t) > 0.08 && t < state.synthDuration) {
+    if (state.playing && !synthEl.paused && Math.abs(synthEl.currentTime - t) > 0.08 &&
+        (usesNotation() || t < state.synthDuration)) {
       synthEl.currentTime = t;
     }
+    if (state.drift && droneNodes) updateDroneFreq();     // the drone follows the singer's tuning
     updateTimeDisp();
     highlightActive(t);
     if (!rafId) drawCanvas();
@@ -2386,6 +2451,26 @@
     // holds, articulated changes are clean steps, quick bends are compact
     // hooks, and sustained meend uses one broad curve. These are the only three
     // transition geometries; vibrato and tracker jitter are not drawing commands.
+    // The voice itself: a faint trace of the sung pitch under the notation,
+    // so you can see where the written swaras and the singing part ways.
+    if (state.showSung && state.centsSm) {
+      const hop = state.hopSec, sung = state.centsSm;
+      const i0 = Math.max(0, Math.floor(scrollSec / hop)), i1 = Math.min(sung.length, Math.ceil(tEnd / hop));
+      const step = Math.max(1, Math.floor((i1 - i0) / (W * 1.5)));
+      cctx.strokeStyle = colors.muted; cctx.globalAlpha = 0.6; cctx.lineWidth = 1.2;
+      cctx.lineJoin = 'round'; cctx.lineCap = 'round'; cctx.setLineDash([]);
+      cctx.beginPath();
+      let pen = false;
+      for (let i = i0; i < i1; i += step) {
+        const c = sung[i];
+        if (Number.isNaN(c)) { pen = false; continue; }
+        const x = tToX(i * hop), y = cToY(c);
+        if (pen) cctx.lineTo(x, y); else { cctx.moveTo(x, y); pen = true; }
+      }
+      cctx.stroke();
+      cctx.globalAlpha = 1;
+    }
+
     const practice = state.practiceContour || [];
     cctx.lineJoin = 'round';
     cctx.lineCap = 'round';
@@ -2437,46 +2522,6 @@
     }
     cctx.globalAlpha = 1;
 
-    // ---- Name EVERY note. A dot sits on the line at each note the voice hits,
-    // and its swara is written beside it; glides name every scale-swara they
-    // travel through. If a name won't fit, it is SHRUNK (down to ~7px) rather
-    // than ever dropped — names sit right beside their dot with no connector
-    // lines (those just read as clutter), each with a card-coloured halo so it
-    // stays legible over the curve and grid. ----
-    const placed = [];   // boxes [x0,y0,x1,y1] already occupied this frame
-    const free = (x0, y0, x1, y1) => {
-      for (const b of placed) if (x0 < b[2] + 1 && x1 > b[0] - 1 && y0 < b[3] + 1 && y1 > b[1] - 1) return false;
-      return true;
-    };
-    const labelAt = (text, cx, cy, big, color) => {
-      const sizes = big ? [13, 11, 9.5, 8, 7] : [11, 9.5, 8, 7];
-      const aboveFirst = cy > RULER + 46;
-      let fs = sizes[sizes.length - 1], ly = cy - 11, box = null;
-      for (const s of sizes) {
-        cctx.font = (big ? '700 ' : '600 ') + s + 'px Georgia, serif';
-        const w = textW(text, cctx.font) + 3, h = s + 3, base = h / 2 + 3;
-        const offs = aboveFirst ? [-base, base, -(base + 13), base + 13] : [base, -base, base + 13, -(base + 13)];
-        for (const dy of offs) {
-          const b = [cx - w / 2, cy + dy - h / 2, cx + w / 2, cy + dy + h / 2];
-          if (free(b[0], b[1], b[2], b[3])) { fs = s; ly = cy + dy; box = b; break; }
-        }
-        if (box) break;
-      }
-      if (!box) {   // no gap even at the smallest size — draw it anyway, just above
-        fs = sizes[sizes.length - 1];
-        cctx.font = '600 ' + fs + 'px Georgia, serif';
-        const w = textW(text, cctx.font) + 3, h = fs + 3;
-        ly = cy - (h / 2 + 3); box = [cx - w / 2, ly - h / 2, cx + w / 2, ly + h / 2];
-      }
-      placed.push(box);
-      cctx.font = (big ? '700 ' : '600 ') + fs + 'px Georgia, serif';
-      cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
-      cctx.lineWidth = 3; cctx.lineJoin = 'round'; cctx.strokeStyle = colors.card;
-      cctx.strokeText(text, cx, ly);   // halo for legibility
-      cctx.fillStyle = color;
-      cctx.fillText(text, cx, ly);
-    };
-
     const vis = [];
     for (let ti = 0; ti < state.tokens.length; ti++) {
       const tk = state.tokens[ti];
@@ -2525,19 +2570,29 @@
       // intonation remains in the analysis panel instead of making the practice
       // instruction look out of tune.
       const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
-      const fastTarget = !!(tk.hybridOrnament || tk.rawLandmark || tk.murki);
+      // Uncertain notes (sung between two swaras, or inferred by the ornament
+      // passes) are hollow: "check this one by ear". They are never the
+      // boldest marks on the page.
+      const unsure = DSP.isUncertainNote(tk);
       const held = dur >= 0.28;
-      const emphasized = held || fastTarget;
-      const r = isActive ? 6 : (isSelected ? 5 : (emphasized ? 4.5 : 3));
+      const emphasized = held && !unsure;
+      const r = isActive ? 6 : (isSelected ? 5 : (emphasized ? 4.5 : 3.5));
       if (isActive || isSelected) {
         cctx.fillStyle = colors.accentSoft;
         cctx.beginPath();
         cctx.arc(cx, cy, r + 5, 0, 2 * Math.PI);
         cctx.fill();
       }
-      cctx.fillStyle = isActive || isSelected || emphasized ? colors.accent : colors.contour;
-      cctx.globalAlpha = isActive || isSelected || emphasized ? 1 : 0.8;
-      cctx.beginPath(); cctx.arc(cx, cy, r, 0, 2 * Math.PI); cctx.fill();
+      if (unsure && !isActive && !isSelected) {
+        cctx.fillStyle = colors.card;
+        cctx.beginPath(); cctx.arc(cx, cy, r, 0, 2 * Math.PI); cctx.fill();
+        cctx.strokeStyle = colors.accent; cctx.lineWidth = 1.6;
+        cctx.beginPath(); cctx.arc(cx, cy, r, 0, 2 * Math.PI); cctx.stroke();
+      } else {
+        cctx.fillStyle = isActive || isSelected || emphasized ? colors.accent : colors.contour;
+        cctx.globalAlpha = isActive || isSelected || emphasized ? 1 : 0.8;
+        cctx.beginPath(); cctx.arc(cx, cy, r, 0, 2 * Math.PI); cctx.fill();
+      }
       if (tk.manualCorrection || tk.manualAddition) {
         cctx.strokeStyle = colors.accent;
         cctx.lineWidth = 1.5;
@@ -2547,15 +2602,20 @@
       cctx.globalAlpha = 1;
     }
 
-    // Pass 2 — names, important notes first so they always win a lane.
+    // Pass 2 — names, important notes first so they always win a lane. In the
+    // normal view every note is named, shrinking to fit; zoomed far out, names
+    // that cannot fit are skipped (the dots still mark every note) instead of
+    // piling up as overlapping 7px text. Names never leave the plot.
+    // Placement rules live in js/contour-layout.js (tested in Node).
     const prio = (ti) => {
       const t = state.tokens[ti];
       if (ti === activeTokIdx) return 3;
       if (ti === selectedIndex) return 2.9;
-      if (t.hybridOrnament || t.rawLandmark || t.murki) return 2.5;
       if ((t.t1 - t.t0) >= 0.28) return 2;
+      if (t.murki) return 1.8;
       return isGlide(t) || t.andolan ? 1.5 : 1;
     };
+    const labelItems = [];
     for (const ti of vis.slice().sort((a, b) => prio(b) - prio(a) || state.tokens[a].t0 - state.tokens[b].t0)) {
       const tk = state.tokens[ti];
       const isActive = ti === activeTokIdx;
@@ -2563,16 +2623,37 @@
       if (dimmed(tk)) continue;   // spotlight mode: no labels on non-matching notes
       if (isGlide(tk)) {
         const vv = viaDisplay(tk.via);
-        for (let p = 0; p < vv.length; p++) labelAt(tokenGlyph(vv[p]), viaX(tk, p, vv.length), cToY(vv[p] * 100), false, colors.contour);
+        for (let p = 0; p < vv.length; p++) {
+          labelItems.push({ text: tokenGlyph(vv[p]), cx: viaX(tk, p, vv.length), cy: cToY(vv[p] * 100), big: false, color: colors.contour });
+        }
         continue;
       }
-      const cx = tToX((tk.t0 + tk.t1) / 2), cy = cToY(tk.k * 100);
-      const big = isActive || isSelected || (tk.t1 - tk.t0) >= 0.28 ||
-        !!(tk.hybridOrnament || tk.rawLandmark || tk.murki);
-      const col = isActive || isSelected || tk.manualCorrection || tk.manualAddition
+      const big = isActive || isSelected || (tk.t1 - tk.t0) >= 0.28;
+      const color = isActive || isSelected || tk.manualCorrection || tk.manualAddition
         ? colors.accent
         : (DSP.swaraInfo(tk.k).komal ? colors.komal : colors.text);
-      labelAt((tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx, cy, big, col);
+      labelItems.push({ text: (tk.andolan ? '≈' : '') + tokenGlyph(tk.k), cx: tToX((tk.t0 + tk.t1) / 2), cy: cToY(tk.k * 100), big, color });
+    }
+    const labelFont = (size, big) => (big ? '700 ' : '600 ') + size + 'px Georgia, serif';
+    const placements = ContourLayout.placeLabels(labelItems, {
+      measure: (text, size, big) => {
+        const font = labelFont(size, big), key = font + '|' + text;
+        let w = textWCache.get(key);
+        if (w === undefined) { cctx.font = font; w = cctx.measureText(text).width; textWCache.set(key, w); }
+        return w;
+      },
+      bounds: { x0: GUTTER, y0: RULER, x1: W, y1: H },
+      force: pxPerSec >= 60,
+    });
+    cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
+    cctx.lineWidth = 3; cctx.lineJoin = 'round';
+    for (const p of placements) {
+      if (p.skipped) continue;
+      cctx.font = labelFont(p.size, p.item.big);
+      cctx.strokeStyle = colors.card;
+      cctx.strokeText(p.item.text, p.x, p.y);   // halo for legibility
+      cctx.fillStyle = p.item.color;
+      cctx.fillText(p.item.text, p.x, p.y);
     }
     cctx.globalAlpha = 1;
 

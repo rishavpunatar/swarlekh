@@ -46,6 +46,59 @@ into the held note. The rest needs Hindustani ground truth to judge: the
 app's `.json` export carries corrected notes alongside the analysis input,
 which makes it the raw material for that set.
 
+## Real Hindustani recordings: Saraga (`evaluate-saraga.js`)
+
+Saraga 1.5 Hindustani (CC BY-NC-SA 4.0) has 108 concert recordings with the
+singer's annotated tonic, and 53 with hand-annotated sargam motifs ("NrG",
+"MGrS", …). The evaluator takes three 90 s excerpts per vocal recording (25,
+50 and 75% through, as a user would upload a clip) and scores:
+
+- **Sa**: pitch class within 50 cents of the annotated tonic, and the octave;
+- **phrases**: each annotated motif inside an excerpt is looked for, in order,
+  in the app's swaras over its span — with the app's Sa, and with the
+  annotated Sa to separate note errors from tonic errors.
+
+```sh
+# one-time: ~4 GB from https://zenodo.org/records/4301737 into evaluation/data/saraga/
+node evaluation/evaluate-saraga.js --split holdout            # Fast engine
+node evaluation/evaluate-saraga.js --engine best --split holdout --every 5 --positions 0.5
+```
+
+Recordings are sorted by id; every third is the **tuning** split (used to set
+the tanpura weight and octave gate), the other 64 are **held out**. Held-out
+results, Fast engine (`results/saraga-holdout-fast.json`):
+
+| | main @ 215523c | now |
+| --- | ---: | ---: |
+| Sa pitch class | 57.3% | 87.0% |
+| Sa + octave | 25.5% | 71.9% |
+| phrases found | 22.0% | 44.3% |
+| phrases found with the annotated Sa | 51.1% | 51.5% |
+
+Best engine, a small sample (separation runs ~3× real time): one excerpt from
+each of six held-out concerts (`results/saraga-holdout-best-sample.json`) —
+Sa pitch class 4/6 → 6/6, Sa + octave 2/6 → 4/6, annotated phrases found 69%.
+The Best engine now reads Sa from the mix (voice plus the tanpura's strings)
+and fine-tunes it on the separated voice: the isolated voice alone lost Sa's
+octave whenever an excerpt stayed in taar saptak.
+
+What moved it, each measured here: tonic evidence from the tanpura's
+persistent spectral lines (alone it names Sa in ~92% of excerpts); octave
+restructuring only on gross errors (octave-sized frame jumps are everywhere
+in real concert mixes — median 34 per 90 s — so they are not evidence); the
+tanpura's absolute pitch choosing Sa's octave.
+
+## Known answers: synthetic Hindustani (`synthetic-hindustani.js`)
+
+Every raga in `js/ragas.js` rendered from its own aaroh, avaroh and pakads with
+raga intonation (Bhairav's low komal re, Darbari's andolit ga), meends,
+vibrato, breaths and optional drift; for the Fast engine, voice with formants
+plus tanpura and tabla at fixed levels. Scores Sa, octave, every swara,
+spurious notes, false splits of held notes, and re-sung repeats kept.
+`tests/synthetic-hindustani.test.js` holds floors on a subset. Synthetic
+voices are simpler than real ones, so this locates failure modes; Saraga
+measures real accuracy.
+
 ## Quick benchmark
 
 Vocadito is the small, manually annotated smoke test. It contains 40 isolated

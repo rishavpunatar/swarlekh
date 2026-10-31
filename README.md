@@ -13,12 +13,13 @@ Everything runs on your device. The standard engines run in the browser; the opt
   - *Fast* — hand-written DSP in the browser (YIN + Viterbi), seconds per song.
   - *Accurate* — CREPE-tiny in the browser (TensorFlow.js, WASM), self-hosted.
   - *Best* — the local server isolates the voice with BS-RoFormer (Demucs as fallback), tracks pitch with RMVPE confirmed by Praat, and finds sung notes with GAME. See [`server/README.md`](server/README.md). Uploads go straight to it when it is running, with live progress and a working Cancel; without it the app falls back to the browser.
-- **Finds Sa** from the perfect-fifth structure plus a phrase-cadence prior (Sa is where phrases begin and resolve), offers the top candidates, flags close calls, and lets you check by ear against a Sa–Pa drone or set Sa from a sung note at the playhead.
-- **Pitch contour** — the melody line with every sung note named, meends drawn as curves, the song's scale highlighted, beat and sam ticks when a taal is detected. Click to seek, drag the ruler to loop, pinch or ⌘-scroll to zoom.
+- **Finds Sa** from the tanpura itself (its steady drone lines are found in the mix and ring at Sa and Pa), the voice's pitch-class histogram, and where phrases begin and resolve. It places Sa in the octave the tanpura and the voice agree on, corrects slow tuning drift (measured on Sa and Pa), flags close calls, and lets you check by ear against a Sa–Pa drone or set Sa from a sung note at the playhead.
+- **Pitch contour** — the melody line with every sung note named, meends drawn as curves, the song's scale highlighted, beat and sam ticks when a taal is detected, and a faint trace of the actual sung pitch underneath. **Hollow dots** mark notes to check by ear (sung between two swaras, or an inferred ornament). Click to seek, drag the ruler to loop, pinch or ⌘-scroll to zoom.
 - **Sargam notation** — one numbered line per phrase, following playback, with ornaments written out: kan `(R)G`, murki `(GRG)m`, meend `P⌒D⌒S'`, andolan `≈g`. Latin or Devanagari (komal and teevra marks kept).
 - **Correct it** — drag a note dot up or down, add a missing note, or shape the connector into and out of a note. Corrections are saved on this device for that recording and come back when you upload it again.
 - **Export** — copy the text, download `.txt` or `.json` (notes, timings, your corrections and the analysis input), print or save a PDF sheet, or download the synthesized melody as WAV.
-- **Practise** — loop a line with ⟨ ⟩, ramp a loop from 0.65× to full speed, slow down without changing pitch, hear the *melody synth* on its own, and **sing along**: your own pitch draws over the contour live (microphone analysed in memory, never recorded).
+- **Hear the notation** — *Listen to → Original + notation* plays exactly what is written (your corrections included) alongside the recording, so a wrong swara is audible.
+- **Practise** — loop a line with ⟨ ⟩, ramp a loop from 0.65× to full speed, slow down without changing pitch, and **sing along**: your own pitch draws over the contour live (microphone analysed in memory, never recorded).
 - **Raag analysis** — swar-set with intonation, thaat, aaroh/avaroh, vadi/samvadi, nyas, jati, and a shortlist of likely ragas from a 42-raga knowledge base. Suggestions are calibrated: short clips and mixed scales never read as "likely".
 - **Taal and tempo** (Best engine) — felt BPM, matra rate, likely cycle and sam.
 
@@ -44,7 +45,9 @@ upload ─┬─ Fast:     band-pass 70–1800 Hz → FFT YIN, multi-candidate V
         ├─ Accurate: CREPE-tiny (WASM) with Viterbi decoding
         └─ Best:     127.0.0.1 server → BS-RoFormer vocals → RMVPE + Praat
                      fusion → GAME note regions + vocal onsets + rhythm
-      → octave stabilisation → tonic (Sa) detection
+      → octave check (restructured only on gross tracking errors)
+      → Sa: tanpura drone lines in the mix + voice histogram + phrase cadences
+      → slow tuning drift measured on Sa/Pa and removed
       → notation: GAME regions refined with the frame contour (js/dsp-regions.js)
         or contour segmentation (js/dsp.js) → phrases → raga analysis
 ```
@@ -53,20 +56,26 @@ Browser DSP is dependency-free JavaScript in a Web Worker (`js/dsp.js`, `js/dsp-
 
 ## Accuracy
 
-Measured on Vocadito's 40 solo-vocal excerpts against two human note annotations (onset within 50 ms and pitch within 50 cents), with a singer-disjoint development/held-out split. Details: [`evaluation/README.md`](evaluation/README.md).
+Measured three ways; [`evaluation/README.md`](evaluation/README.md) has the protocols.
 
-| What is scored | Note F1 (all) | Held-out singers |
+**Real Hindustani recordings — Saraga** (64 vocal concerts held out from all tuning, three 90 s excerpts each, the in-browser Fast engine on the full mix with tanpura and tabla):
+
+| | Before (Oct 2026) | Now |
 |---|---:|---:|
-| GAME's raw note regions | 70.9% | 70.5% |
-| The same regions snapped to the sargam grid | 64.1% | — |
-| **What the app shows** (Best engine, Clean preset) | **57.9%** | 63.1% |
-| What the app shows, *Main notes only* | 61.3% | 64.5% |
+| Sa pitch class correct (±50¢) | 57% | **87%** |
+| Sa and its octave correct | 26% | **72%** |
+| Annotated sargam phrases found in the notation | 22% | **44%** |
 
-Snapping to the grid of a single Sa costs about 7 points on its own, because Vocadito's singers drift off any fixed tuning. The Clean preset scores lower again by design: it writes out murki and kan touches that Western annotators don't mark as notes. These figures check that changes don't make things worse (`npm test` enforces floors on them). They are not Hindustani ground truth. Exported correction sets (`.json`) are the way to build that.
+Phrases found given the *annotated* Sa stay at ~51%: what remains is note-level tracking on a full concert mix, where the Best engine's vocal separation is the lever — on a small Best-engine sample (6 held-out excerpts; separation is slow) phrases found rise to 69%, with Sa right on all six (octave on four; two excerpts sit entirely in taar saptak).
+
+**Known-answer synthetic performances** of all 42 ragas (raga intonation, meend, vibrato, drift; tanpura and tabla for the Fast engine): Sa 93–100% and swaras 88–100% across male and female voices, vibrato and up to 70¢ of drift. `npm test` holds floors on these.
+
+**Vocadito** (Western solo singing, two human note annotations): what the app shows scores 58% note F1 against a 64% ceiling for any sargam-grid output; GAME's raw regions score 71% before snapping. Vocadito's annotators don't mark murki touches, so the Clean preset is penalised by design here.
 
 ## Honest limitations
 
-- Without the Best engine, this is predominant-melody tracking on the full mix: a harmonium shadowing the voice, or a loud sarangi lead, can be picked up as the melody.
+- Without the Best engine, this is predominant-melody tracking on the full mix: a harmonium shadowing the voice, or a loud sarangi lead, can be picked up as the melody. A very loud tanpura is still the hardest case for the Fast engine.
+- Sa is wrong on about one excerpt in eight even now. When it is, every swara name shifts — check Sa with the Drone first.
 - Separation on the Best engine runs at roughly 2–3.5× real time on an M1 MacBook Air, so a 7-minute song takes 15–25 minutes the first time. The separated voice is cached on disk, so it never runs twice for the same file.
 - The browser pitch shift (Pitch, beta) can sound processed on large shifts.
 - Notation sustains are time-proportional; it does not force notes into a matra grid.
@@ -90,7 +99,7 @@ This runs the DSP, notation, raga, client-contract and worker tests, plus the ap
 
 ## Future path
 
-- **Hindustani ground truth**: collect corrected exports (or Saraga's sargam phrase annotations) and score the notation layer on Indian music rather than Vocadito.
+- **Note-level Hindustani ground truth**: Saraga annotates motifs, not every note; corrected exports from real use would let the notation layer be scored note by note.
 - **Faster separation**: a lighter vocal model, or chunked separation that streams notes as it goes.
 - **Matra alignment**: snap notation to the detected taal grid, with avartan lines.
 - **Bhatkhande-style PDF / MusicXML export.**

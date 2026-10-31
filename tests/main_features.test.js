@@ -68,3 +68,21 @@ test('sing-along captures through an AudioWorklet with a fallback', () => {
   assert.match(source, /createScriptProcessor\(4096, 1, 1\)/);
   assert.ok(fs.existsSync(path.join(__dirname, '../js/mic-worklet.js')));
 });
+
+test('verification aids: uncertain notes, notation playback and the sung-pitch trace', () => {
+  assert.match(source, /DSP\.isUncertainNote\(tk\)/);
+  assert.match(source, /DSP\.notationPitchTrack\(state\.tokens/);
+  assert.match(html, /<option value="orignotation">Original \+ notation<\/option>/);
+  assert.match(html, /<option value="notation">Notation only<\/option>/);
+  assert.match(html, /id="sungBtn"[^>]*>Sung<\/button>/);
+  assert.match(source, /state\.showSung && state\.centsSm/);
+  assert.match(css, /\.unsure \{/);
+});
+
+test('contour names come from the tested layout module, and drift reaches drone and mic', () => {
+  assert.match(source, /ContourLayout\.placeLabels\(labelItems/);
+  assert.match(html, /<script src="js\/contour-layout\.js\?v=/);
+  assert.match(source, /force: pxPerSec >= 60/);
+  assert.match(source, /DSP\.driftAt\(state\.drift, origEl\.currentTime\)/);
+  assert.match(source, /state\.opts\.droneStrength = result\.droneStrength/);
+});
