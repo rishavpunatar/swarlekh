@@ -909,7 +909,10 @@
     //   + entry     : first stable vocal-register note after a long intro
     //   - asPa      : a strong note +498c above means *we* are likely its Pa
     // No credit for the fourth-above (the old bug: it let Pa borrow Sa).
-    //   + drone     : a tanpura line here (and its Pa string a fifth up)
+    //   + drone     : a tanpura line here (and its Pa string a fifth up). On
+    //                 its own the drone names Sa in ~92% of Saraga excerpts, so
+    //                 it carries the most weight when present (weight tuned on
+    //                 one third of Saraga, reported on the other two thirds).
     const droneAt = (cents) => {
       if (!drone) return 0;
       const b = Math.round((((cents % 1200) + 1200) % 1200) / 5) % BINS;
@@ -930,7 +933,7 @@
       const asPa = at(p.pc + 498) / maxH;
       const droneSa = drone ? drone.strength * (droneAt(p.pc) + 0.35 * droneAt(p.pc + 702) - 0.5 * Math.max(0, droneAt(p.pc + 498) - droneAt(p.pc))) : 0;
       p.score = 0.50 * self + 0.42 * fifth + 1.30 * cadConf * cadAt(p.pc) +
-        1.70 * entryAt(p.pc) - 0.30 * Math.min(asPa, 1.2 * self) + 1.0 * droneSa;
+        1.70 * entryAt(p.pc) - 0.30 * Math.min(asPa, 1.2 * self) + 4.0 * droneSa;
     }
     peaks.sort((a, b) => b.score - a.score);
 
@@ -984,6 +987,7 @@
     const placed = [];
     for (const p of peaks.slice(0, 3)) {
       let bestHz = 0, bestScore = -1, bestCov = 0, bestSa = 0;
+      let bestVoice = -1, bestVoiceSa = 0;      // octave judged by the voice alone
       // The tanpura's Sa strings sound at the singer's Sa: its persistent
       // energy is strongest at the true octave (Saraga: 80% of excerpts, and
       // stronger than the octave above in 90%). It decides when the voice
@@ -1004,7 +1008,9 @@
           if (rc >= -500 && rc < 1500) cov += r.w;
           else if (rc >= 1500 && rc < 2100) cov += r.w * 0.25;
         }
-        let sc = cov * (0.3 + naturalness(saCents));   // octave that reads naturally
+        const voiceScore = cov * (0.3 + naturalness(saCents));   // octave that reads naturally
+        if (voiceScore > bestVoice) { bestVoice = voiceScore; bestVoiceSa = saCents; }
+        let sc = voiceScore;
         if (droneMax > 0) {
           const rel = droneSal[oct] / droneMax;
           sc *= 1 - 0.6 * drone.strength * (1 - rel);
@@ -1013,7 +1019,10 @@
       }
       // Combine the pitch-class score with how naturally its best octave sits,
       // so a strong class buried in mandra can't beat a clean madhya placement.
-      if (bestHz > 0) placed.push({ hz: bestHz, score: p.score * (0.4 + 0.6 * naturalness(bestSa)), coverage: totalW ? bestCov / totalW : 0 });
+      // Rank candidates by how naturally the VOICE sits on them; the drone only
+      // picks which octave of the winner to report. (Letting the drone's octave
+      // feed the ranking made a high taan passage hand Sa to Pa.)
+      if (bestHz > 0) placed.push({ hz: bestHz, score: p.score * (0.4 + 0.6 * naturalness(bestVoice >= 0 ? bestVoiceSa : bestSa)), coverage: totalW ? bestCov / totalW : 0 });
     }
     placed.sort((a, b) => b.score - a.score);
     // Normalize scores to [0,1] relative to the best candidate. When the

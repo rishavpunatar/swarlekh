@@ -1,0 +1,1633 @@
+{
+  "dataset": "Saraga 1.5 Hindustani (CC BY-NC-SA 4.0), https://zenodo.org/records/4301737",
+  "protocol": "Vocal recordings; three 90 s excerpts at 25/50/75% of each concert; Fast (in-browser) engine; recordings sorted by id, every third used for tuning, the remaining 64 reported here. Sa correct = within 50 cents of the annotated tonic (pitch class), and same octave. Phrases = manually annotated sargam motifs found in order in the app notation over their span.",
+  "date": "2026-10-31",
+  "main": {
+    "engine": "fast",
+    "recordings": 64,
+    "excerpts": 192,
+    "saPitchClass50": "57.3%",
+    "saPitchClass30": "57.3%",
+    "saWithOctave": "25.5%",
+    "flaggedUncertain": "21.9%",
+    "wrongSaFlagged": "24.5%",
+    "phrases": 305,
+    "phrasesFound": "22.0%",
+    "phrasesFoundWithTrueSa": "51.1%"
+  },
+  "branch": {
+    "engine": "fast",
+    "recordings": 64,
+    "excerpts": 192,
+    "saPitchClass50": "87.0%",
+    "saPitchClass30": "87.0%",
+    "saWithOctave": "71.9%",
+    "flaggedUncertain": "18.2%",
+    "wrongSaFlagged": "22.2%",
+    "phrases": 305,
+    "phrasesFound": "44.3%",
+    "phrasesFoundWithTrueSa": "51.5%"
+  },
+  "perExcerpt": [
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Dagori_Deepki",
+      "raag": "Ḍāgori",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 160,
+          "saErrCents": -3,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 320,
+          "saErrCents": 1198,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 480,
+          "saErrCents": 1206,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Hindol Pancham",
+      "raag": "Hindōl pañcam",
+      "tonicHz": 139.39,
+      "excerpts": [
+        {
+          "startSec": 182,
+          "saErrCents": -9,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 364,
+          "saErrCents": -6,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 546,
+          "saErrCents": 11,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Jogiya",
+      "raag": "Jōgiyā",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 104,
+          "saErrCents": 8,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 208,
+          "saErrCents": 1210,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 313,
+          "saErrCents": -3,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Khat Todi",
+      "raag": "Khaṭa",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 319,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 637,
+          "saErrCents": 1202,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 956,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Komal Rishav Aasavari",
+      "raag": "Kōmal riṣabh asāvēri",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 357,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 715,
+          "saErrCents": 1216,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1072,
+          "saErrCents": 9,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Lalita Gauri",
+      "raag": "Gaurī",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 248,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 496,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 743,
+          "saErrCents": 9,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Ramgauri & Gauri",
+      "raag": "Gaurī",
+      "tonicHz": 153.78,
+      "excerpts": [
+        {
+          "startSec": 267,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 534,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 801,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Sohani",
+      "raag": "Sōhinī",
+      "tonicHz": 156.46,
+      "excerpts": [
+        {
+          "startSec": 0,
+          "saErrCents": 9,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 0,
+          "saErrCents": 9,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 0,
+          "saErrCents": 9,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Anaahata by Milind Malshe / Raag Triveni",
+      "raag": "Trivēṇī gauri",
+      "tonicHz": 162.92,
+      "excerpts": [
+        {
+          "startSec": 377,
+          "saErrCents": -6,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 754,
+          "saErrCents": 1203,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1132,
+          "saErrCents": 1214,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Aahir Bhairon",
+      "raag": "Ahira bhairav",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 147,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 295,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 442,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Bilaskhani Todi",
+      "raag": "Bilāsakhānī tōḍī",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 214,
+          "saErrCents": 2,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 427,
+          "saErrCents": 2,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 641,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Kalavati",
+      "raag": "Kalāvati",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 86,
+          "saErrCents": -5,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 172,
+          "saErrCents": -7,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 254,
+          "saErrCents": -6,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Maru Bihag",
+      "raag": "Mārūbihāg",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 240,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 481,
+          "saErrCents": 1196,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 721,
+          "saErrCents": -7,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Multani",
+      "raag": "Multāni",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 166,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 333,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 499,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Raageshree",
+      "raag": "Rāgēśrī",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 123,
+          "saErrCents": 498,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 246,
+          "saErrCents": 504,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 369,
+          "saErrCents": 497,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Sudh Kalyan",
+      "raag": "Śuddh kalyāṇ",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 226,
+          "saErrCents": -5,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 452,
+          "saErrCents": 1198,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 678,
+          "saErrCents": -7,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Geetinandan : Part-3 by Ajoy Chakrabarty / Todi",
+      "raag": "Tōḍī",
+      "tonicHz": 138.59,
+      "excerpts": [
+        {
+          "startSec": 135,
+          "saErrCents": -3,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 271,
+          "saErrCents": 1199,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 406,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Hindustani Alaps by Kaustuv Kanti Ganguli / Raag Bilaskhani Todi",
+      "raag": "Bilāsakhānī tōḍī",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 103,
+          "saErrCents": 2,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 206,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 309,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Hindustani Alaps by Kaustuv Kanti Ganguli / Raag Lalit",
+      "raag": "Lalit",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 95,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 189,
+          "saErrCents": 499,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 284,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": true
+        }
+      ]
+    },
+    {
+      "recording": "Hindustani Alaps by Kaustuv Kanti Ganguli / Raag Madhukauns",
+      "raag": "Madhukauns",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 141,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 283,
+          "saErrCents": 285,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 424,
+          "saErrCents": 1194,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Hindustani Alaps by Kaustuv Kanti Ganguli / Raag Miyan Malhar",
+      "raag": "Miyām̐ malhār",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 137,
+          "saErrCents": -4,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 273,
+          "saErrCents": -4,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 410,
+          "saErrCents": -15,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Hindustani Alaps by Kaustuv Kanti Ganguli / Raag Puriya Dhanashree",
+      "raag": "Puriyā dhanaśrī",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 98,
+          "saErrCents": 1212,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 196,
+          "saErrCents": 11,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 294,
+          "saErrCents": 395,
+          "correct": false,
+          "flaggedUncertain": true
+        }
+      ]
+    },
+    {
+      "recording": "New Signature by Brajeshwar Mukherjee / Irani Bhairavi Thumri",
+      "raag": "Bhairavi",
+      "tonicHz": 196,
+      "excerpts": [
+        {
+          "startSec": 90,
+          "saErrCents": -496,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 180,
+          "saErrCents": 706,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 270,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "New Signature by Brajeshwar Mukherjee / Raag Bairagi",
+      "raag": "Bairāgi",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 628,
+          "saErrCents": 8,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 1257,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1885,
+          "saErrCents": 5,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Abhogi & Megh by Anol Chatterjee / Raag Abhogi",
+      "raag": "Ābhōgī",
+      "tonicHz": 196,
+      "excerpts": [
+        {
+          "startSec": 471,
+          "saErrCents": 10,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 941,
+          "saErrCents": 14,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1412,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Abhogi & Megh by Anol Chatterjee / Raag Megh",
+      "raag": "Mēgh",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 442,
+          "saErrCents": 705,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 883,
+          "saErrCents": 710,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1325,
+          "saErrCents": -10,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Abhogi, Rageshree & Khamaj by Ajoy Chakrabarty / Raag Khamaj",
+      "raag": "Khamāj",
+      "tonicHz": 140.2,
+      "excerpts": [
+        {
+          "startSec": 291,
+          "saErrCents": -10,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 583,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 874,
+          "saErrCents": 102,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Abhogi, Rageshree & Khamaj by Ajoy Chakrabarty / Raag Rageshri",
+      "raag": "Rāgēśrī",
+      "tonicHz": 139.39,
+      "excerpts": [
+        {
+          "startSec": 528,
+          "saErrCents": 5,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1055,
+          "saErrCents": -18,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1583,
+          "saErrCents": -25,
+          "correct": true,
+          "flaggedUncertain": true
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bageshree & Bhairavi Bhajan by Satyasheel Deshpande / Raag Bageshree",
+      "raag": "Bāgēśrī",
+      "tonicHz": 139.39,
+      "excerpts": [
+        {
+          "startSec": 573,
+          "saErrCents": -313,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 1147,
+          "saErrCents": -16,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1720,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bahar, Gaud Malhar & Yaman by Omkar Dadarkar / Raag Bahar",
+      "raag": "Bahār",
+      "tonicHz": 155.56,
+      "excerpts": [
+        {
+          "startSec": 418,
+          "saErrCents": -4,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 835,
+          "saErrCents": 1200,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1253,
+          "saErrCents": -7,
+          "correct": true,
+          "flaggedUncertain": true
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bahar, Gaud Malhar & Yaman by Omkar Dadarkar / Raag Yaman",
+      "raag": "Yaman kalyāṇ",
+      "tonicHz": 152.89,
+      "excerpts": [
+        {
+          "startSec": 270,
+          "saErrCents": -6,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 541,
+          "saErrCents": 1196,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 811,
+          "saErrCents": -3,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bhairav & Dhani by Kumar Gandharva / Raag Bhairav",
+      "raag": "Bhairav",
+      "tonicHz": 176.64,
+      "excerpts": [
+        {
+          "startSec": 364,
+          "saErrCents": -20,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 729,
+          "saErrCents": 1202,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1093,
+          "saErrCents": -1197,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bhatiyar & Bhairavi Thumri by Kaustuv Kanti Ganguli / Bhairavi Thumri",
+      "raag": "Bhairavi",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 180,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 359,
+          "saErrCents": 1199,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 539,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": true
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bhatiyar & Bhairavi Thumri by Kaustuv Kanti Ganguli / Raag Bhatiyar",
+      "raag": "Bhāṭiyār",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 570,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1139,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1709,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bhimpalasi & Multani by Omkar Dadarkar / Raag Multani",
+      "raag": "Multāni",
+      "tonicHz": 155.56,
+      "excerpts": [
+        {
+          "startSec": 632,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1264,
+          "saErrCents": -21,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1896,
+          "saErrCents": -7,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bhoopali & Gavti by Omkar Dadarkar / Raag Bhoopali",
+      "raag": "Bhūp",
+      "tonicHz": 155.56,
+      "excerpts": [
+        {
+          "startSec": 837,
+          "saErrCents": -9,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1673,
+          "saErrCents": 1202,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 2510,
+          "saErrCents": -7,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bhoopali & Paraj by Sameehan Kashalkar / Raag Bhoopali",
+      "raag": "",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 756,
+          "saErrCents": -10,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1511,
+          "saErrCents": -9,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 2267,
+          "saErrCents": -6,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bhoopali & Paraj by Sameehan Kashalkar / Raag Paraj",
+      "raag": "",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 228,
+          "saErrCents": -12,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 457,
+          "saErrCents": -6,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 685,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bihag & Bhairavi Dadra by Omkar Dadarkar / Raag Bihag",
+      "raag": "Bihāg",
+      "tonicHz": 234.43,
+      "excerpts": [
+        {
+          "startSec": 629,
+          "saErrCents": -318,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1259,
+          "saErrCents": -711,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1888,
+          "saErrCents": -717,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Bihag by Deborshee Bhattacharya / Raag Bihag",
+      "raag": "Bihāg",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 998,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 1995,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 2993,
+          "saErrCents": 1211,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Jog & Hameer by Brajeshwar Mukherjee / Raag Jog",
+      "raag": "Jōg",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 503,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1007,
+          "saErrCents": 3,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1510,
+          "saErrCents": 2,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Jog & Kirwani Bhajan by Kaustuv Kanti Ganguli / Kirwani Bhajan",
+      "raag": "Kīravāṇi",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 151,
+          "saErrCents": -490,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 302,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 453,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Kalyan, Bhimpalasi & Dhani by Satyasheel Deshpande / Raag Bhimpalasi",
+      "raag": "Bhimapalās",
+      "tonicHz": 147.68,
+      "excerpts": [
+        {
+          "startSec": 502,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1003,
+          "saErrCents": 9,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1505,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Kalyan, Bhimpalasi & Dhani by Satyasheel Deshpande / Raag Dhani",
+      "raag": "Dhanī",
+      "tonicHz": 147.68,
+      "excerpts": [
+        {
+          "startSec": 212,
+          "saErrCents": 12,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 424,
+          "saErrCents": 1205,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 636,
+          "saErrCents": 5,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Kedar & Jog by Ajoy Chakrabarty / Raag Jog",
+      "raag": "Jōg",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 787,
+          "saErrCents": -8,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1574,
+          "saErrCents": -6,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 2360,
+          "saErrCents": -9,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Kedar & Jog by Ajoy Chakrabarty / Raag Kedar",
+      "raag": "Kēdār",
+      "tonicHz": 140.2,
+      "excerpts": [
+        {
+          "startSec": 682,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 1364,
+          "saErrCents": 2,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 2045,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Kedar & Sohani by Sameehan Kashalkar / Raag Sohani",
+      "raag": "",
+      "tonicHz": 155.56,
+      "excerpts": [
+        {
+          "startSec": 170,
+          "saErrCents": -12,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 339,
+          "saErrCents": -8,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 509,
+          "saErrCents": -3,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Lagan Gandhar & Nirgun Bhajan by Kumar Gandharva / Nirgun Bhajan",
+      "raag": "Miśra kaliṅgaḍā",
+      "tonicHz": 189.32,
+      "excerpts": [
+        {
+          "startSec": 197,
+          "saErrCents": 5,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 394,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 590,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Lalit & Bibhas by Omkar Dadarkar / Raag Bibhas",
+      "raag": "Bibhās",
+      "tonicHz": 156.46,
+      "excerpts": [
+        {
+          "startSec": 212,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 425,
+          "saErrCents": -8,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 637,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Lalit & Bibhas by Omkar Dadarkar / Raag Lalit",
+      "raag": "Lalit",
+      "tonicHz": 156.46,
+      "excerpts": [
+        {
+          "startSec": 611,
+          "saErrCents": -5,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1223,
+          "saErrCents": 498,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1834,
+          "saErrCents": 501,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Malkauns, Chandrakauns & Majh Khamaj Thumri by Satyasheel Deshpande / Raag Chandrakauns",
+      "raag": "Candrakauns",
+      "tonicHz": 141.01,
+      "excerpts": [
+        {
+          "startSec": 60,
+          "saErrCents": 490,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 119,
+          "saErrCents": -5,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 149,
+          "saErrCents": 1190,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Malkauns, Chandrakauns & Majh Khamaj Thumri by Satyasheel Deshpande / Raag Malkauns",
+      "raag": "Mālkauns",
+      "tonicHz": 141.01,
+      "excerpts": [
+        {
+          "startSec": 580,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 1159,
+          "saErrCents": -8,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1739,
+          "saErrCents": 1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Marwa & Hameer by Sameehan Kashalkar / Raag Marwa",
+      "raag": "Mārvā",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 510,
+          "saErrCents": 891,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1020,
+          "saErrCents": 1201,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1530,
+          "saErrCents": 1200,
+          "correct": false,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Marwa & Shree by Omkar Dadarkar / Raag Marwa",
+      "raag": "Mārvā",
+      "tonicHz": 152.01,
+      "excerpts": [
+        {
+          "startSec": 484,
+          "saErrCents": 97,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 969,
+          "saErrCents": 1200,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1453,
+          "saErrCents": 5,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Mian Malhar & Ramdasi Malhar by Deborshee Bhattacharya / Raag Mian Malhar",
+      "raag": "Miyām̐ malhār",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 983,
+          "saErrCents": -498,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 1966,
+          "saErrCents": 1202,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 2949,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Mian Malhar & Ramdasi Malhar by Satyasheel Deshpande / Raag Mian Malhar",
+      "raag": "Miyām̐ malhār",
+      "tonicHz": 139.39,
+      "excerpts": [
+        {
+          "startSec": 712,
+          "saErrCents": 6,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1424,
+          "saErrCents": -21,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 2136,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": true
+        }
+      ]
+    },
+    {
+      "recording": "Raag Poorva & Gaud Malhar by Sameehan Kashalkar / Raag Gaud Malhar",
+      "raag": "",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 238,
+          "saErrCents": -14,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 476,
+          "saErrCents": -10,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 714,
+          "saErrCents": -2,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Poorva & Gaud Malhar by Sameehan Kashalkar / Raag Poorva",
+      "raag": "",
+      "tonicHz": 147.68,
+      "excerpts": [
+        {
+          "startSec": 736,
+          "saErrCents": -10,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1473,
+          "saErrCents": -5,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 2209,
+          "saErrCents": -8,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Puriya & Bhimpalasi by Brajeshwar Mukherjee / Raag Puriya",
+      "raag": "",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 462,
+          "saErrCents": 2,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 925,
+          "saErrCents": -6,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1387,
+          "saErrCents": -8,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Sawani & Bahar by Ulhas Kashalkar / Raag Bahar",
+      "raag": "",
+      "tonicHz": 158.28,
+      "excerpts": [
+        {
+          "startSec": 171,
+          "saErrCents": 501,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 342,
+          "saErrCents": 1196,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 513,
+          "saErrCents": 494,
+          "correct": false,
+          "flaggedUncertain": true
+        }
+      ]
+    },
+    {
+      "recording": "Raag Shree by Deborshee Bhattacharya / Raag Shree",
+      "raag": "Śrī",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 784,
+          "saErrCents": 0,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1568,
+          "saErrCents": 1202,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 2351,
+          "saErrCents": 8,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Shree by Kaustuv Kanti Ganguli / Raag Shree",
+      "raag": "Śrī",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 955,
+          "saErrCents": 6,
+          "correct": true,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 1910,
+          "saErrCents": 1201,
+          "correct": false,
+          "flaggedUncertain": true
+        },
+        {
+          "startSec": 2864,
+          "saErrCents": -7,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Shree, Lalit Pancham & Bhairavi Thumri by Kaustuv Kanti Ganguli / Raag Lalit Pancham",
+      "raag": "Lalit pañcam",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 510,
+          "saErrCents": -700,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1020,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1530,
+          "saErrCents": 5,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    },
+    {
+      "recording": "Raag Shree, Lalit Pancham & Bhairavi Thumri by Kaustuv Kanti Ganguli / Raag Shree",
+      "raag": "Śrī",
+      "tonicHz": 146.83,
+      "excerpts": [
+        {
+          "startSec": 992,
+          "saErrCents": 4,
+          "correct": true,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 1985,
+          "saErrCents": 1201,
+          "correct": false,
+          "flaggedUncertain": false
+        },
+        {
+          "startSec": 2977,
+          "saErrCents": -1,
+          "correct": true,
+          "flaggedUncertain": false
+        }
+      ]
+    }
+  ]
+}

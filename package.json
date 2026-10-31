@@ -6,6 +6,8 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "benchmark:app": "node evaluation/app-benchmark.js",
+    "benchmark:synthetic": "node evaluation/synthetic-hindustani.js",
+    "benchmark:saraga": "node evaluation/evaluate-saraga.js",
     "benchmark:download:vocadito": "bash evaluation/download-vocadito.sh",
     "benchmark:vocadito": "node evaluation/evaluate-vocadito.js",
     "benchmark:tune:vocadito": "node evaluation/evaluate-vocadito.js --tune",
