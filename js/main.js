@@ -68,7 +68,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=67';
+  const WORKER_URL = 'js/worker.js?v=68';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -827,6 +827,7 @@
       )
       : DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
     applyManualNoteEdits(res.tokens);
+    DSP.annotateSungPitch(res.tokens, state.f0, state.clarity, state.hopSec, state.saHz);
     state.tokens = res.tokens;
     state.phrases = DSP.regroupPhrases(
       state.tokens,
@@ -2113,7 +2114,7 @@
     let node = null;
     if (ctx.audioWorklet && typeof AudioWorkletNode === 'function') {
       try {
-        if (!micWorkletLoaded) micWorkletLoaded = ctx.audioWorklet.addModule('js/mic-worklet.js?v=67');
+        if (!micWorkletLoaded) micWorkletLoaded = ctx.audioWorklet.addModule('js/mic-worklet.js?v=68');
         await micWorkletLoaded;
         node = new AudioWorkletNode(ctx, 'swarlekh-mic', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
         node.port.onmessage = (e) => onBlock(e.data);

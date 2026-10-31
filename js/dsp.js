@@ -2345,15 +2345,48 @@
   }
 
   /**
-   * A note the learner should check by ear. Measured on the synthetic
-   * Hindustani benchmark: notes sung >35c from their swara are right ~73% of
-   * the time (vs ~97%), and notes inferred by the ornament-recovery passes
-   * ~54%. Your own corrections are never "uncertain".
+   * Record the pitch each note SETTLES on: the median of its middle 60% of
+   * frames, so the glide into and out of a note (meend) does not count. Sets
+   * token.sungCents (relative to Sa).
+   */
+  function annotateSungPitch(tokens, f0, clarity, hopSec, saHz) {
+    if (!f0 || !(hopSec > 0) || !(saHz > 0)) return tokens;
+    for (const tk of tokens) {
+      const a = tk.t0 + 0.2 * (tk.t1 - tk.t0), b = tk.t1 - 0.2 * (tk.t1 - tk.t0);
+      const v = [];
+      for (let i = Math.max(0, Math.floor(a / hopSec)); i < Math.min(f0.length, Math.ceil(b / hopSec)); i++) {
+        if (f0[i] > 0 && (!clarity || clarity[i] >= 0.5)) v.push(1200 * Math.log2(f0[i] / saHz));
+      }
+      if (!v.length) { delete tk.sungCents; continue; }
+      v.sort((x, y) => x - y);
+      tk.sungCents = v[v.length >> 1];
+    }
+    // A short checklist beats a long one: in dense, ornamented singing the
+    // rule below can fire on a large share of notes, so flag at most the 20%
+    // that sit furthest from their swara.
+    const devs = tokens.filter((tk) => Number.isFinite(tk.sungCents) && !tk.manualCorrection && !tk.manualAddition)
+      .map((tk) => Math.abs(tk.sungCents - tk.k * 100)).sort((a, b) => a - b);
+    const floor = devs.length ? devs[Math.floor(0.8 * (devs.length - 1))] : 0;
+    for (const tk of tokens) tk.uncertainFloor = floor;
+    return tokens;
+  }
+
+  /**
+   * A note the learner should check by ear: its settled pitch is more than
+   * 35c from the swara written, or it was inferred by the ornament passes and
+   * settles more than 20c off — and it is among the recording's 20% most
+   * off-pitch notes (see annotateSungPitch). On the synthetic Hindustani benchmark this
+   * flags ~4% of notes, 90% of which are wrong, and catches ~84% of all
+   * wrong notes. Your own corrections are never "uncertain".
    */
   function isUncertainNote(tk) {
     if (!tk || tk.manualCorrection || tk.manualAddition) return false;
-    if (tk.hybridOrnament || tk.rawLandmark || tk.rawMurkiCluster || tk.rawNestedLandmark) return true;
-    return Number.isFinite(tk.cents) && Math.abs(tk.cents - tk.k * 100) > 35;
+    const sung = Number.isFinite(tk.sungCents) ? tk.sungCents : tk.cents;
+    if (!Number.isFinite(sung)) return false;
+    const off = Math.abs(sung - tk.k * 100);
+    const inferred = !!(tk.hybridOrnament || tk.rawLandmark || tk.rawMurkiCluster || tk.rawNestedLandmark);
+    if (Number.isFinite(tk.uncertainFloor) && off <= tk.uncertainFloor) return false;
+    return off > 35 || (inferred && off > 20);
   }
 
   /** Notation as one entry per phrase line: the swara text with ~0.3 s
@@ -2795,7 +2828,7 @@
   return {
     preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets,
     detectTonic, droneProfile, estimateTuningDrift, driftAt, correctDrift, tonicWithDrift, refineSa, notate, buildPracticeContour,
-    displayPitchRange, notationText, notationLines, notationPitchTrack, isUncertainNote, toDevanagari, devanagariSwara, analyzeRaga,
+    displayPitchRange, notationText, notationLines, notationPitchTrack, isUncertainNote, annotateSungPitch, toDevanagari, devanagariSwara, analyzeRaga,
     regroupPhrases: groupPhrases,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
     pitchShift, timeStretch, resampleLinear, formantCorrect,

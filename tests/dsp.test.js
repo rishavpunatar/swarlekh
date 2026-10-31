@@ -2734,3 +2734,32 @@ test('regroupPhrases: a long alaap with short breaths is split into readable lin
   for (let i = 1; i < lines.length; i++) assert.ok(lines[i].t0 - lines[i - 1].t1 >= 0.49, 'lines break at breaths');
   assert.strictEqual(lines.reduce((a, l) => a + l.tokens.length, 0), tokens.length);
 });
+
+test('uncertain notes: judged on the pitch a note settles on, not its glide', () => {
+  const hop = 0.01, n = 100;
+  const f0 = new Float32Array(n).fill(SA * Math.pow(2, 2 / 12));      // settles on Re
+  for (let i = 0; i < 20; i++) f0[i] = SA * Math.pow(2, (i / 20 * 200) / 1200); // meend up from Sa
+  const meendIn = [{ t0: 0, t1: 1, k: 2, cents: 150 }];               // mean pulled low by the glide
+  DSP.annotateSungPitch(meendIn, f0, new Float32Array(n).fill(0.9), hop, SA);
+  assert.ok(Math.abs(meendIn[0].sungCents - 200) < 1);
+  assert.strictEqual(DSP.isUncertainNote(meendIn[0]), false, 'a meend into a clean Re is not uncertain');
+  assert.strictEqual(DSP.isUncertainNote({ t0: 0, t1: 1, k: 2, sungCents: 245 }), true, 'settled 45c off');
+  assert.strictEqual(DSP.isUncertainNote({ t0: 0, t1: 1, k: 2, sungCents: 225, hybridOrnament: true }), true, 'inferred and 25c off');
+  assert.strictEqual(DSP.isUncertainNote({ t0: 0, t1: 1, k: 2, sungCents: 210, hybridOrnament: true }), false, 'inferred but clean');
+  assert.strictEqual(DSP.isUncertainNote({ t0: 0, t1: 1, k: 2, sungCents: 260, manualCorrection: true }), false, 'your corrections are trusted');
+});
+
+test('uncertain notes: at most the 20% most off-pitch notes are flagged', () => {
+  const hop = 0.01;
+  const tokens = [];
+  const f0 = new Float32Array(1000);
+  for (let n = 0; n < 10; n++) {                       // 10 notes, all 40-85c off their swara
+    const off = 40 + 5 * n;
+    tokens.push({ t0: n, t1: n + 1, k: 0 });
+    for (let i = n * 100; i < (n + 1) * 100; i++) f0[i] = SA * Math.pow(2, off / 1200);
+  }
+  DSP.annotateSungPitch(tokens, f0, new Float32Array(1000).fill(0.9), hop, SA);
+  const flagged = tokens.filter((tk) => DSP.isUncertainNote(tk));
+  assert.ok(flagged.length >= 1 && flagged.length <= 2, `flagged ${flagged.length} of 10`);
+  assert.ok(flagged.every((tk) => tk.sungCents >= 80), 'the most off-pitch ones');
+});
