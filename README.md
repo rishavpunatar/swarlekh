@@ -66,7 +66,7 @@ Measured three ways; [`evaluation/README.md`](evaluation/README.md) has the prot
 | Sa and its octave correct | 26% | **72%** |
 | Annotated sargam phrases found in the notation | 22% | **44%** |
 
-Phrases found given the *annotated* Sa stay at ~51%: what remains is note-level tracking on a full concert mix, where the Best engine's vocal separation is the lever.
+Phrases found given the *annotated* Sa stay at ~51%: what remains is note-level tracking on a full concert mix, where the Best engine's vocal separation is the lever — on a small Best-engine sample (6 held-out excerpts; separation is slow) phrases found rise to 69%, with Sa right on all six (octave on four; two excerpts sit entirely in taar saptak).
 
 **Known-answer synthetic performances** of all 42 ragas (raga intonation, meend, vibrato, drift; tanpura and tabla for the Fast engine): Sa 93–100% and swaras 88–100% across male and female voices, vibrato and up to 70¢ of drift. `npm test` holds floors on these.
 

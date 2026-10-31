@@ -88,11 +88,6 @@ self.onmessage = async function (e) {
     const stab = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, cleanTrack ? 'gentle' : 'auto');
 
     prog('tonic', 0);
-    // Browser CREPE's flatter salience can confuse the YIN-tuned tonic scorer,
-    // so it keeps the established quick-YIN fallback. The local-server path is
-    // different: its f0, clarity and loudness all come from the separated voice.
-    // Using mix YIN here would throw that isolation away and let harmonium or
-    // accompaniment choose Sa.
     // Sa, with slow tuning drift (measured on Sa/Pa) removed from the pitch
     // used for notation. The audio and the melody synth keep the real pitch.
     const synthF0 = stab.f0.slice();
@@ -100,12 +95,21 @@ self.onmessage = async function (e) {
     // comes from the separated voice: it is the steadiest Sa evidence there is.
     const tonicExtra = DSP.droneProfile ? { drone: DSP.droneProfile(samples, sr) } : undefined;
     let tonic, drift;
-    if (e.data.neural) {
+    if (e.data.neural || external) {
+      // Sa is found on the full mix — the voice together with the tanpura's
+      // low strings — and only fine-tuned on the clean track. Measured on
+      // Saraga concerts this is the more reliable reading (held-out: 87% Sa,
+      // 72% with octave); the isolated voice alone loses Sa's octave whenever
+      // a passage stays in taar saptak, and CREPE's flat salience misleads
+      // the tonic scorer.
       const yt = DSP.yinTrack(filtered, sr, {});
       const ys = DSP.stabilizeOctave(yt.f0, yt.clarity, yt.rms, yt.hopSec, 'auto');
       const t = DSP.tonicWithDrift(ys.f0, yt.clarity, yt.hopSec, yt.rms, tonicExtra);
       tonic = t.tonic; drift = t.drift;
       if (drift) stab.f0 = DSP.correctDrift(stab.f0, track.hopSec, drift);
+      if (external && DSP.refineSa) {
+        tonic = tonic.map(function (c) { return Object.assign({}, c, { hz: DSP.refineSa(c.hz, stab.f0, track.clarity) }); });
+      }
     } else {
       const t = DSP.tonicWithDrift(stab.f0, track.clarity, track.hopSec, track.rms, tonicExtra);
       tonic = t.tonic; drift = t.drift;

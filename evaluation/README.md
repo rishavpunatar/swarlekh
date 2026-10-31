@@ -75,6 +75,13 @@ results, Fast engine (`results/saraga-holdout-fast.json`):
 | phrases found | 22.0% | 44.3% |
 | phrases found with the annotated Sa | 51.1% | 51.5% |
 
+Best engine, a small sample (separation runs ~3× real time): one excerpt from
+each of six held-out concerts (`results/saraga-holdout-best-sample.json`) —
+Sa pitch class 4/6 → 6/6, Sa + octave 2/6 → 4/6, annotated phrases found 69%.
+The Best engine now reads Sa from the mix (voice plus the tanpura's strings)
+and fine-tunes it on the separated voice: the isolated voice alone lost Sa's
+octave whenever an excerpt stayed in taar saptak.
+
 What moved it, each measured here: tonic evidence from the tanpura's
 persistent spectral lines (alone it names Sa in ~92% of excerpts); octave
 restructuring only on gross errors (octave-sized frame jumps are everywhere

@@ -122,7 +122,15 @@ async function analyze(DSP, samples, engine, server) {
   const stable = DSP.stabilizeOctave(track.f0, track.clarity, track.rms, track.hopSec, mode);
   let tonic = null, f0 = stable.f0, drift = null;
   const extra = DSP.droneProfile ? { drone: DSP.droneProfile(samples, SR) } : undefined;
-  if (DSP.tonicWithDrift) {
+  if (engine === 'best' && DSP.refineSa) {
+    // as js/worker.js: Sa from the mix (voice + tanpura), cents from the voice
+    const mix = DSP.yinTrack(filtered, SR, {});
+    const ms = DSP.stabilizeOctave(mix.f0, mix.clarity, mix.rms, mix.hopSec, 'auto');
+    const t = DSP.tonicWithDrift(ms.f0, mix.clarity, mix.hopSec, mix.rms, extra);
+    drift = t.drift;
+    if (drift) f0 = DSP.correctDrift(stable.f0, track.hopSec, drift);
+    tonic = t.tonic.map((c) => Object.assign({}, c, { hz: DSP.refineSa(c.hz, f0, track.clarity) }));
+  } else if (DSP.tonicWithDrift) {
     const t = DSP.tonicWithDrift(stable.f0, track.clarity, track.hopSec, track.rms, extra);
     tonic = t.tonic; f0 = t.f0; drift = t.drift;
   } else {

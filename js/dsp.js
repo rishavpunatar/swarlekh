@@ -1001,7 +1001,10 @@
         const hz = octaveHz[oct];
         if (hz < 80 || hz > 400) continue;
         const saCents = 1200 * Math.log2(hz / 55);
-        if (saCents < minSaCents) continue;            // Sa not below the sung range
+        // Sa not below the sung range — unless a clear tanpura rings exactly
+        // here (a passage of taans can keep the voice well above its Sa).
+        const droneOctave = droneSal && drone.strength >= 0.5 && droneSal[oct] === droneMax;
+        if (saCents < minSaCents && !droneOctave) continue;
         let cov = 0;
         for (const r of rels) {
           const rc = r.c - saCents;
@@ -1013,7 +1016,7 @@
         let sc = voiceScore;
         if (droneMax > 0) {
           const rel = droneSal[oct] / droneMax;
-          sc *= 1 - 0.6 * drone.strength * (1 - rel);
+          sc *= Math.max(0.02, 1 - 0.97 * drone.strength * (1 - rel));
         }
         if (sc > bestScore) { bestScore = sc; bestHz = hz; bestCov = cov; bestSa = saCents; }
       }
@@ -1191,6 +1194,24 @@
       if (out[i] > 0) out[i] *= Math.pow(2, -driftAt(drift, i * hopSec) / 1200);
     }
     return out;
+  }
+
+  /**
+   * Fine-tune Sa's exact pitch from a clean (separated-voice) track: the
+   * circular mean of its frames within ±40c of Sa's pitch class, in any
+   * octave. Pitch class and octave are left as they are.
+   */
+  function refineSa(saHz, f0, clarity) {
+    let sx = 0, sy = 0;
+    for (let i = 0; i < f0.length; i++) {
+      if (!(f0[i] > 0) || clarity[i] < 0.5) continue;
+      let d = (((1200 * Math.log2(f0[i] / saHz)) % 1200) + 1200) % 1200;
+      if (d > 600) d -= 1200;
+      if (Math.abs(d) > 40) continue;
+      sx += Math.cos(2 * Math.PI * d / 1200); sy += Math.sin(2 * Math.PI * d / 1200);
+    }
+    if (!sx && !sy) return saHz;
+    return saHz * Math.pow(2, (Math.atan2(sy, sx) * 1200 / (2 * Math.PI)) / 1200);
   }
 
   /**
@@ -2773,7 +2794,7 @@
 
   return {
     preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets,
-    detectTonic, droneProfile, estimateTuningDrift, driftAt, correctDrift, tonicWithDrift, notate, buildPracticeContour,
+    detectTonic, droneProfile, estimateTuningDrift, driftAt, correctDrift, tonicWithDrift, refineSa, notate, buildPracticeContour,
     displayPitchRange, notationText, notationLines, notationPitchTrack, isUncertainNote, toDevanagari, devanagariSwara, analyzeRaga,
     regroupPhrases: groupPhrases,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,
