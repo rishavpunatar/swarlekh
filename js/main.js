@@ -9,13 +9,14 @@
     progressCard: $('progressCard'), progStage: $('progStage'), progPct: $('progPct'), progBar: $('progBar'),
     resultArea: $('resultArea'),
     playBtn: $('playBtn'), timeDisp: $('timeDisp'), speedSel: $('speedSel'), sourceSel: $('sourceSel'),
-    loopABtn: $('loopABtn'), loopBBtn: $('loopBBtn'), loopClearBtn: $('loopClearBtn'), loopDisp: $('loopDisp'),
     ragaThaat: $('ragaThaat'), ragaGuess: $('ragaGuess'), swarPalette: $('swarPalette'), ragaGrammar: $('ragaGrammar'),
     tonicCard: $('tonicCard'), tonicChips: $('tonicChips'), tonicNote: $('tonicNote'), tonicFine: $('tonicFine'),
     tonicFineVal: $('tonicFineVal'), tonicHz: $('tonicHz'), droneBtn: $('droneBtn'),
     saAtPlayheadBtn: $('saAtPlayheadBtn'), tonicHint: $('tonicHint'),
     canvas: $('contour'), zoomInBtn: $('zoomInBtn'), zoomOutBtn: $('zoomOutBtn'),
-    addNoteBtn: $('addNoteBtn'), undoNoteBtn: $('undoNoteBtn'),
+    addNoteBtn: $('addNoteBtn'), undoNoteBtn: $('undoNoteBtn'), deleteNoteBtn: $('deleteNoteBtn'),
+    relabelSa: $('relabelSa'), relabelSaBtn: $('relabelSaBtn'), undoSaBtn: $('undoSaBtn'),
+    submitFinishedBtn: $('submitFinishedBtn'), feedbackStatus: $('feedbackStatus'),
     connectorToolbar: $('connectorToolbar'),
     selectedNoteLabel: $('selectedNoteLabel'),
     incomingConnector: $('incomingConnector'),
@@ -26,9 +27,6 @@
     closeConnectorBtn: $('closeConnectorBtn'),
     pitchCtl: document.querySelector('.pitch-ctl'), pitchDownBtn: $('pitchDownBtn'), pitchUpBtn: $('pitchUpBtn'),
     pitchSel: $('pitchSel'), pitchKey: $('pitchKey'),
-    micBtn: $('micBtn'), micReadout: $('micReadout'),
-    phrasePrevBtn: $('phrasePrevBtn'), phraseNextBtn: $('phraseNextBtn'), phraseDisp: $('phraseDisp'),
-    rampBtn: $('rampBtn'), rampDisp: $('rampDisp'),
     sensSlider: $('sensSlider'), sensVal: $('sensVal'),
     minNoteSlider: $('minNoteSlider'), minNoteVal: $('minNoteVal'),
     statsLine: $('statsLine'), toast: $('toast'),
@@ -46,11 +44,6 @@
     tonicCands: [], saHz: 146.83,
     tokens: [], phrases: [], noteRegions: [], practiceContour: [],
     duration: 0, synthDuration: 0,
-    loopA: null, loopB: null,
-    phraseLoop: -1,                 // index into state.phrases; -1 = no phrase loop
-    ramp: { on: false, rate: 0 },   // speed-ramp practice (active only with a loop)
-    micTrail: [],                   // [{t, cents, wall}] — sung trail drawn on the contour
-    micCents: null,                 // latest voiced mic reading (cents rel. original Sa space)
     pxPerSec: 120, scrollSec: 0, centsLo: -700, centsHi: 1900,
     playing: false,
     semitones: 0, fileBytes: null, fileMono: null, fileSr: 16000,
@@ -59,6 +52,7 @@
     engine: 'yin', file: null, fileSha: null, drift: null, showSung: true, notationRev: 0,
     manualEdits: [], noteEditHistory: [], addNoteMode: false,
     selectedNoteTime: null, noteEditRevision: 0,
+    baseline: null, previousSa: null, learningProfile: null, finishedSubmitted: false,
     opts: {
       clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45,
       onsetMinMs: 100, clean: true, onsets: [],
@@ -68,7 +62,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=68';
+  const WORKER_URL = 'js/worker.js?v=69';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -388,7 +382,7 @@
     if (!state.fileSha) return;
     idbPut('edits:' + state.fileSha, {
       edits: state.manualEdits.map((edit) => Object.assign({}, edit)),
-      fileName: state.fileName,
+      fileName: state.fileName, saHz: state.saHz,
       ts: Date.now(),
     }, 'edits');
   }
@@ -401,11 +395,10 @@
     try {
       state.ready = false;
       pause();
-      stopMic();
-      state.loopA = state.loopB = null;
-      state.phraseLoop = -1;
-      state.ramp.on = false; rampUI();
-      updateLoopUI();
+      setAddNoteMode(false);
+      state.baseline = null; state.previousSa = null; state.finishedSubmitted = false;
+      els.undoSaBtn.hidden = true;
+      els.feedbackStatus.textContent = 'Finish correcting every syllable, then submit to improve future drafts.';
       clearPitchCache();
       state.semitones = 0;
       els.dropzone.classList.add('compact');
@@ -422,7 +415,17 @@
       state.fileBytes = ab.slice(0);
       // v8 adds learned pulse/downbeat reconciliation and taal-cycle metadata.
       const hash = 'v8:' + await fileHash(ab.slice(0));
+      if (stale()) return;
       state.fileSha = hash.slice(3);          // corrections are keyed by the file alone
+      const training = await idbGet('finished-scores', 'edits');
+      if (stale()) return;
+      state.learningProfile = Corrections.learnTiming(training || []);
+      if (state.learningProfile) {
+        Object.assign(state.opts, { minNoteMs: state.learningProfile.minNoteMs, onsetMinMs: state.learningProfile.onsetMinMs });
+        els.minNoteSlider.value = state.opts.minNoteMs;
+        els.minNoteVal.textContent = `${state.opts.minNoteMs} ms`;
+        els.feedbackStatus.textContent = `Timing learned from ${state.learningProfile.examples} reviewed score(s) is applied to this upload.`;
+      }
       const ctx = ensureCtx();
       let buf;
       try {
@@ -572,6 +575,9 @@
         state.manualEdits = savedEdits;
         state.noteEditHistory = [];
       }
+      const savedSettings = await idbGet('edits:' + state.fileSha, 'edits');
+      if (stale()) return;
+      if (savedSettings && savedSettings.saHz > 0) state.saHz = savedSettings.saHz;
       updateUndoNoteButton();
       renderRhythm();
       renderTonicChips();
@@ -668,7 +674,7 @@
       b.type = 'button';
       b.textContent = `${noteLabel(c.hz)} · ${c.hz.toFixed(1)} Hz${i === 0 ? ' ★' : ''}`;
       b.title = i === 0 ? 'Best guess for Sa — verify by ear with the Drone' : 'Alternative Sa — try it with the Drone';
-      b.addEventListener('click', () => { state.saHz = c.hz; syncTonicControls(); renotateNow(); });
+      b.addEventListener('click', () => changeSa(c.hz));
       els.tonicChips.appendChild(b);
     });
     markSelectedChip();
@@ -711,16 +717,36 @@
     populatePitchOptions();
   }
 
+  function changeSa(hz) {
+    if (!Number.isFinite(hz) || hz < midiHz(36) || hz > midiHz(83)) {
+      toast('That Sa is outside the supported C2–B5 range.'); return false;
+    }
+    const old = state.saHz;
+    const shift = Math.round(12 * Math.log2(old / hz));
+    state.previousSa = old;
+    state.manualEdits = Corrections.transposeEdits(state.manualEdits, shift);
+    state.noteEditHistory = state.noteEditHistory.map(edits => Corrections.transposeEdits(edits, shift));
+    state.saHz = hz;
+    els.undoSaBtn.hidden = false;
+    syncTonicControls(); renotateNow(); persistNoteEdits();
+    return true;
+  }
+  els.relabelSaBtn.addEventListener('click', () => {
+    const steps = Number(els.relabelSa.value);
+    if (!steps) return;
+    const name = els.relabelSa.options[els.relabelSa.selectedIndex].text;
+    if (changeSa(state.saHz / Math.pow(2, steps / 12))) {
+      toast(`What was Sa is now ${name}. All notes relabelled; recording pitch is unchanged.`);
+      els.relabelSa.value = '0';
+    }
+  });
+  els.undoSaBtn.addEventListener('click', () => {
+    if (state.previousSa) changeSa(state.previousSa);
+  });
   function tonicFromControls() {
     const base = midiHz(parseInt(els.tonicNote.value, 10));
     const cents = parseInt(els.tonicFine.value, 10) || 0;
-    state.saHz = base * Math.pow(2, cents / 1200);
-    els.tonicFineVal.textContent = `${cents >= 0 ? '+' : ''}${cents}¢`;
-    els.tonicHz.textContent = `${state.saHz.toFixed(1)} Hz`;
-    markSelectedChip();
-    updateDroneFreq();
-    populatePitchOptions();
-    renotateDebounced();
+    changeSa(base * Math.pow(2, cents / 1200));
   }
   els.tonicNote.addEventListener('change', tonicFromControls);
   els.tonicFine.addEventListener('input', tonicFromControls);
@@ -743,9 +769,7 @@
       toast('No clear sung pitch at the playhead. Move it onto a steady Sa and try again.');
       return;
     }
-    state.saHz = vals[vals.length >> 1];
-    syncTonicControls();
-    renotateNow();
+    changeSa(vals[vals.length >> 1]);
     toast(`Sa set from the playhead: ${noteLabel(state.saHz)} (${state.saHz.toFixed(1)} Hz).`);
   }
   if (els.saAtPlayheadBtn) els.saAtPlayheadBtn.addEventListener('click', setPlayheadAsSa);
@@ -816,6 +840,10 @@
     // neural path uses GAME's learned note regions instead of this heuristic.
     const opts = Object.assign({}, state.opts);
     if (state.hopSec <= 0.006 && opts.ornaments && opts.ornMinMs > 25) opts.ornMinMs = 25;
+    if (state.finishedSubmitted) {
+      els.feedbackStatus.textContent = 'The score changed after submission. Submit again when your revision is finished.';
+      state.finishedSubmitted = false;
+    }
     const res = state.noteRegions.length
       ? DSP.notateRegions(
         state.noteRegions,
@@ -826,6 +854,11 @@
         opts
       )
       : DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
+    if (!state.baseline) state.baseline = {
+      saHz: state.saHz, engine: state.engine,
+      settings: Object.assign({}, state.opts, { rms: undefined, onsets: undefined }),
+      notes: res.tokens.map(token => Object.assign({}, token)),
+    };
     applyManualNoteEdits(res.tokens);
     DSP.annotateSungPitch(res.tokens, state.f0, state.clarity, state.hopSec, state.saHz);
     state.tokens = res.tokens;
@@ -947,6 +980,8 @@
       });
       tokens.splice(0, tokens.length, ...preserved.sort((a, b) => a.t0 - b.t0));
     }
+    const remaining = Corrections.removeIntervals(tokens, state.manualEdits.filter(edit => edit.type === 'delete'));
+    tokens.splice(0, tokens.length, ...remaining);
     for (const edit of state.manualEdits) {
       if (edit.type !== 'connector') continue;
       let best = null;
@@ -981,6 +1016,11 @@
     state.noteEditHistory.push(
       state.manualEdits.map((edit) => Object.assign({}, edit))
     );
+    const inserted = token.manualAddition && matchingManualEdit(token, 'insert');
+    if (inserted) {
+      inserted.edit.k = targetK;
+      noteEditsChanged(); renotateNow(); return;
+    }
     const match = matchingManualEdit(token, 'move');
     const edit = {
       type: 'move',
@@ -1012,6 +1052,11 @@
     state.noteEditHistory.push(
       state.manualEdits.map((edit) => Object.assign({}, edit))
     );
+    // A new note can replace a previously deleted passage. Keep only the
+    // non-overlapping portions of older deletion intervals.
+    state.manualEdits = state.manualEdits.filter(edit => edit.type !== 'delete').concat(
+      Corrections.removeIntervals(state.manualEdits.filter(edit => edit.type === 'delete'), [{ t0: start, t1: end }])
+    );
     state.manualEdits.push({
       type: 'insert',
       t0: start,
@@ -1019,11 +1064,23 @@
       time: (start + end) / 2,
       k,
     });
-    state.selectedNoteTime = (start + end) / 2;
+    state.selectedNoteTime = state.addNoteMode ? null : (start + end) / 2;
     noteEditsChanged();
     renotateNow();
     toast(`Added ${tokenGlyph(k)}.`);
   }
+
+  function deleteSelectedNote() {
+    const index = selectedTokenIndex();
+    const token = state.tokens[index];
+    if (!token) return;
+    state.noteEditHistory.push(state.manualEdits.map(edit => Object.assign({}, edit)));
+    state.manualEdits.push({ type: 'delete', t0: token.t0, t1: token.t1, time: (token.t0 + token.t1) / 2 });
+    state.selectedNoteTime = null;
+    noteEditsChanged(); renotateNow();
+    toast('Note deleted. Undo restores it.');
+  }
+  els.deleteNoteBtn.addEventListener('click', deleteSelectedNote);
 
   function selectedTokenIndex() {
     if (!Number.isFinite(state.selectedNoteTime) || !state.tokens.length) {
@@ -1196,12 +1253,15 @@
     }
     if (els.addNoteBtn) {
       els.addNoteBtn.setAttribute('aria-pressed', String(state.addNoteMode));
+      els.addNoteBtn.textContent = state.addNoteMode ? 'Done adding' : 'Add notes';
+      els.addNoteBtn.setAttribute('aria-label', state.addNoteMode ? 'Done adding' : 'Add notes');
     }
     cvs.style.cursor = state.addNoteMode ? 'crosshair' : '';
   }
   if (els.addNoteBtn) {
     els.addNoteBtn.addEventListener('click', () => {
       setAddNoteMode(!state.addNoteMode);
+      toast(state.addNoteMode ? 'Add notes is on. Click or drag for each note; choose Done adding or press Esc when finished.' : 'Adding finished. Click a note to select or delete it.');
     });
   }
   function setShowSung(on) {
@@ -1481,7 +1541,7 @@
       (edits ? ` · ${edits} correction${edits === 1 ? '' : 's'}` : '');
     if (els.clearEditsBtn) els.clearEditsBtn.hidden = edits === 0;
     cvs.setAttribute('aria-label',
-      `Pitch contour: ${state.tokens.length} sung notes in ${lines.length} lines, Sa ${noteLabel(state.saHz)}. The notation below lists every line as text.`);
+      `Pitch contour: ${state.tokens.length} sung notes in ${lines.length} lines, Sa ${noteLabel(state.saHz)}. Download or copy the score for a text version.`);
     highlightNotationLine(activeLineIdx, false);
   }
   function highlightNotationLine(idx, follow) {
@@ -1564,6 +1624,8 @@
       })),
       tuningDrift: state.drift,
       corrections: state.manualEdits,
+      baseline: state.baseline,
+      learningProfile: state.learningProfile,
       analysis: {
         hopSec: state.hopSec,
         f0: Array.from(state.f0 || [], (v) => round(v, 100)),
@@ -1574,6 +1636,45 @@
       },
     };
   }
+  async function submitFinishedScore() {
+    if (!state.ready || !state.fileSha || !state.tokens.length) {
+      toast('Add and review the notes before submitting a finished score.'); return;
+    }
+    els.submitFinishedBtn.disabled = true;
+    const snapshot = JSON.parse(JSON.stringify(exportJson()));
+    snapshot.purpose = 'expert-correction';
+    snapshot.reviewed = true;
+    snapshot.finalTokens = JSON.parse(JSON.stringify(state.tokens));
+    const sha = state.fileSha;
+    try {
+      const examples = await idbGet('finished-scores', 'edits') || [];
+      const next = examples.filter(example => example.file.sha256 !== sha).concat(snapshot).slice(-50);
+      if (!await idbPut('finished-scores', next, 'edits')) {
+        throw new Error('Could not save on this device. Download the JSON score to keep a copy, then retry.');
+      }
+      const learned = Corrections.learnTiming(next);
+      const sent = await fetch('http://127.0.0.1:8765/feedback', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snapshot), signal: AbortSignal.timeout(15000),
+      }).then(async response => {
+        const data = await response.json();
+        if (!response.ok || !data.saved) throw new Error(data.error || 'Server did not confirm saving.');
+        return data;
+      }).catch(() => null);
+      if (state.fileSha !== sha) return;
+      state.learningProfile = learned;
+      state.finishedSubmitted = true;
+      els.feedbackStatus.textContent = sent
+        ? `Finished score received by your local system (${sent.id.slice(0, 8)}). ${learned ? 'Learned timing will be used on your next upload.' : 'Saved for evaluation; review at least 8 notes to learn timing.'}`
+        : 'Finished score saved on this device. Start or update the local SwarLekh server, then submit again to send it. Your next upload can already use its learned timing.';
+      toast(sent ? 'Finished score submitted.' : 'Saved on this device; local server has not received it yet.');
+    } catch (error) {
+      els.feedbackStatus.textContent = error.message;
+      toast(error.message);
+    } finally { els.submitFinishedBtn.disabled = false; }
+  }
+  els.submitFinishedBtn.addEventListener('click', submitFinishedScore);
+
   if (els.copyBtn) els.copyBtn.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(notationPlainText());
@@ -1718,48 +1819,11 @@
   /* ----------------------------- playback ----------------------------- */
 
   function applySpeed() {
-    if (state.ramp.on) return;             // ramp owns the rate while active
     const r = parseFloat(els.speedSel.value);
     origEl.playbackRate = r;
     synthEl.playbackRate = r;
   }
-  els.speedSel.addEventListener('change', () => { stopRamp(); applySpeed(); });
-
-  /* ramp practice: with a loop set, each repeat speeds up 0.65x -> 1x */
-  const RAMP = { from: 0.65, step: 0.05, to: 1 };
-  function setRate(r) { origEl.playbackRate = r; synthEl.playbackRate = r; }
-  function rampUI() {
-    els.rampBtn.classList.toggle('on', state.ramp.on);
-    els.rampDisp.textContent = state.ramp.on ? state.ramp.rate.toFixed(2).replace(/0$/, '') + '\u00d7' : '';
-  }
-  function startRamp() {
-    state.ramp.on = true;
-    state.ramp.rate = RAMP.from;
-    setRate(RAMP.from);
-    rampUI();
-  }
-  function stopRamp() {
-    if (!state.ramp.on) return;
-    state.ramp.on = false;
-    applySpeed();                          // hand the rate back to the Speed select
-    rampUI();
-  }
-  function rampStep() {
-    if (state.ramp.rate >= RAMP.to) return;
-    state.ramp.rate = Math.min(RAMP.to, state.ramp.rate + RAMP.step);
-    setRate(state.ramp.rate);
-    rampUI();
-    if (state.ramp.rate >= RAMP.to) toast('Full speed — keep looping, or \u27e9 for the next line.');
-  }
-  els.rampBtn.addEventListener('click', () => {
-    if (state.ramp.on) { stopRamp(); return; }
-    if (state.loopA == null || state.loopB == null) {
-      toast('Set a loop first (drag the ruler, or \u27e8 \u27e9 for a line) \u2014 Ramp speeds up each repeat.');
-      return;
-    }
-    startRamp();
-    if (!state.playing) { seek(state.loopA); play(); }
-  });
+  els.speedSel.addEventListener('change', applySpeed);
 
   // "Notation" plays exactly what is written — every swara at its pitch,
   // meends gliding through the swaras they name, your corrections included —
@@ -1905,7 +1969,7 @@
       const { t, wasPlaying } = swapCtx || { t: 0, wasPlaying: false };
       swapCtx = null;
       try { origEl.currentTime = t; if (t < state.synthDuration) synthEl.currentTime = t; } catch (e) {}
-      if (state.ramp.on) setRate(state.ramp.rate); else applySpeed();   // load() resets playbackRate
+      applySpeed();   // load() resets playbackRate
       updateTimeDisp();
       if (!state.playing) drawCanvas();
       if (wasPlaying) play();
@@ -2000,221 +2064,12 @@
     els.timeDisp.textContent = `${fmtTime(origEl.currentTime, true)} / ${fmtTime(state.duration)}`;
   }
 
-  /* loop */
-  function updateLoopUI() {
-    els.loopABtn.classList.toggle('on', state.loopA != null);
-    els.loopBBtn.classList.toggle('on', state.loopB != null);
-    els.loopDisp.textContent = (state.loopA != null && state.loopB != null)
-      ? `${fmtTime(state.loopA)}–${fmtTime(state.loopB)}` : '';
-    els.phraseDisp.textContent = state.phraseLoop >= 0
-      ? `line ${state.phraseLoop + 1}/${state.phrases.length}` : '';
-    els.phrasePrevBtn.classList.toggle('on', state.phraseLoop >= 0);
-    els.phraseNextBtn.classList.toggle('on', state.phraseLoop >= 0);
-    els.phrasePrevBtn.disabled = state.phraseLoop === 0;
-    els.phraseNextBtn.disabled = state.phraseLoop >= 0 && state.phraseLoop === state.phrases.length - 1;
-  }
-  function setLoopA() {
-    state.phraseLoop = -1;
-    state.loopA = origEl.currentTime;
-    if (state.loopB != null && state.loopB <= state.loopA) state.loopB = null;
-    updateLoopUI(); drawCanvas();
-  }
-  function setLoopB() {
-    state.phraseLoop = -1;
-    const t = origEl.currentTime;
-    if (state.loopA == null) state.loopA = 0;
-    if (t <= state.loopA + 0.1) { toast('Loop end must come after loop start.'); return; }
-    state.loopB = t;
-    updateLoopUI(); drawCanvas();
-  }
-  function clearLoop() { state.loopA = state.loopB = null; state.phraseLoop = -1; stopRamp(); updateLoopUI(); drawCanvas(); }
-  els.loopABtn.addEventListener('click', setLoopA);
-  els.loopBBtn.addEventListener('click', setLoopB);
-  els.loopClearBtn.addEventListener('click', clearLoop);
-
-  /* phrase looping: ⟨ ⟩ snap the loop to notation lines with a small pad */
-  const PHRASE_PAD = 0.15;
-  function loopPhrase(idx) {
-    const phs = state.phrases;
-    if (!phs.length) return;
-    idx = Math.max(0, Math.min(phs.length - 1, idx));
-    state.phraseLoop = idx;
-    state.loopA = Math.max(0, phs[idx].t0 - PHRASE_PAD);
-    state.loopB = Math.min(state.duration - 0.01, phs[idx].t1 + PHRASE_PAD);
-    if (state.ramp.on) startRamp();       // re-arm the ramp for the new phrase
-    updateLoopUI();
-    seek(state.loopA);
-    if (!state.playing) play();           // one tap = hear the line immediately
-    drawCanvas();
-  }
-  function stepPhrase(dir) {
-    if (!state.phrases.length) return;
-    if (state.phraseLoop >= 0) { loopPhrase(state.phraseLoop + dir); return; }
-    // First press: loop the line under (or just before) the playhead.
-    const t = origEl.currentTime;
-    const phs = state.phrases;
-    let lo = 0, hi = phs.length - 1, idx = 0;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (phs[mid].t0 <= t) { idx = mid; lo = mid + 1; } else hi = mid - 1;
-    }
-    loopPhrase(idx);
-  }
-  els.phrasePrevBtn.addEventListener('click', () => stepPhrase(-1));
-  els.phraseNextBtn.addEventListener('click', () => stepPhrase(1));
-
-  /* ------------------------- live mic practice -------------------------
-   * "Sing along": the microphone is pitch-tracked entirely on this device —
-   * audio is analyzed in memory and discarded; nothing is recorded and nothing
-   * leaves the machine. The sung pitch draws as a teal trail over the melody. */
-  const MIC = {
-    RING_SEC: 0.5,        // rolling 16 kHz analysis buffer
-    ANALYZE_SEC: 0.1,     // yin window per tick (1600 samples -> 4 frames)
-    TICK_MS: 60,
-    TRAIL_MS: 4000,       // how long the sung trail lingers on the canvas
-    CLARITY_MIN: 0.6,     // close-mic voice is clean; stricter than file tracking
-    LATENCY_SEC: 0.10,    // input+block latency estimate; trail is back-dated by this
-  };
-  let mic = null;         // { stream, src, node, silent, ring, w, filled, timer } — null = off
-  let micWorkletLoaded = null;   // addModule() promise, once per AudioContext
-  async function startMic() {
-    if (mic || !state.ready) return;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast('Sing-along needs microphone support (a current Chrome, Edge, Firefox or Safari).');
-      return;
-    }
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
-      });
-    } catch (err) {
-      toast(err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')
-        ? 'Mic access was blocked. Allow the microphone for this site to sing along — your voice is analyzed on this device only, never recorded, never uploaded.'
-        : 'No usable microphone was found.');
-      return;
-    }
-    const ctx = ensureCtx();
-    const src = ctx.createMediaStreamSource(stream);
-    const silent = ctx.createGain();
-    silent.gain.value = 0;                 // the capture node must reach the destination; keep it inaudible
-    const ring = new Float32Array(Math.round(16000 * MIC.RING_SEC));
-    const onBlock = (inp) => {
-      const m = mic; if (!m) return;
-      const ratio = ctx.sampleRate / 16000;   // 44.1k/48k -> 16k, linear interp
-      for (let o = 0; (o * ratio | 0) < inp.length - 1; o++) {
-        const p = o * ratio, i = p | 0, fr = p - i;
-        m.ring[m.w] = inp[i] * (1 - fr) + inp[i + 1] * fr;
-        m.w = (m.w + 1) % m.ring.length;
-        if (m.filled < m.ring.length) m.filled++;
-      }
-    };
-    // AudioWorklet captures off the main thread; ScriptProcessor (deprecated)
-    // remains only as a fallback for browsers without worklets.
-    let node = null;
-    if (ctx.audioWorklet && typeof AudioWorkletNode === 'function') {
-      try {
-        if (!micWorkletLoaded) micWorkletLoaded = ctx.audioWorklet.addModule('js/mic-worklet.js?v=68');
-        await micWorkletLoaded;
-        node = new AudioWorkletNode(ctx, 'swarlekh-mic', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
-        node.port.onmessage = (e) => onBlock(e.data);
-      } catch (err) {
-        micWorkletLoaded = null;
-        node = null;
-      }
-    }
-    if (!node) {
-      node = ctx.createScriptProcessor(4096, 1, 1);
-      node.onaudioprocess = (e) => onBlock(e.inputBuffer.getChannelData(0));
-    }
-    if (mic || !state.ready) {             // stopped or superseded while the worklet loaded
-      stream.getTracks().forEach((tr) => tr.stop());
-      return;
-    }
-    mic = { stream, src, node, silent, ring, w: 0, filled: 0, timer: 0 };
-    src.connect(node); node.connect(silent); silent.connect(ctx.destination);
-    mic.timer = setInterval(micTick, MIC.TICK_MS);
-    els.micBtn.classList.add('on');
-    els.micReadout.textContent = 'listening…';
-    toast('Sing along: your voice traces onto the contour in teal. Analyzed live on this device — never recorded, never uploaded. Headphones give the cleanest trace.');
-  }
-  function micTick() {
-    const m = mic;
-    if (!m) return;
-    const need = Math.round(16000 * MIC.ANALYZE_SEC);
-    if (m.filled < need) return;
-    const seg = new Float32Array(need);   // unroll the last ~100 ms from the ring
-    for (let i = 0; i < need; i++) seg[i] = m.ring[(m.w - need + i + m.ring.length) % m.ring.length];
-    const r = DSP.yinTrack(seg, 16000, { fmin: 80, fmax: 1000 });
-    let best = -1;
-    for (let i = 0; i < r.f0.length; i++) {
-      if (r.f0[i] > 0 && r.clarity[i] >= MIC.CLARITY_MIN &&
-          (best < 0 || r.clarity[i] > r.clarity[best])) best = i;
-    }
-    if (best < 0) {
-      state.micCents = null;
-    } else {
-      // Compare against the TRANSPOSED Sa: the user sings in the shifted key,
-      // the contour is plotted rel. the original saHz — dividing the shift out
-      // maps the voice straight into the contour's cents space.
-      const drift = state.drift ? DSP.driftAt(state.drift, origEl.currentTime) : 0;
-      const refSa = state.saHz * Math.pow(2, (state.semitones * 100 + drift) / 1200);
-      state.micCents = 1200 * Math.log2(r.f0[best] / refSa);
-      if (state.playing) {                 // paused singing feeds the readout only
-        state.micTrail.push({
-          t: Math.max(0, origEl.currentTime - MIC.LATENCY_SEC),
-          cents: state.micCents, wall: performance.now(),
-        });
-      }
-    }
-    const cut = performance.now() - MIC.TRAIL_MS;
-    while (state.micTrail.length && state.micTrail[0].wall < cut) state.micTrail.shift();
-    updateMicReadout();
-    if (!state.playing && !rafId) drawCanvas();   // rAF already repaints while playing
-  }
-  function updateMicReadout() {
-    if (!mic) return;
-    if (state.micCents == null) {
-      els.micReadout.textContent = '\u00b7';
-      els.micReadout.classList.remove('good');
-      return;
-    }
-    const c = state.micCents;
-    const k = Math.round(c / 100), dev = Math.round(c - k * 100);
-    els.micReadout.textContent = `you: ${tokenGlyph(k)} ${dev >= 0 ? '+' : ''}${dev}\u00a2`;
-    els.micReadout.classList.toggle('good', Math.abs(dev) <= 20);
-  }
-  function stopMic() {
-    const m = mic;
-    if (!m) return;
-    mic = null;
-    clearInterval(m.timer);
-    if (m.node) {
-      m.node.onaudioprocess = null;
-      if (m.node.port) m.node.port.onmessage = null;
-    }
-    try { m.src.disconnect(); m.node.disconnect(); m.silent.disconnect(); } catch (e) {}
-    if (m.stream && m.stream.getTracks) m.stream.getTracks().forEach((tr) => tr.stop());
-    state.micTrail = [];
-    state.micCents = null;
-    els.micBtn.classList.remove('on');
-    els.micReadout.textContent = '';
-    els.micReadout.classList.remove('good');
-    drawCanvas();
-  }
-  els.micBtn.addEventListener('click', () => (mic ? stopMic() : startMic()));
-
   /* Playback-driven updates. timeupdate (media clock, ~4 Hz, fires even in
-   * background/throttled tabs) owns correctness: loop, sync, highlight.
+   * background/throttled tabs) owns audio sync and highlight.
    * requestAnimationFrame only adds smooth canvas motion when visible. */
   function onTimeUpdate() {
     if (!state.ready) return;
     const t = origEl.currentTime;
-    if (state.playing && state.loopA != null && state.loopB != null && t >= state.loopB) {
-      if (state.ramp.on) rampStep();      // one loop repetition done -> nudge the speed
-      seek(state.loopA);
-      return;
-    }
     if (state.playing && !synthEl.paused && Math.abs(synthEl.currentTime - t) > 0.08 &&
         (usesNotation() || t < state.synthDuration)) {
       synthEl.currentTime = t;
@@ -2230,19 +2085,9 @@
   function stopRaf() { if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
   function tick() {
     const t = origEl.currentTime;
-    // timeupdate fires only ~4x a second, which let loops run up to 250 ms
-    // into the next phrase; while visible, check the loop end every frame.
-    if (state.playing && state.loopA != null && state.loopB != null && t >= state.loopB) {
-      if (state.ramp.on) rampStep();
-      seek(state.loopA);
-      rafId = requestAnimationFrame(tick);
-      return;
-    }
-    if (!(state.loopA != null && state.loopB != null && t >= state.loopB)) {
-      const viewSec = viewWidthSec();
-      if (t > state.scrollSec + viewSec * 0.72 || t < state.scrollSec) {
-        state.scrollSec = clampScroll(t - viewSec * 0.25);
-      }
+    const viewSec = viewWidthSec();
+    if (t > state.scrollSec + viewSec * 0.72 || t < state.scrollSec) {
+      state.scrollSec = clampScroll(t - viewSec * 0.25);
     }
     updateTimeDisp();
     highlightActive(t);
@@ -2276,7 +2121,7 @@
         (tokIdx + 1 >= toks.length || toks[tokIdx + 1].t0 > t)) tokIdx = -1;
 
     // drawCanvas reads these: the current swara gets the accent halo/label and
-    // the phrase index feeds the phrase-loop display.
+    // the phrase index keeps the exported text in sync.
     activeLineIdx = lineIdx;
     activeTokIdx = tokIdx;
     highlightNotationLine(lineIdx, state.playing);
@@ -2294,7 +2139,7 @@
       card: v('--card'), grid: v('--grid'), gridStrong: v('--grid-strong'),
       saLine: v('--sa-line'), paLine: v('--pa-line'), muted: v('--muted'),
       accent: v('--accent'), accentSoft: v('--accent-soft'), contour: v('--contour'),
-      komal: v('--komal'), text: v('--text'), mic: v('--mic'),
+      komal: v('--komal'), text: v('--text'),
     };
   }
   refreshColors();
@@ -2423,27 +2268,6 @@
           const x = tToX(t);
           cctx.beginPath(); cctx.moveTo(x, RULER - 9); cctx.lineTo(x, RULER); cctx.stroke();
         }
-      }
-    }
-
-    // loop region + draggable grab handles + bold ruler band
-    if (state.loopA != null && state.loopB != null) {
-      const xa = tToX(state.loopA), xb = tToX(state.loopB);
-      cctx.fillStyle = colors.accentSoft;
-      cctx.fillRect(xa, RULER, xb - xa, H - RULER);
-      cctx.fillStyle = colors.accent;
-      cctx.globalAlpha = 0.55;
-      cctx.fillRect(xa, 2, xb - xa, RULER - 4);        // bold band in the ruler strip
-      cctx.globalAlpha = 1;
-      for (const x of [xa, xb]) {                      // edge line + pill handle
-        cctx.fillRect(x - 1, RULER, 2, H - RULER);
-        cctx.beginPath(); cctx.roundRect(x - 4, RULER + 3, 8, 15, 4); cctx.fill();
-      }
-      if (state.phraseLoop >= 0 && xb - xa > 60) {
-        cctx.fillStyle = colors.card;
-        cctx.font = '600 9px -apple-system, sans-serif';
-        cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
-        cctx.fillText('phrase ' + (state.phraseLoop + 1), (xa + xb) / 2, RULER / 2);
       }
     }
 
@@ -2657,37 +2481,6 @@
     }
     cctx.globalAlpha = 1;
 
-    // ---- Sing-along trail: the last ~4 s of the user's voice over the melody,
-    // in the mic colour, fading with age. Drawn above the melody & labels,
-    // below the playhead. ----
-    if (state.micTrail.length) {
-      const now = performance.now();
-      cctx.strokeStyle = colors.mic;
-      cctx.lineCap = 'round'; cctx.lineJoin = 'round';
-      let prevP = null;
-      for (const p of state.micTrail) {
-        // connect only near-consecutive readings: >200 ms wall gap = unvoiced
-        // break; >0.3 s media-time gap = a seek/loop jump — never bridge those.
-        if (prevP && p.wall - prevP.wall < 200 && Math.abs(p.t - prevP.t) < 0.3) {
-          cctx.globalAlpha = Math.max(0.05, 1 - (now - p.wall) / MIC.TRAIL_MS) * 0.9;
-          cctx.lineWidth = 2.6;
-          cctx.beginPath();
-          cctx.moveTo(tToX(prevP.t), cToY(prevP.cents));
-          cctx.lineTo(tToX(p.t), cToY(p.cents));
-          cctx.stroke();
-        }
-        prevP = p;
-      }
-      cctx.globalAlpha = 1;
-    }
-    if (mic && state.micCents != null) {   // live dot riding the playhead
-      const yMic = cToY(state.micCents);
-      if (yMic > RULER && yMic < H) {
-        cctx.fillStyle = colors.mic;
-        cctx.beginPath(); cctx.arc(tToX(origEl.currentTime), yMic, 4.5, 0, 2 * Math.PI); cctx.fill();
-      }
-    }
-
     // playhead
     const pt = origEl.currentTime;
     if (pt >= scrollSec && pt <= tEnd) {
@@ -2707,8 +2500,7 @@
     }
   }
 
-  // canvas interactions: click to seek, body-drag to pan, RULER-drag to set
-  // the loop, loop-edge handles to resize it, wheel to scroll/zoom.
+  // Canvas interactions: click to seek/select, drag to edit/pan, wheel to scroll/zoom.
   let dragInfo = null;
   const xToT = (clientX) => {
     const rect = cvs.getBoundingClientRect();
@@ -2760,17 +2552,6 @@
     for (const key of Object.keys(token)) delete token[key];
     Object.assign(token, original);
   }
-  // Hit-test the loop-edge grab handles (±6 px, any height).
-  function loopEdgeAt(clientX) {
-    if (state.loopA == null || state.loopB == null) return null;
-    const rect = cvs.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const xa = GUTTER + (state.loopA - state.scrollSec) * state.pxPerSec;
-    const xb = GUTTER + (state.loopB - state.scrollSec) * state.pxPerSec;
-    if (Math.abs(x - xb) <= 6) return 'b';     // B first: wins when the loop is tiny
-    if (Math.abs(x - xa) <= 6) return 'a';
-    return null;
-  }
   // Touch: the canvas owns gestures (touch-action: none), so it interprets
   // them itself — a mostly-vertical swipe scrolls the page, a horizontal one
   // pans the contour, two fingers pinch-zoom, and a dot moves only after a
@@ -2815,7 +2596,6 @@
     }
     const rect = cvs.getBoundingClientRect();
     const y = e.clientY - rect.top, x = e.clientX - rect.left;
-    const edge = loopEdgeAt(e.clientX);
     if (state.addNoteMode && y >= RULER && x > GUTTER) {
       if (state.playing) pause();
       const time = Math.max(0, Math.min(state.duration, xToT(e.clientX)));
@@ -2841,11 +2621,6 @@
       computeCentsRange();
       computeSmoothedCents();
       drawCanvas();
-    } else if (edge) {
-      dragInfo = { mode: 'edge', edge, moved: false };
-    } else if (y < RULER && x > GUTTER) {
-      dragInfo = { mode: 'loop', t0: Math.max(0, Math.min(state.duration, xToT(e.clientX))),
-                   prevA: state.loopA, prevB: state.loopB, moved: false };
     } else {
       const tokenIndex = noteAt(e.clientX, e.clientY);
       const touch = e.pointerType === 'touch';
@@ -2895,12 +2670,7 @@
     if (!dragInfo) {   // idle: cursor affordances so the ruler invites the drag
       const y = e.clientY - cvs.getBoundingClientRect().top;
       cvs.style.cursor = state.addNoteMode && y >= RULER
-        ? 'crosshair'
-        : (loopEdgeAt(e.clientX)
-        ? 'ew-resize'
-        : (y < RULER
-          ? 'crosshair'
-          : (noteAt(e.clientX, e.clientY) >= 0 ? 'ns-resize' : '')));
+        ? 'crosshair' : (noteAt(e.clientX, e.clientY) >= 0 ? 'ns-resize' : '');
       return;
     }
     if (dragInfo.mode === 'add-note') {
@@ -2961,18 +2731,7 @@
       }
       return;
     }
-    dragInfo.moved = true;
-    const t = Math.max(0, Math.min(state.duration, xToT(e.clientX)));
-    if (dragInfo.mode === 'loop') {
-      state.loopA = Math.min(dragInfo.t0, t);
-      state.loopB = Math.max(dragInfo.t0, t);
-    } else if (dragInfo.edge === 'a') {
-      state.loopA = Math.min(t, state.loopB - 0.1);
-    } else {
-      state.loopB = Math.max(t, state.loopA + 0.1);
-    }
-    state.phraseLoop = -1;          // a hand-set loop is no longer a phrase loop
-    updateLoopUI(); drawCanvas();
+
   });
   function releaseTouch(e) {
     if (e.pointerType !== 'touch') return false;
@@ -3002,18 +2761,6 @@
           seek(midpoint);
         }
         cvs.style.cursor = '';
-      } else if (dragInfo.mode === 'loop') {
-        // A sub-150 ms "loop" is just a click: restore what was there and seek.
-        if (dragInfo.moved && state.loopB - state.loopA < 0.15) {
-          state.loopA = dragInfo.prevA; state.loopB = dragInfo.prevB;
-          updateLoopUI();
-        }
-        if (!dragInfo.moved || state.loopB == null || state.loopB - state.loopA < 0.15) {
-          seek(dragInfo.t0);
-        } else {
-          seek(state.loopA);        // a fresh loop starts playing from its start
-        }
-        drawCanvas();
       } else if (!dragInfo.moved && dragInfo.mode === 'pan') {
         const rect = cvs.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -3026,9 +2773,6 @@
     releaseTouch(e);
     abandonDrag();
     cvs.style.cursor = state.addNoteMode ? 'crosshair' : '';
-  });
-  cvs.addEventListener('dblclick', (e) => {
-    if (e.clientY - cvs.getBoundingClientRect().top < RULER) clearLoop();
   });
   cvs.addEventListener('wheel', (e) => {
     // ⌘/Ctrl+wheel (and trackpad pinch, which browsers report as ctrl+wheel)
@@ -3064,16 +2808,13 @@
   /* ---------------------------- keyboard ---------------------------- */
 
   document.addEventListener('keydown', (e) => {
-    if (e.target.matches('input, select, textarea')) return;
+    if (e.target.closest('input, select, textarea, [contenteditable=true]')) return;
     if (!state.ready) return;
-    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    if (e.code === 'Space' && !e.target.closest('button')) { e.preventDefault(); togglePlay(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); seek(origEl.currentTime - 2); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); seek(origEl.currentTime + 2); }
-    else if (e.key === '[') setLoopA();
-    else if (e.key === ']') setLoopB();
-    else if (e.key === 'l' || e.key === 'L') clearLoop();
-    else if (e.key === ',') stepPhrase(-1);
-    else if (e.key === '.') stepPhrase(1);
+    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedNote(); }
+    else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undoManualNoteEdit(); }
     else if (e.key === 'Escape' && state.addNoteMode) setAddNoteMode(false);
     else if (e.key === 'Escape' && state.selectedNoteTime != null) {
       state.selectedNoteTime = null;
@@ -3084,28 +2825,12 @@
 
   /* test/debug hook */
   window.SwarLekh = { processFile, state, renotate: renotateNow, _hl: highlightActive,
-    _loopPhrase: loopPhrase, _stepPhrase: stepPhrase, _startRamp: startRamp, _rampStep: rampStep,
     _editNote: commitManualNoteEdit, _addNote: commitManualNoteInsertion,
     _selectNote: selectNoteForConnectors,
-    _editConnector: commitManualConnectorEdit,
+    _editConnector: commitManualConnectorEdit, _deleteNote: deleteSelectedNote, _changeSa: changeSa,
+    _exportJson: exportJson, _submitFinished: submitFinishedScore,
     _undoNoteEdit: undoManualNoteEdit,
     _renderRhythm: renderRhythm,
-    _mic: {
-      start: startMic, stop: stopMic, tick: micTick,
-      inject(hz, sec) {              // feed a sine straight into the ring buffer (dev/testing)
-        if (!mic) {
-          mic = { ring: new Float32Array(8000), w: 0, filled: 0, timer: setInterval(micTick, MIC.TICK_MS),
-                  stream: { getTracks: () => [] }, node: null, src: { disconnect() {} }, silent: { disconnect() {} } };
-          els.micBtn.classList.add('on');
-        }
-        const n = Math.round(16000 * (sec || 0.2));
-        for (let i = 0; i < n; i++) {
-          mic.ring[mic.w] = 0.5 * Math.sin(2 * Math.PI * hz * i / 16000);
-          mic.w = (mic.w + 1) % mic.ring.length;
-          if (mic.filled < mic.ring.length) mic.filled++;
-        }
-      },
-    },
     _ali: () => activeLineIdx, _renderTonic: renderTonicChips, _syncTonic: syncTonicControls,
     _applyPitch: applyPitch, _audio: { orig: origEl, synth: synthEl } };
 })();

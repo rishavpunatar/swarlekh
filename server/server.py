@@ -46,6 +46,7 @@ from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 from singing_models import GameTranscriber, RobustPitchTracker
 from rhythm import TAALS, summarize_neural_rhythm
+from feedback import save_feedback
 
 # Homebrew tools (ffmpeg) must be on PATH even under launchd, whose
 # LaunchAgents start with a minimal PATH that excludes /opt/homebrew/bin.
@@ -706,6 +707,7 @@ def health_payload():
     return dict(
         ok=True,
         api=API_VERSION,
+        feedbackVersion=1,
         device=DEVICE,
         analysisVersion=ANALYSIS_VERSION,
         analyzer='rmvpe+praat+game',
@@ -726,6 +728,20 @@ def health_payload():
 @app.get('/')
 def health():
     return jsonify(health_payload())
+
+
+@app.post('/feedback')
+def feedback():
+    if request.content_length and request.content_length > 32 * 1024 * 1024:
+        return jsonify(error='The finished score must be under 32 MB.'), 413
+    try:
+        identifier = save_feedback(request.get_json(), os.environ.get(
+            'SWARLEKH_FEEDBACK_DIR', os.path.join(SERVER_DIR, 'feedback')))
+    except (ValueError, TypeError) as error:
+        return jsonify(error=str(error)), 400
+    except OSError:
+        return jsonify(error='Could not save the score on this disk. Please retry.'), 500
+    return jsonify(saved=True, id=identifier, learning='timing-preferences', modelWeightsUpdated=False), 201
 
 
 @app.get('/status')

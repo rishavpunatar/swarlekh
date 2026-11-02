@@ -66,6 +66,22 @@ class ServerContractTests(unittest.TestCase):
             self.assertEqual(response.status_code, 403)
             self.assertIsNone(response.headers.get('Access-Control-Allow-Origin'))
 
+    def test_finished_score_endpoint_stores_the_original_and_corrected_notes(self):
+        from test_feedback import example
+        import json
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {'SWARLEKH_FEEDBACK_DIR': td}):
+            response = self.client.post('/feedback', json=example(), headers={'Origin': SITE})
+            self.assertEqual(response.status_code, 201)
+            result = response.get_json()
+            self.assertTrue(result['saved'])
+            self.assertFalse(result['modelWeightsUpdated'])
+            saved = json.loads((Path(td) / (result['id'] + '.json')).read_text())
+            self.assertEqual(saved['notes'][0]['k'], 0)
+            self.assertEqual(saved['baseline']['notes'][0]['k'], 2)
+            self.assertEqual(self.client.post('/feedback', json=example(), headers={'Origin': EVIL}).status_code, 403)
+            self.assertEqual(self.client.post('/feedback', json={'reviewed': True}).status_code, 400)
+
     def test_upload_size_is_limited(self):
         self.assertLessEqual(app.config['MAX_CONTENT_LENGTH'], 4 * 1024 ** 3)
         with patch.dict(app.config, {'MAX_CONTENT_LENGTH': 1000}):
