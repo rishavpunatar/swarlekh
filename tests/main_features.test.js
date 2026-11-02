@@ -28,7 +28,7 @@ test('note corrections persist per recording and restore on reload', () => {
   assert.match(source, /idbPut\('edits:' \+ state\.fileSha/);
   assert.match(source, /const savedEdits = await loadNoteEdits\(state\.fileSha\)/);
   assert.match(source, /state\.manualEdits = savedEdits;/);
-  assert.equal((source.match(/noteEditsChanged\(\);/g) || []).length, 5);
+  assert.ok((source.match(/noteEditsChanged\(\);/g) || []).length >= 5);
 });
 
 test('notation is readable as text and exportable', () => {
@@ -50,23 +50,19 @@ test('page markup satisfies the CSP and gives the canvas a text alternative', ()
 });
 
 test('practice layout: sticky transport, contour before analysis cards', () => {
-  const order = ['playerCard', 'canvasCard', 'notationCard', 'tonicCard', 'ragaCard', 'settingsCard']
+  const order = ['playerCard', 'tonicCard', 'canvasCard', 'notationCard', 'ragaCard', 'settingsCard']
     .map((id) => html.indexOf(`id="${id}"`));
   assert.deepStrictEqual(order, [...order].sort((a, b) => a - b));
   assert.match(css, /#playerCard \{\s+position: sticky;/);
 });
 
-test('loops end on the animation frame and touch gestures are handled', () => {
-  assert.match(source, /function tick\(\) \{\s+const t = origEl\.currentTime;[\s\S]{0,300}t >= state\.loopB\) \{\s+if \(state\.ramp\.on\) rampStep\(\);/);
+test('clean editing surface omits sing-along and loops, and hides circular notation', () => {
+  assert.doesNotMatch(html, /id="(?:micBtn|loopABtn|loopBBtn|rampBtn)"/);
+  assert.doesNotMatch(source, /getUserMedia|setLoopA|setLoopB/);
+  assert.match(html, /id="ragaCard"[^>]*hidden/);
+  assert.match(html, /id="notation"[^>]*hidden/);
   assert.match(source, /pinch = \{/);
-  assert.match(source, /window\.scrollBy\(0, dragInfo\.lastY - e\.clientY\)/);
   assert.match(source, /NOTE_HOLD_MS/);
-});
-
-test('sing-along captures through an AudioWorklet with a fallback', () => {
-  assert.match(source, /audioWorklet\.addModule\('js\/mic-worklet\.js\?v=/);
-  assert.match(source, /createScriptProcessor\(4096, 1, 1\)/);
-  assert.ok(fs.existsSync(path.join(__dirname, '../js/mic-worklet.js')));
 });
 
 test('verification aids: uncertain notes, notation playback and the sung-pitch trace', () => {

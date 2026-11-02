@@ -14,3 +14,6 @@ server/models/
 evaluation/data/
 evaluation/cache/
 evaluation/__pycache__/
+
+# Private expert corrections (never commit recordings or reference answers)
+server/feedback/

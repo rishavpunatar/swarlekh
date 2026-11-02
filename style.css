@@ -904,3 +904,14 @@ input[type="range"]::-moz-range-thumb {
 @media print {
   .unsure { text-decoration: underline dotted #888; }
 }
+
+/* A compact edit-and-finish workflow. */
+.finish-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
+.finish-row .big-btn { font-size: 15px; width: auto; height: auto; padding: 10px 18px; }
+.finish-row .hint { flex: 1 1 280px; margin: 0; }
+.editor-help { padding: 0 20px; }
+.mini-btn.danger { color: var(--accent); }
+#addNoteBtn[aria-pressed="true"] { background: var(--accent); color: var(--card); border-color: var(--accent); }
+@media print { .print-only[hidden] { display: block !important; } .finish-row { display: none; } }
+#addNoteBtn, #deleteNoteBtn { width: auto; min-width: 88px; padding: 0 10px; font-size: 13px; white-space: nowrap; }
+#deleteNoteBtn { margin-left: 0; }

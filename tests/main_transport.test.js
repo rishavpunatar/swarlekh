@@ -48,5 +48,5 @@ test('selected notes support persistent incoming, outgoing, and free connectors'
   assert.match(html, /id="incomingConnector"/);
   assert.match(html, /id="outgoingConnector"/);
   assert.match(html, /id="freeLength"/);
-  assert.match(html, /id="addNoteBtn"[^>]*>&#9834;<\/button>/);
+  assert.match(html, /id="addNoteBtn"[^>]*>Add notes<\/button>/);
 });

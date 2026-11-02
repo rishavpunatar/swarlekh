@@ -107,3 +107,13 @@ This runs the DSP, notation, raga, client-contract and worker tests, plus the ap
 ## License
 
 MIT
+
+## Correct and submit a finished score
+
+- **Current Sa should be → Ni / Ga / … → Relabel all notes** changes the tonic and all relative note labels without transposing the recording. Lower-octave choices are marked. **Undo Sa change** restores the preceding tonic. Manual note pitches and free bends follow the relabelling, and the chosen Sa is restored with the same file.
+- Click a contour note, then press **Delete/Backspace** or **Delete note**. Undo restores deleted notes. Deletions persist through regeneration and re-uploading the same recording.
+- **Add notes** remains active across clicks and drags. Click for a short note, drag for its length, then choose **Done adding** or Escape. Additions can replace deleted passages.
+- **Submit finished score** stores an expert-reviewed snapshot in this browser and sends it to the local server's `/feedback` endpoint. The score contains a file hash, machine baseline, final notes, Sa, edit operations, and pitch analysis; source audio is not sent by this action. A confirmed server receipt means the JSON is durably saved under `server/feedback/` (or `SWARLEKH_FEEDBACK_DIR`). The directory is private and ignored by Git. Repeating the same submission is idempotent; revisions are separate records.
+- The next upload uses a conservative minimum-note and articulation timing floor learned from the reviewed syllable durations (at least eight usable notes). Sa and absolute note pitches are never carried to another song. This is timing calibration, not retraining the RMVPE or GAME neural weights. Original/final pairs remain available for evaluation and future training. If the server is unavailable, the UI explicitly reports browser-only saving and offers retry by submitting again; local timing calibration still works.
+
+The sing-along microphone, loops, practice ramp and circular swara panel are removed from the working interface. Text notation remains available in exports and printing.
