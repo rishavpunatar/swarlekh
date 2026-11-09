@@ -52,7 +52,7 @@
     engine: 'yin', file: null, fileSha: null, drift: null, showSung: true, notationRev: 0,
     manualEdits: [], noteEditHistory: [], addNoteMode: false,
     selectedNoteTime: null, noteEditRevision: 0,
-    baseline: null, previousSa: null, learningProfile: null, finishedSubmitted: false,
+    baseline: null, previousSa: null, notationSaHz: null, learningProfile: null, finishedSubmitted: false,
     opts: {
       clarityThresh: 0.5, minNoteMs: 130, ornaments: true, ornMinMs: 45,
       onsetMinMs: 100, clean: true, onsets: [],
@@ -62,7 +62,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=69';
+  const WORKER_URL = 'js/worker.js?v=70';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -382,7 +382,7 @@
     if (!state.fileSha) return;
     idbPut('edits:' + state.fileSha, {
       edits: state.manualEdits.map((edit) => Object.assign({}, edit)),
-      fileName: state.fileName, saHz: state.saHz,
+      fileName: state.fileName, saHz: state.saHz, notationSaHz: state.notationSaHz,
       ts: Date.now(),
     }, 'edits');
   }
@@ -396,7 +396,7 @@
       state.ready = false;
       pause();
       setAddNoteMode(false);
-      state.baseline = null; state.previousSa = null; state.finishedSubmitted = false;
+      state.baseline = null; state.previousSa = null; state.notationSaHz = null; state.finishedSubmitted = false;
       els.undoSaBtn.hidden = true;
       els.feedbackStatus.textContent = 'Finish correcting every syllable, then submit to improve future drafts.';
       clearPitchCache();
@@ -578,6 +578,9 @@
       const savedSettings = await idbGet('edits:' + state.fileSha, 'edits');
       if (stale()) return;
       if (savedSettings && savedSettings.saHz > 0) state.saHz = savedSettings.saHz;
+      // Older drafts used their saved tonic for detection. Keep that reference
+      // on migration so existing edit coordinates continue to match.
+      state.notationSaHz = savedSettings?.notationSaHz > 0 ? savedSettings.notationSaHz : state.saHz;
       updateUndoNoteButton();
       renderRhythm();
       renderTonicChips();
@@ -722,13 +725,18 @@
       toast('That Sa is outside the supported C2–B5 range.'); return false;
     }
     const old = state.saHz;
-    const shift = Math.round(12 * Math.log2(old / hz));
+    const referenceHz = state.notationSaHz || old;
+    state.notationSaHz = referenceHz;
+    const shift = Corrections.tonicShift(referenceHz, hz) - Corrections.tonicShift(referenceHz, old);
     state.previousSa = old;
     state.manualEdits = Corrections.transposeEdits(state.manualEdits, shift);
     state.noteEditHistory = state.noteEditHistory.map(edits => Corrections.transposeEdits(edits, shift));
     state.saHz = hz;
     els.undoSaBtn.hidden = false;
-    syncTonicControls(); renotateNow(); persistNoteEdits();
+    // Relabel the exact score under review. Regeneration can otherwise change
+    // tonic-dependent filtering, ornaments and the locations of manual edits.
+    state.tokens = Corrections.transposeTokens(state.tokens, shift, 1200 * Math.log2(old / hz));
+    syncTonicControls(); refreshScore(); persistNoteEdits();
     return true;
   }
   els.relabelSaBtn.addEventListener('click', () => {
@@ -840,32 +848,41 @@
     // neural path uses GAME's learned note regions instead of this heuristic.
     const opts = Object.assign({}, state.opts);
     if (state.hopSec <= 0.006 && opts.ornaments && opts.ornMinMs > 25) opts.ornMinMs = 25;
-    if (state.finishedSubmitted) {
-      els.feedbackStatus.textContent = 'The score changed after submission. Submit again when your revision is finished.';
-      state.finishedSubmitted = false;
-    }
+    const referenceHz = state.notationSaHz || state.saHz;
+    state.notationSaHz = referenceHz;
     const res = state.noteRegions.length
       ? DSP.notateRegions(
         state.noteRegions,
         state.f0,
         state.clarity,
         state.hopSec,
-        state.saHz,
+        referenceHz,
         opts
       )
-      : DSP.notate(state.f0, state.clarity, state.hopSec, state.saHz, opts);
+      : DSP.notate(state.f0, state.clarity, state.hopSec, referenceHz, opts);
+    res.tokens = Corrections.transposeTokens(res.tokens,
+      Corrections.tonicShift(referenceHz, state.saHz), 1200 * Math.log2(referenceHz / state.saHz));
     if (!state.baseline) state.baseline = {
       saHz: state.saHz, engine: state.engine,
       settings: Object.assign({}, state.opts, { rms: undefined, onsets: undefined }),
       notes: res.tokens.map(token => Object.assign({}, token)),
     };
     applyManualNoteEdits(res.tokens);
-    DSP.annotateSungPitch(res.tokens, state.f0, state.clarity, state.hopSec, state.saHz);
     state.tokens = res.tokens;
+    refreshScore();
+  }
+
+  function refreshScore() {
+    if (!state.f0) return;
+    if (state.finishedSubmitted) {
+      els.feedbackStatus.textContent = 'The score changed after submission. Submit again when your revision is finished.';
+      state.finishedSubmitted = false;
+    }
+    DSP.annotateSungPitch(state.tokens, state.f0, state.clarity, state.hopSec, state.saHz);
     state.phrases = DSP.regroupPhrases(
       state.tokens,
-      opts.lineGapSec != null ? opts.lineGapSec : (opts.clean ? 1.0 : 0.6),
-      opts.clean === true
+      state.opts.lineGapSec != null ? state.opts.lineGapSec : (state.opts.clean ? 1.0 : 0.6),
+      state.opts.clean === true
     );
     state.raga = DSP.analyzeRaga(state.tokens, state.phrases);
     state.ragaMatches = (state.raga && window.RagaId && window.RAGAS)
@@ -1606,6 +1623,7 @@
       file: { name: state.fileName, sha256: state.fileSha, duration: round(state.duration, 1000) },
       engine: state.engine,
       saHz: round(state.saHz, 100),
+      notationSaHz: state.notationSaHz,
       detail: detailSel.value,
       raga: state.raga ? {
         thaat: state.raga.thaat ? state.raga.thaat.name : null,
