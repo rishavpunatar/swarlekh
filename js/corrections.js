@@ -10,6 +10,27 @@
       return next;
     });
   }
+  function tonicShift(referenceHz, saHz) {
+    return Math.round(12 * Math.log2(referenceHz / saHz));
+  }
+  // Shift the existing score, including every ornament pitch, without running
+  // detection again or changing the singer's syllable boundaries.
+  function transposeTokens(tokens, semitones, cents = semitones * 100) {
+    return tokens.map(token => {
+      const next = Object.assign({}, token);
+      for (const key of ['k', 'learnedK', 'andolanLo', 'andolanHi', 'manualFreeTargetK']) {
+        if (Number.isFinite(next[key])) next[key] += semitones;
+      }
+      for (const key of ['cents', 'sungCents']) {
+        if (Number.isFinite(next[key])) next[key] += cents;
+      }
+      for (const key of ['via', 'kan', 'murki', 'graceAfter']) {
+        if (Array.isArray(next[key])) next[key] = next[key].map(k => k + semitones);
+      }
+      if (Array.isArray(next.orn)) next.orn = transposeTokens(next.orn, semitones, cents);
+      return next;
+    });
+  }
   function removeIntervals(tokens, deletions) {
     let result = tokens;
     for (const cut of deletions) {
@@ -34,7 +55,7 @@
     return { version: 1, examples: examples.length, minNoteMs,
       onsetMinMs: Math.max(45, Math.min(125, Math.round(minNoteMs * 0.75 / 5) * 5)) };
   }
-  const api = { transposeEdits, removeIntervals, learnTiming };
+  const api = { transposeEdits, transposeTokens, tonicShift, removeIntervals, learnTiming };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Corrections = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
