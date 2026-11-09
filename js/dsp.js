@@ -714,6 +714,47 @@
    * range sits mostly between mandra Pa and taar Ga.
    * ---------------------------------------------------------------- */
 
+  /** Extra evidence for a vocal entry after a long instrumental introduction.
+   * Only separated-vocal tracks may call this: mixture pitches are not silence
+   * evidence. Prefer the first deliberate short hold, rather than skipping it
+   * in favour of a later long Ga/Pa. It remains a provisional tonic cue. */
+  function findDelayedVocalEntry(f0, clarity, hopSec, rms) {
+    if (!f0 || !clarity || !rms || !(hopSec > 0) || f0.length * hopSec < 55) return null;
+    const levels = [];
+    for (let i = 0; i < f0.length; i++) {
+      if (f0[i] > 0 && clarity[i] >= 0.70 && rms[i] > 0) levels.push(rms[i]);
+    }
+    const loud = percentile(levels, 0.90);
+    if (!(loud > 0)) return null;
+    const active = i => i < f0.length && f0[i] > 0 && clarity[i] >= 0.65 && rms[i] >= loud * 0.25;
+    let lastActive = -1;
+    const limit = Math.min(f0.length, Math.floor(120 / hopSec));
+    for (let i = 0; i < limit; i++) {
+      if (!active(i)) continue;
+      const quiet = (i - lastActive) * hopSec;
+      lastActive = i;
+      if (i * hopSec < 20 || quiet < 8) continue;
+      const searchEnd = Math.min(f0.length, i + Math.ceil(0.65 / hopSec));
+      let start = i, lastK = null;
+      for (let j = i; j <= searchEnd; j++) {
+        const k = j < searchEnd && active(j) ? Math.round(12 * Math.log2(f0[j] / 55)) : null;
+        if (k === lastK) continue;
+        if (lastK != null && (j - start) * hopSec >= 0.18) {
+          const pitches = [], confidence = [];
+          for (let q = start; q < j; q++) { pitches.push(f0[q]); confidence.push(clarity[q]); }
+          const hz = percentile(pitches, 0.50), certainty = percentile(confidence, 0.50);
+          let following = 0;
+          for (let q = j; q < Math.min(f0.length, j + Math.ceil(2.5 / hopSec)); q++) if (active(q)) following++;
+          if (hz >= 80 && hz <= 400 && certainty >= 0.80 && following * hopSec >= 0.7) {
+            return { hz, start: start * hopSec, end: j * hopSec, confidence: certainty };
+          }
+        }
+        start = j; lastK = k;
+      }
+    }
+    return null;
+  }
+
   function detectTonic(f0, clarity, hopSec, rms, extra) {
     const drone = extra && extra.drone && extra.drone.strength > 0 ? extra.drone : null;
     const BINS = 240; // 5-cent bins
@@ -837,9 +878,12 @@
     // and persists, use its first stable note as additional tonic evidence.
     // This stays inactive for short clips and songs without a strong register
     // change, so it does not turn every opening note into Sa.
-    let delayedEntryPc = null;
+    const vocalEntry = extra && extra.vocalEntry && extra.vocalEntry.confidence >= 0.80 &&
+      extra.vocalEntry.hz >= 80 && extra.vocalEntry.hz <= 400 ? extra.vocalEntry : null;
+    let delayedEntryPc = vocalEntry
+      ? ((1200 * Math.log2(vocalEntry.hz / 55) % 1200) + 1200) % 1200 : null;
     const durationSec = N * hopSec;
-    if (durationSec >= 55) {
+    if (durationSec >= 55 && !vocalEntry) {
       const medianCents = (t0, t1) => {
         const values = [];
         const i0 = Math.max(0, Math.round(t0 / hopSec));
@@ -926,6 +970,9 @@
       let best = 0;
       for (let b = 1; b < BINS; b++) if (drone.profile[b] > drone.profile[best]) best = b;
       if (!peaks.some((p) => circularCents(p.pc, best * 5) < 40)) peaks.push({ pc: best * 5, h: smooth[best] });
+    }
+    if (vocalEntry && !peaks.some(p => circularCents(p.pc, delayedEntryPc) < 40)) {
+      peaks.push({ pc: delayedEntryPc, h: at(delayedEntryPc) });
     }
     for (const p of peaks) {
       const self = at(p.pc) / maxH;
@@ -1025,7 +1072,22 @@
       // Rank candidates by how naturally the VOICE sits on them; the drone only
       // picks which octave of the winner to report. (Letting the drone's octave
       // feed the ranking made a high taan passage hand Sa to Pa.)
-      if (bestHz > 0) placed.push({ hz: bestHz, score: p.score * (0.4 + 0.6 * naturalness(bestVoice >= 0 ? bestVoiceSa : bestSa)), coverage: totalW ? bestCov / totalW : 0 });
+      const entryClass = vocalEntry && circularCents(p.pc, delayedEntryPc) < 40;
+      if (entryClass) {
+        bestHz = vocalEntry.hz;
+        bestCov = 0;
+        const saCents = 1200 * Math.log2(bestHz / 55);
+        for (const r of rels) {
+          const rc = r.c - saCents;
+          if (rc >= -500 && rc < 1500) bestCov += r.w;
+          else if (rc >= 1500 && rc < 2100) bestCov += r.w * 0.25;
+        }
+      }
+      if (bestHz > 0) placed.push({ hz: bestHz,
+        score: p.score * (0.4 + 0.6 * (entryClass ? 1 : naturalness(bestVoice >= 0 ? bestVoiceSa : bestSa))),
+        coverage: totalW ? bestCov / totalW : 0,
+        ...(entryClass ? { vocalEntry: true, uncertain: true } : {}),
+      });
     }
     placed.sort((a, b) => b.score - a.score);
     // Normalize scores to [0,1] relative to the best candidate. When the
@@ -1223,7 +1285,12 @@
     const drift = estimateTuningDrift(f0, clarity, hopSec, tonic[0].hz);
     if (!drift) return { tonic, drift: null, f0 };
     const corrected = correctDrift(f0, hopSec, drift);
-    tonic = detectTonic(corrected, clarity, hopSec, rms, extra);
+    const correctedExtra = extra && extra.vocalEntry ? Object.assign({}, extra, {
+      vocalEntry: Object.assign({}, extra.vocalEntry, {
+        hz: extra.vocalEntry.hz * Math.pow(2, -driftAt(drift, extra.vocalEntry.start) / 1200),
+      }),
+    }) : extra;
+    tonic = detectTonic(corrected, clarity, hopSec, rms, correctedExtra);
     return { tonic, drift, f0: corrected };
   }
 
@@ -2827,7 +2894,7 @@
 
   return {
     preFilter, hpssHarmonic, yinTrack, stabilizeOctave, detectOnsets,
-    detectTonic, droneProfile, estimateTuningDrift, driftAt, correctDrift, tonicWithDrift, refineSa, notate, buildPracticeContour,
+    detectTonic, findDelayedVocalEntry, droneProfile, estimateTuningDrift, driftAt, correctDrift, tonicWithDrift, refineSa, notate, buildPracticeContour,
     displayPitchRange, notationText, notationLines, notationPitchTrack, isUncertainNote, annotateSungPitch, toDevanagari, devanagariSwara, analyzeRaga,
     regroupPhrases: groupPhrases,
     swaraInfo, tokenText, tokenFullText, synthesize, percentile,

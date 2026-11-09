@@ -1355,6 +1355,56 @@
     return result;
   }
 
+  /** A short neighbour excursion can be labelled as the neighbour by GAME
+   * even when the sung gesture returns around an established earlier anchor.
+   * Recover that anchor only with two supported returns around it, flanked by
+   * the same other note. A genuine held intermediate note remains untouched. */
+  function recoverReturningAnchors(tokens, f0, clarity, hopSec, saHz, thresh) {
+    if (!f0 || !clarity || !(hopSec > 0)) return tokens;
+    return tokens.map((token, index) => {
+      const anchor = tokens[index - 2], previous = tokens[index - 1], next = tokens[index + 1];
+      if (!anchor || !previous || !next || previous.k !== next.k) return token;
+      const direction = Math.sign(previous.k - anchor.k);
+      const span = Math.abs(previous.k - anchor.k);
+      const neighbor = (token.k - anchor.k) * direction;
+      const duration = token.t1 - token.t0;
+      if (span < 3 || span > 7 || neighbor < 1 || neighbor > 3 || neighbor >= span ||
+          duration < 0.24 || duration > 0.65 || anchor.t1 - anchor.t0 < 0.18 ||
+          previous.t1 - previous.t0 < 0.12 || next.t1 - next.t0 < 0.12 ||
+          previous.t0 - anchor.t1 > 0.10 || token.t0 - previous.t1 > 0.10 ||
+          next.t0 - token.t1 > 0.10 || token.andolan) return token;
+      const start = Math.max(0, Math.ceil(token.t0 / hopSec));
+      const end = Math.min(f0.length, Math.floor(token.t1 / hopSec));
+      const path = [];
+      let held = 0, longestHeld = 0, supported = 0;
+      for (let frame = start; frame < end; frame++) {
+        if (!(f0[frame] > 0) || clarity[frame] < Math.max(thresh, 0.70)) {
+          held = 0; path.push(null); continue;
+        }
+        const cents = direction * (1200 * Math.log2(f0[frame] / saHz) - anchor.k * 100);
+        path.push(cents); supported++;
+        held = Math.abs(cents - neighbor * 100) <= 35 ? held + 1 : 0;
+        longestHeld = Math.max(longestHeld, held);
+      }
+      if (supported < (end - start) * 0.80 || longestHeld * hopSec + 1e-9 >= Math.min(0.18, duration * 0.60)) return token;
+      const values = path.filter(Number.isFinite).sort((a, b) => a - b);
+      const lo = values[Math.floor((values.length - 1) * 0.10)];
+      const hi = values[Math.floor((values.length - 1) * 0.90)];
+      if (lo < -250 || lo > -65 || hi < 100 || hi > 350 || Math.abs((lo + hi) / 2) > 65) return token;
+      // At least two low returns separated by the upper neighbour; mere
+      // traversal through the anchor on a one-way slide is not enough.
+      let stage = 0, run = 0;
+      for (const cents of path) {
+        const matches = Number.isFinite(cents) && (stage === 1 ? cents >= 100 : cents <= -50);
+        run = matches ? run + 1 : 0;
+        if (run * hopSec + 1e-9 >= (stage === 1 ? 0.05 : 0.025)) { stage++; run = 0; }
+        if (stage === 3) break;
+      }
+      if (stage !== 3) return token;
+      return Object.assign({}, token, { k: anchor.k, returningAnchor: true });
+    });
+  }
+
   function notateRegions(regions, f0, clarity, hopSec, saHz, opts) {
     opts = opts || {};
     const clean = opts.clean === true;
@@ -2070,6 +2120,9 @@
         if (recovered) withFadeLandings.push(recovered);
       }
       tokens = withFadeLandings;
+    }
+    if (clean && ornaments) {
+      tokens = recoverReturningAnchors(tokens, f0, clarity, hopSec, saHz, thresh);
     }
     for (const token of tokens) delete token._contour;
     return { tokens, phrases: groupPhrases(tokens, lineGapSec, clean) };

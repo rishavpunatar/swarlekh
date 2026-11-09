@@ -7,7 +7,7 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 test('worker: the server voice drives the notes; Sa comes from the mix and is fine-tuned on the voice', async () => {
-  const calls = { tonicF0: null, yin: 0, refinedOn: null, posted: null };
+  const calls = { tonicF0: null, yin: 0, refinedOn: null, posted: null, entryInput: null, tonicExtra: null };
   const DSP = {
     preFilter: (x) => x,
     yinTrack: () => {
@@ -20,7 +20,12 @@ test('worker: the server voice drives the notes; Sa comes from the mix and is fi
       };
     },
     stabilizeOctave: (f0) => ({ f0, doubled: false }),
-    tonicWithDrift: (f0) => {
+    findDelayedVocalEntry: (f0, clarity, hop, rms) => {
+      calls.entryInput = { f0: Array.from(f0), rms: Array.from(rms), hop };
+      return { hz: 220, start: 35, end: 35.4, confidence: 0.95 };
+    },
+    tonicWithDrift: (f0, clarity, hop, rms, extra) => {
+      calls.tonicExtra = extra;
       calls.tonicF0 = Array.from(f0);
       return { tonic: [{ hz: 219, score: 1 }], drift: null, f0 };
     },
@@ -59,6 +64,8 @@ test('worker: the server voice drives the notes; Sa comes from the mix and is fi
   // Saraga concerts: Sa from the mix (voice + tanpura strings) is the more
   // reliable reading; the separated voice only fine-tunes its cents.
   assert.strictEqual(calls.yin, 1, 'Sa is read from the mix');
+  assert.deepStrictEqual(calls.entryInput.f0, [220, 222, 224]);
+  assert.strictEqual(calls.tonicExtra.vocalEntry.hz, 220, 'separated entry evidence reaches tonic scoring');
   assert.deepStrictEqual(calls.tonicF0, [999]);
   assert.deepStrictEqual(calls.refinedOn, [220, 222, 224], 'Sa cents refined on the separated voice');
   assert.strictEqual(calls.posted.type, 'result', calls.posted.message);

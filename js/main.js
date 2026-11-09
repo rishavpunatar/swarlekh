@@ -62,7 +62,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=71';
+  const WORKER_URL = 'js/worker.js?v=72';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -689,7 +689,12 @@
     const uncertain = cands[0] && cands[0].uncertain;
     els.tonicCard.classList.toggle('uncertain', !!uncertain);
     els.droneBtn.classList.toggle('pulse', !!uncertain && !droneNodes);
-    if (uncertain && cands.length > 1) {
+    if (cands[0] && cands[0].vocalEntry) {
+      const changed = Math.abs(1200 * Math.log2(cands[0].hz / state.saHz)) > 50;
+      els.tonicHint.textContent = changed
+        ? `The first vocal hold suggests Sa ${noteLabel(cands[0].hz)} (${cands[0].hz.toFixed(1)} Hz). Your saved Sa is kept; select that first candidate to use the updated estimate.`
+        : 'Sa follows the first clear vocal hold after the introduction. This is a provisional estimate; compare the Drone with the singing.';
+    } else if (uncertain && cands.length > 1) {
       els.tonicHint.innerHTML = '⚠️ <b>Sa is a close call.</b> Try the candidates with the <b>Drone</b>, or pause on a sung Sa and choose <b>Set playhead as Sa</b>.';
     } else if (uncertain) {
       els.tonicHint.innerHTML = '⚠️ Couldn’t hear enough clear melody to be sure of Sa. Set it by note, or pause on a sung Sa and choose <b>Set playhead as Sa</b>.';
@@ -716,6 +721,7 @@
     els.tonicFineVal.textContent = `${cents >= 0 ? '+' : ''}${cents}¢`;
     els.tonicHz.textContent = `${state.saHz.toFixed(1)} Hz`;
     markSelectedChip();
+    updateTonicHint();
     updateDroneFreq();
     populatePitchOptions();
   }
