@@ -62,7 +62,7 @@
   // Bump on every deploy that touches js/ (also bump the ?v= on the <script>
   // tags in index.html to match). Versioning the worker URL cascades to its
   // importScripts, so returning users never run a stale cached worker/DSP.
-  const WORKER_URL = 'js/worker.js?v=70';
+  const WORKER_URL = 'js/worker.js?v=71';
   const PITCH_LIMIT = 12;
   const pitchCache = new Map();   // semitones -> { origUrl, synthUrl }
   let pitchWorker = null;
@@ -1152,7 +1152,7 @@
       ? edit.freeDuration
       : 0.4;
     els.selectedNoteLabel.textContent =
-      `${tokenGlyph(token.k)} ${fmtTime((token.t0 + token.t1) / 2)}`;
+      `${noteDescription(token.k)} · ${fmtTime((token.t0 + token.t1) / 2)}`;
     els.incomingConnector.value = incoming;
     els.outgoingConnector.value = outgoing;
 
@@ -1358,6 +1358,15 @@
     if (s.octave > 0) t += "'".repeat(s.octave);
     else if (s.octave < 0) t = '.'.repeat(-s.octave) + t;
     return t;
+  }
+
+  function noteDescription(k) {
+    const names = ['Sa', 'komal Re', 'shuddh Re', 'komal Ga', 'shuddh Ga', 'shuddh Ma',
+      'tivra Ma', 'Pa', 'komal Dha', 'shuddh Dha', 'komal Ni', 'shuddh Ni'];
+    const semitones = Math.abs(k);
+    const interval = k === 0 ? 'Sa reference' :
+      `${semitones} semitone${semitones === 1 ? '' : 's'} ${k < 0 ? 'below' : 'above'} Sa`;
+    return `${tokenGlyph(k)} · ${names[((k % 12) + 12) % 12]} · ${interval}`;
   }
 
   // A glide's path trimmed to its in-scale swaras (keep the endpoints).
@@ -2687,8 +2696,10 @@
     }
     if (!dragInfo) {   // idle: cursor affordances so the ruler invites the drag
       const y = e.clientY - cvs.getBoundingClientRect().top;
+      const tokenIndex = noteAt(e.clientX, e.clientY);
+      cvs.title = tokenIndex >= 0 ? noteDescription(state.tokens[tokenIndex].k) : '';
       cvs.style.cursor = state.addNoteMode && y >= RULER
-        ? 'crosshair' : (noteAt(e.clientX, e.clientY) >= 0 ? 'ns-resize' : '');
+        ? 'crosshair' : (tokenIndex >= 0 ? 'ns-resize' : '');
       return;
     }
     if (dragInfo.mode === 'add-note') {

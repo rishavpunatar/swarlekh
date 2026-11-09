@@ -112,3 +112,14 @@ test('Best-engine notes retain their pivot after regeneration and saved-state re
   restored.renotate();
   assert.deepEqual(plain(restored.state.tokens.map(n=>[n.t0,n.t1,n.k])),before.map(([a,b,k])=>[a,b,k+4]));
 });
+
+test('selected notes spell out case-sensitive swara names and their octave-aware intervals',()=>{
+  const {app,elements}=editor();
+  for(const [k,name,interval] of [[1,'komal Re','1 semitone above Sa'],[2,'shuddh Re','2 semitones above Sa'],
+    [3,'komal Ga','3 semitones above Sa'],[4,'shuddh Ga','4 semitones above Sa'],
+    [-2,'komal Ni','2 semitones below Sa'],[-1,'shuddh Ni','1 semitone below Sa']]){
+    app._addNote(3.85,3.95,k);
+    const label=elements.get('selectedNoteLabel').textContent;
+    assert.ok(label.includes(name),label);assert.ok(label.includes(interval),label);
+  }
+});
