@@ -94,7 +94,7 @@ self.onmessage = async function (e) {
     // The drone (tanpura / sruti box) is in the MIX even when the pitch track
     // comes from the separated voice: it is the steadiest Sa evidence there is.
     const tonicExtra = DSP.droneProfile ? { drone: DSP.droneProfile(samples, sr) } : {};
-    if (external && e.data.providedRms && DSP.findDelayedVocalEntry) {
+    if (external && e.data.providedRms && e.data.providedRms.length === track.f0.length && DSP.findDelayedVocalEntry) {
       tonicExtra.vocalEntry = DSP.findDelayedVocalEntry(stab.f0, track.clarity, track.hopSec, track.rms);
     }
     let tonic, drift;
